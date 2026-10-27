@@ -40,6 +40,27 @@ For every actionable issue that changes repository contents (code, tests, docs, 
 
 Branch example: issue/31-private-s3-storage.
 
+## Mandatory bug-fix workflow
+
+Before changing code to fix a bug, every agent MUST complete these steps:
+
+1. **Investigate and search first.** Reproduce or inspect the reported failure where possible. Search this repository's existing issues, including open and closed issues, using error messages, affected components, symptoms and likely root-cause terms. Search related PRs and inspect the relevant source, tests, configuration and recent changes. Do not rely on title-only matching; check issue descriptions and comments when available.
+2. **Reuse an existing issue when it matches.** If a matching bug issue exists, use it as the work item. Add verified reproduction details, impact, scope and testable acceptance criteria if missing. Cross-link related issues rather than creating duplicates.
+3. **Create an issue if none matches.** Before implementing an untracked bug fix, create a dedicated bug issue. Include:
+   - concise symptom-focused title;
+   - observed behavior and expected behavior;
+   - reproduction steps, logs or evidence available (redact secrets and personal data);
+   - impact/severity and affected component, distinguishing confirmed facts from hypotheses;
+   - testable acceptance criteria, including regression coverage where practical.
+   Do not fabricate reproduction steps, logs, impact, root causes or evidence. If the failure cannot yet be reproduced, state that clearly and make investigation part of the issue.
+4. **Create a dedicated issue branch.** Start from the current default branch and use issue/<issue-number>-<short-slug>. Do not begin implementation on main, an unrelated branch or a branch shared with another issue.
+5. **Fix only the scoped bug.** Add or update regression tests where practical. Keep unrelated refactors and enhancements out of the bug branch; create separate linked issues for follow-up work.
+6. **Verify before opening the PR.** Run the relevant tests, formatting, lint, contract checks and build checks available for the affected code. Report exact commands and results, including checks that could not run and why. Never claim a check passed if it was not run.
+7. **Open a linked PR.** Submit one PR from the issue branch to the default branch. Include the issue number in the title and use Closes #<number> in the PR body when the PR fully resolves the same-repository issue. Summarize root cause (only when verified), fix, regression tests, validation results and residual risks.
+8. **Close only after verification and merge.** Do not close the bug issue merely because a fix was committed or a PR was opened. Close it after the fix is merged and the acceptance criteria are met, following repository policy.
+
+If an urgent production mitigation must happen before a normal issue can be created, document the reason and create/link the issue as soon as practical; do not use urgency as a general bypass for review.
+
 ## Required workflow before implementation
 
 1. Read this file, README, the issue, related parent/task issues, and relevant recent PRs.
