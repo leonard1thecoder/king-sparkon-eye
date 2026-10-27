@@ -119,7 +119,76 @@ Do not trust user IDs, event IDs, ticket IDs, or worker identities merely becaus
 - [Issue #18 — Private photo storage and Kafka enrollment events](https://github.com/leonard1thecoder/king-sparkon-eye/issues/18)
 - [Issue #19 — Worker-approved admission in Spring Boot](https://github.com/leonard1thecoder/king-sparkon-eye/issues/19)
 
+### Coding epic and implementation tasks
+
+The umbrella coding issue tracks the implementation sequence and keeps code changes aligned with this README:
+
+- [Issue #20 — Implement Rust MVP and keep roadmap synchronized](https://github.com/leonard1thecoder/king-sparkon-eye/issues/20)
+- [#21 — Bootstrap Rust service and configuration](https://github.com/leonard1thecoder/king-sparkon-eye/issues/21)
+- [#22 — API DTOs, OpenAPI and typed errors](https://github.com/leonard1thecoder/king-sparkon-eye/issues/22)
+- [#23 — Secure upload validation and image decoding](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23)
+- [#24 — ONNX detector/landmarks and objective quality checks](https://github.com/leonard1thecoder/king-sparkon-eye/issues/24)
+- [#25 — Frontier vision adapter and validated feedback](https://github.com/leonard1thecoder/king-sparkon-eye/issues/25)
+- [#26 — Deterministic assessment policy](https://github.com/leonard1thecoder/king-sparkon-eye/issues/26)
+- [#27 — Private image storage and enrollment metadata](https://github.com/leonard1thecoder/king-sparkon-eye/issues/27)
+- [#28 — Versioned Kafka enrollment events](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28)
+- [#29 — Test fixtures, integration tests and CI](https://github.com/leonard1thecoder/king-sparkon-eye/issues/29)
+- [#30 — QR-free event-scoped gate identification](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30)
+
 See the [open GitHub issues](https://github.com/leonard1thecoder/king-sparkon-eye/issues) for the complete implementation sequence.
+
+## Codebase changes and refactoring workflow
+
+**Every material codebase change must keep the implementation, README, API/event contracts, and GitHub issues synchronized.** Treat the repository and running tests as the source of truth; this README documents the intended design and must be adjusted when verified implementation changes it.
+
+### Before changing code
+
+1. Read the relevant source files, tests, README sections, OpenAPI schemas, and linked open issues.
+2. Compare the requested change with the actual implementation. Do not assume existing code matches an old issue description.
+3. Identify affected modules, API endpoints, Kafka event schemas, storage contracts, model versions, security controls, and deployments.
+4. If a feature request is larger than one independently testable change, create a parent issue and small coding tasks with dependencies and acceptance criteria before implementation.
+5. Update the parent issue first if the product architecture or responsibility boundaries need to change.
+
+### During implementation
+
+1. Make focused changes tied to a coding issue. Avoid unrelated rewrites in the same pull request.
+2. Add or update tests with the code; cover success, failure, uncertainty, authorization and retry behavior where applicable.
+3. When code changes a contract or observable behavior, update OpenAPI/schema examples, README instructions, environment configuration documentation, and the affected issues in the same PR.
+4. Preserve the architecture: Rust owns vision processing; Kafka transports versioned events; Spring Boot owns ticket truth, worker authorization and final admission approval.
+5. Do not quietly change the QR-free gate requirement, event-scoped 1:N search, consent expectations or manual fallback. Any intended behavior change must be discussed and recorded in the parent issue.
+6. If implementation reveals a better design, document the evidence and trade-offs in the issue/PR, adjust the parent and task issues, and then implement the agreed design.
+
+### After changing code
+
+1. Run the checks required by the affected module, including formatting, linting, unit tests, integration/contract tests and build checks.
+2. Verify README examples, endpoints, environment variables, Kafka event schemas and status names against the actual code.
+3. Link the pull request to the task issue and report what changed, which tests ran, any migration/deployment impact, and remaining limitations.
+4. Close a coding issue only when its acceptance criteria are met and relevant tests pass. Update parent checklists accordingly.
+5. Close or replace obsolete/duplicate issues so the backlog does not describe behavior that no longer exists.
+6. Never mark a feature as implemented based only on a design, scaffold, mock, placeholder, or passing unit tests that do not exercise the relevant integration.
+
+### Coding issue template
+
+Every implementation issue should include:
+
+- **Objective:** one result to deliver.
+- **Current state:** observed files/modules and what exists today.
+- **Scope:** concrete code changes and explicit out-of-scope work.
+- **Dependencies:** issue numbers that must be completed first.
+- **Acceptance criteria:** externally observable behavior and edge cases.
+- **Tests:** commands and scenarios that prove correctness.
+- **Documentation/contracts:** README, OpenAPI, Kafka schema, configuration or migration changes required.
+- **Security/privacy:** data access, retention, logging, authorization and failure behavior as relevant.
+- **Definition of done:** implementation, checks, documentation and linked PR completed.
+
+### README accuracy rule
+
+- Clearly distinguish **implemented**, **partially implemented**, **planned**, and **not yet verified** functionality.
+- Only document live endpoints, deployed models, Kafka topics or storage adapters as implemented after verifying them in code/configuration and tests.
+- Keep event names and endpoint paths labelled as proposed until the contract and implementation are committed.
+- Document breaking changes and migration steps when contracts or persistent data layouts change.
+
+## Current implementation status
 
 ## Current implementation status
 
