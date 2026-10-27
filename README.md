@@ -6,6 +6,45 @@ King Sparkon Eye is designed to let an authorized gate worker find an enrolled a
 
 > **Project status:** This repository is currently a roadmap/specification repository. The issues below describe the implementation to build; they do not claim the Rust service, Kafka integration, or facial-recognition workflow is already implemented.
 
+## Agent source-of-truth repositories — required before planning
+
+**Coding agents must inspect both tracker repositories before planning or designing a King Sparkon Eye change.** Do not infer current contracts, ticket rules, data models, UI patterns, or authentication behavior from memory or from this README alone.
+
+### 1. Existing frontend — source of truth for UI and browser integration
+
+[**king-sparkon-tracker**](https://github.com/leonard1thecoder/king-sparkon-tracker)
+
+Use this repository to verify the current Next.js application, Bun toolchain, route handlers, authentication/session behavior, backend proxy, API client modules, TypeScript contracts, role dashboards, camera/scanner components, styles, accessibility and UI conventions.
+
+Read its README, root AGENTS.md, relevant source files and tests. Its AGENTS.md requires agents to read the installed Next.js documentation under node_modules/next/dist/docs/ before coding against this project's Next.js version.
+
+### 2. Existing ticket backend — source of truth for ticket business logic
+
+[**king-sparkon-tracker-backend**](https://github.com/leonard1thecoder/king-sparkon-tracker-backend) *(private repository; agents need authorized access)*
+
+Use this repository to verify Spring Boot controllers, DTOs, services, repositories, database entities and Flyway migrations, ticket/event relationships, ticket status transitions, authentication/authorization, worker permissions, current ticket verification behavior, tests and API contracts. Read its README and inspect the code and migrations that actually implement the relevant behavior.
+
+**Access rule:** if an agent cannot access the private backend repository, it must report that as a blocker and ask for access or the relevant files. It must not guess or invent endpoints, DTO fields, table/column names, ticket states, roles, authorization rules or event contracts.
+
+### 3. King Sparkon Eye — source of truth for the new vision capability
+
+This repository defines the new Rust-based vision service and the facial-recognition requirements. The tracker repositories define the existing application behavior and contracts that Eye must integrate with; Eye must not become a replacement ticket-management system.
+
+- Rust owns image validation, ONNX/model inference, face identification and structured vision results.
+- Spring Boot remains authoritative for users, events, tickets, eligibility, worker authorization, persistence and final admission.
+- The primary gate flow is QR-free: the worker selects an authorized event/gate context and Rust performs event-scoped 1:N face identification.
+- A face match or Kafka event never automatically admits an attendee. An authenticated worker explicitly approves entry through Spring Boot.
+- When a change is required in either tracker repository, create a separate issue, branch and PR in that repository and link it to the Eye issue/PR. Do not smuggle tracker modifications into an Eye PR.
+
+### Required source inspection before planning
+
+1. Refresh the default branches and inspect current README/agent instructions, relevant source code, tests, migrations, configuration and existing open issues/PRs in both tracker repositories.
+2. Trace the exact current ticket, event, user and worker flow that the proposed Eye change touches.
+3. Record evidence in the coding issue: files/classes/modules inspected, the real DTOs/contracts involved, behavior that must remain compatible, and any missing or contradictory details.
+4. Treat current source, tests, migrations and published contracts as evidence for existing behavior. Documentation may lag; verify important facts in code.
+5. Eye's README and issue acceptance criteria define new requirements. If they conflict with the current tracker implementation, do not silently break existing behavior or invent a bridging contract. Document the conflict and update the parent issue/design decision before coding.
+
+
 ## Product goal
 
 A ticket holder enrolls a suitable face photo before the event. At the gate, the worker starts a face-verification session for the relevant event, the attendee looks at the camera, and the system searches the event's enrolled attendees. The main gate path does **not** require scanning a ticket QR code.
@@ -156,104 +195,48 @@ See the [open GitHub issues](https://github.com/leonard1thecoder/king-sparkon-ey
 
 ## Codebase changes and refactoring workflow
 
-**Every material codebase change must keep the implementation, README, API/event contracts, and GitHub issues synchronized.** Treat the repository and running tests as the source of truth; this README documents the intended design and must be adjusted when verified implementation changes it.
+**Required delivery rule: one actionable issue = one branch = one pull request.** No direct commits to main, and do not combine unrelated issues in one branch or PR.
+
+This policy is tracked by [Issue #32 — Source-of-truth repositories and one-issue/one-branch/one-PR workflow](https://github.com/leonard1thecoder/king-sparkon-eye/issues/32). The companion [AGENTS.md](https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/AGENTS.md) contains instructions intended for coding agents.
+
+### Branch and pull-request protocol
+
+1. Start from the latest main and create a branch named issue/<issue-number>-<short-slug>, for example issue/32-agent-source-of-truth-pr-workflow.
+2. Work only on the issue named in that branch. A documentation-only, test-only, refactor or configuration task follows the same rule.
+3. Open exactly one PR for that issue, in the same repository. Put the issue number in the PR title and include Closes #<issue-number> for a same-repository issue.
+4. Do not batch multiple coding issues into one PR, reuse one branch for several issues, or push commits directly to main.
+5. Parent epics are tracking-only. Implement the work through focused task issues, each with its own branch and PR.
+6. For cross-repository work, create/link a separate issue, branch and PR in each affected repository. Link the relevant PRs; do not make tracker changes as an incidental part of an Eye PR.
+7. Do not create empty PRs merely to satisfy the rule. Every actionable issue that changes repository content must have its own branch and PR.
 
 ### Before changing code
 
-1. Read the relevant source files, tests, README sections, OpenAPI schemas, and linked open issues.
-2. Compare the requested change with the actual implementation. Do not assume existing code matches an old issue description.
-3. Identify affected modules, API endpoints, Kafka event schemas, storage contracts, model versions, security controls, and deployments.
-4. If a feature request is larger than one independently testable change, create a parent issue and small coding tasks with dependencies and acceptance criteria before implementation.
-5. Update the parent issue first if the product architecture or responsibility boundaries need to change.
+1. Read the issue, affected source files, tests, README/agent instructions, OpenAPI schemas, configuration and linked issues.
+2. Inspect both source-of-truth tracker repositories following the section above before designing any integration with their behavior.
+3. Compare the issue description with current implementation; do not assume old issues or README statements still describe the code.
+4. Identify all affected modules, APIs, Kafka schemas, storage contracts, model versions, security controls, migrations and deployments.
+5. If work is larger than one independently testable change, split it into a parent issue and focused coding tasks with dependencies and acceptance criteria.
 
 ### During implementation
 
-1. Make focused changes tied to a coding issue. Avoid unrelated rewrites in the same pull request.
-2. Add or update tests with the code; cover success, failure, uncertainty, authorization and retry behavior where applicable.
-3. When code changes a contract or observable behavior, update OpenAPI/schema examples, README instructions, environment configuration documentation, and the affected issues in the same PR.
-4. Preserve the architecture: Rust owns vision processing; Kafka transports versioned events; Spring Boot owns ticket truth, worker authorization and final admission approval.
-5. Do not quietly change the QR-free gate requirement, event-scoped 1:N search, consent expectations or manual fallback. Any intended behavior change must be discussed and recorded in the parent issue.
-6. If implementation reveals a better design, document the evidence and trade-offs in the issue/PR, adjust the parent and task issues, and then implement the agreed design.
+1. Keep each PR focused on its single issue.
+2. Add/update tests as implementation changes; cover success, failure, uncertainty, authorization and retry behavior where applicable.
+3. When a change affects an API, response, Kafka event, storage model, environment variable, dependency, security boundary or deployment behavior, update related OpenAPI/schema examples, README, and affected issues in the same PR.
+4. Do not silently change the QR-free gate requirement, event-scoped 1:N search, consent expectations, manual fallback, or worker-approval rule.
+5. If implementation reveals a better design or a conflict with the tracker repositories, record evidence and trade-offs in the issue/PR, update the parent design first, and implement only the agreed approach.
 
-### After changing code
+### After implementation
 
-1. Run the checks required by the affected module, including formatting, linting, unit tests, integration/contract tests and build checks.
-2. Verify README examples, endpoints, environment variables, Kafka event schemas and status names against the actual code.
-3. Link the pull request to the task issue and report what changed, which tests ran, any migration/deployment impact, and remaining limitations.
-4. Close a coding issue only when its acceptance criteria are met and relevant tests pass. Update parent checklists accordingly.
-5. Close or replace obsolete/duplicate issues so the backlog does not describe behavior that no longer exists.
-6. Never mark a feature as implemented based only on a design, scaffold, mock, placeholder, or passing unit tests that do not exercise the relevant integration.
+1. Run all relevant formatters, linters, unit tests, integration/contract tests and build checks.
+2. Verify README commands, API paths, status names, environment variables and Kafka schemas against code and tests.
+3. Include changed modules, tests run, API/schema/migration impacts, operational/security implications and known limitations in the PR body.
+4. Close the issue only when its acceptance criteria are met and the relevant checks pass; then update its parent checklist.
+5. Close or replace obsolete issues instead of leaving conflicting requirements open.
+6. Never call a feature implemented based only on a plan, scaffold, placeholder, mock or non-representative test.
 
-### Coding issue template
+### Required coding issue contents
 
-Every implementation issue should include:
-
-- **Objective:** one result to deliver.
-- **Current state:** observed files/modules and what exists today.
-- **Scope:** concrete code changes and explicit out-of-scope work.
-- **Dependencies:** issue numbers that must be completed first.
-- **Acceptance criteria:** externally observable behavior and edge cases.
-- **Tests:** commands and scenarios that prove correctness.
-- **Documentation/contracts:** README, OpenAPI, Kafka schema, configuration or migration changes required.
-- **Security/privacy:** data access, retention, logging, authorization and failure behavior as relevant.
-- **Definition of done:** implementation, checks, documentation and linked PR completed.
-
-### README accuracy rule
-
-- Clearly distinguish **implemented**, **partially implemented**, **planned**, and **not yet verified** functionality.
-- Only document live endpoints, deployed models, Kafka topics or storage adapters as implemented after verifying them in code/configuration and tests.
-- Keep event names and endpoint paths labelled as proposed until the contract and implementation are committed.
-- Document breaking changes and migration steps when contracts or persistent data layouts change.
-
-## Codebase changes and refactoring workflow
-
-**Every material code change must keep the implementation, README, API/event contracts, tests, and GitHub issues synchronized.** Treat the code and passing tests as the source of truth. This README describes the intended design and must change whenever verified implementation changes the behavior or architecture.
-
-### Before changing code
-
-1. Read the affected source files, tests, README sections, OpenAPI schemas, configuration and linked open issues.
-2. Compare each issue with the actual code. Never assume a previously written issue still describes the current implementation.
-3. Identify affected modules, API endpoints, Kafka event schemas, storage contracts, model versions, security controls, data migrations and deployment configuration.
-4. If the change is bigger than one independently testable unit, create a parent issue and smaller coding issues before implementation. The parent issue should track dependency order and link every coding task.
-5. If a proposed change alters product behavior or system ownership, update the parent issue and README design first. Do not silently diverge from the QR-free gate flow or worker-approval requirement.
-
-### While implementing a refactor or feature
-
-1. Keep each pull request focused on one coding issue. Avoid unrelated rewrites in the same PR.
-2. Add or update tests with the implementation, not as a later cleanup task.
-3. When code changes an endpoint, response status, Kafka schema, storage model, environment variable, dependency, security boundary or deployment behavior, update the related documentation and affected issues in the same PR.
-4. Preserve ownership boundaries: Rust handles vision processing; Kafka transports versioned events; Spring Boot owns ticket truth, worker authorization and final admission approval.
-5. Keep the primary gate workflow QR-free: staff select an authorized event/gate context and Rust performs event-scoped 1:N identification. Do not add a ticket-QR requirement without an explicit product decision.
-6. Treat a better design discovered during refactoring as a documented decision: note the evidence/trade-offs in the issue or PR, update parent and task issues, then implement it.
-
-### After code changes
-
-1. Run relevant formatters, linters, unit tests, integration/contract tests and build checks.
-2. Verify README commands, routes, environment variables, status names and Kafka payload examples against actual code and tests.
-3. In the PR description, summarize changed files/modules, tests run, contract or migration impacts, operational/security implications and known limitations. Link the PR to the coding issue.
-4. Close a coding issue only when its acceptance criteria are met and the relevant tests pass. Then update the parent issue checklist.
-5. Close or replace stale and duplicate issues instead of leaving conflicting requirements open.
-6. Never describe a feature as implemented based only on architecture text, a scaffold, a placeholder, a mock, or a unit test that skips the real integration.
-
-### Required structure for coding issues
-
-Every coding issue should include:
-
-- **Objective:** one result to deliver.
-- **Current state:** what actually exists today and the relevant modules/files.
-- **Scope:** intended edits and explicit out-of-scope work.
-- **Dependencies:** earlier issues that must land first.
-- **Acceptance criteria:** observable behavior, failure cases and security expectations.
-- **Tests:** commands and scenarios that prove correctness.
-- **Documentation/contracts:** README, OpenAPI, Kafka schema, config or migration changes required.
-- **Definition of done:** code, tests, docs, and linked PR complete.
-
-### README accuracy rules
-
-- Mark features as implemented only after verifying code and tests. Otherwise label them planned or not yet verified.
-- Treat proposed endpoint paths, event names and storage/provider choices as proposals until an implementation and contract are committed.
-- Document breaking changes and migration steps whenever public contracts or persistent data layouts change.
-- Keep a compact implementation-status section current with the actual capabilities of the repository.
+Every coding issue must state its objective, observed current state, scope/out-of-scope work, dependencies, acceptance criteria, test plan, documentation/contracts to update, security/privacy considerations, and definition of done.
 
 ## Project Discussion & Design Decisions
 
