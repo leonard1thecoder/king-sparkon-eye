@@ -238,7 +238,13 @@ Every coding issue should include:
 - Document breaking changes and migration steps whenever public contracts or persistent data layouts change.
 - Keep a compact implementation-status section current with the actual capabilities of the repository.
 
-## Current implementation status
+## Project Discussion & Design Decisions
+
+Public ChatGPT conversation covering the product architecture and implementation planning for King Sparkon Eye:
+
+- [Read the King Sparkon Eye architecture discussion](https://chatgpt.com/share/6ae08dee-8d30-83ea-a6e9-3144526de3f9) — facial-recognition ticket management, QR-free gate identification, Rust vision processing, Kafka integration with Spring Boot, worker-approved admission, and GitHub implementation issues.
+
+This conversation is a planning reference. The README, source code, API contracts, and tests remain the authoritative project artifacts; proposed behavior is not considered implemented until verified in code and tests.
 
 ## Current implementation status
 
