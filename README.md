@@ -18,7 +18,7 @@ Facial recognition returns a candidate match, not an automatic admission. Spring
 - **Rust vision service:** validates and safely decodes uploaded images; runs objective image checks, ONNX face detection/landmarks and a configured frontier vision model for supplementary quality guidance; generates and compares face embeddings using the selected, evaluated recognition model; produces typed outcomes and Kafka events.
 - **Apache Kafka:** reliable, versioned asynchronous events between Rust and Spring Boot. Events carry IDs, results and private storage references by default, not large raw image binaries.
 - **Spring Boot ticket-management backend:** source of truth for users, events, tickets, ticket status, gate workers, eligibility, and admission approval. It consumes Rust events, resolves candidate matches to eligible tickets, persists status, and applies the worker's explicit admission decision.
-- **Private object storage:** stores original profile photos only when required and with the required consent. Objects are not public.
+- **AWS S3 private object storage:** planned storage for accepted original profile photos after Rust's ONNX face-detection/geometry and deterministic photo-suitability policy pass and required consent is confirmed. Bucket access must remain private; the S3 implementation is tracked in [Issue #31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31).
 - **Protected biometric index/store:** holds enrolled face templates/embeddings needed for event-scoped face identification. Embeddings are sensitive biometric data and must have strict access control, encryption, retention/deletion rules, and audit controls.
 - **PostgreSQL:** Spring Boot's ticket and admission records, plus photo/enrollment metadata and storage references. Do not duplicate raw image blobs in ticket rows unless an explicit, reviewed requirement calls for it.
 
@@ -33,6 +33,22 @@ Facial recognition returns a candidate match, not an automatic admission. Spring
 | Private storage / biometric store | Protected image objects and face templates, with defined owners and lifecycle policies |
 
 Spring Boot should not reimplement computer vision. Rust should not become a second ticket-management system. Spring Boot must not automatically admit a ticket because a face match or Kafka event was received.
+
+## Image storage decision — AWS S3
+
+The planned storage target for retained enrollment photos is a private Amazon S3 bucket. Rust performs the upload only after the image passes the configured ONNX and deterministic photo-suitability policy, and only after the required authentication, authorization and consent checks. ONNX face detection is not identity verification.
+
+Security requirements for the S3 implementation:
+
+- Keep S3 Block Public Access enabled and use bucket-owner-enforced ownership; do not make image objects public.
+- Use runtime IAM roles/temporary credentials where supported; do not commit access keys.
+- Require server-side encryption (SSE-S3 or SSE-KMS, as decided for deployment) and least-privilege access.
+- Generate opaque object keys without attendee names, emails or ticket numbers.
+- Kafka carries an opaque storage key and approved metadata, not photo bytes or permanent public URLs.
+- Define retention, consent revocation, deletion, idempotent retry, and S3-success/Kafka-failure recovery.
+- The frontend must distinguish assessment passed, S3 upload complete, persistence pending, and Spring Boot persistence confirmed.
+
+Implementation is tracked in [Issue #31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31). These are requirements for the planned implementation, not a claim that S3 is already configured.
 
 ## Buyer enrollment flow
 
@@ -134,6 +150,7 @@ The umbrella coding issue tracks the implementation sequence and keeps code chan
 - [#28 — Versioned Kafka enrollment events](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28)
 - [#29 — Test fixtures, integration tests and CI](https://github.com/leonard1thecoder/king-sparkon-eye/issues/29)
 - [#30 — QR-free event-scoped gate identification](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30)
+- [#31 — AWS S3 storage after ONNX/policy acceptance](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31)
 
 See the [open GitHub issues](https://github.com/leonard1thecoder/king-sparkon-eye/issues) for the complete implementation sequence.
 
