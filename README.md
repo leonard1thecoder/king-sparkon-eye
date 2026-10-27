@@ -188,6 +188,56 @@ Every implementation issue should include:
 - Keep event names and endpoint paths labelled as proposed until the contract and implementation are committed.
 - Document breaking changes and migration steps when contracts or persistent data layouts change.
 
+## Codebase changes and refactoring workflow
+
+**Every material code change must keep the implementation, README, API/event contracts, tests, and GitHub issues synchronized.** Treat the code and passing tests as the source of truth. This README describes the intended design and must change whenever verified implementation changes the behavior or architecture.
+
+### Before changing code
+
+1. Read the affected source files, tests, README sections, OpenAPI schemas, configuration and linked open issues.
+2. Compare each issue with the actual code. Never assume a previously written issue still describes the current implementation.
+3. Identify affected modules, API endpoints, Kafka event schemas, storage contracts, model versions, security controls, data migrations and deployment configuration.
+4. If the change is bigger than one independently testable unit, create a parent issue and smaller coding issues before implementation. The parent issue should track dependency order and link every coding task.
+5. If a proposed change alters product behavior or system ownership, update the parent issue and README design first. Do not silently diverge from the QR-free gate flow or worker-approval requirement.
+
+### While implementing a refactor or feature
+
+1. Keep each pull request focused on one coding issue. Avoid unrelated rewrites in the same PR.
+2. Add or update tests with the implementation, not as a later cleanup task.
+3. When code changes an endpoint, response status, Kafka schema, storage model, environment variable, dependency, security boundary or deployment behavior, update the related documentation and affected issues in the same PR.
+4. Preserve ownership boundaries: Rust handles vision processing; Kafka transports versioned events; Spring Boot owns ticket truth, worker authorization and final admission approval.
+5. Keep the primary gate workflow QR-free: staff select an authorized event/gate context and Rust performs event-scoped 1:N identification. Do not add a ticket-QR requirement without an explicit product decision.
+6. Treat a better design discovered during refactoring as a documented decision: note the evidence/trade-offs in the issue or PR, update parent and task issues, then implement it.
+
+### After code changes
+
+1. Run relevant formatters, linters, unit tests, integration/contract tests and build checks.
+2. Verify README commands, routes, environment variables, status names and Kafka payload examples against actual code and tests.
+3. In the PR description, summarize changed files/modules, tests run, contract or migration impacts, operational/security implications and known limitations. Link the PR to the coding issue.
+4. Close a coding issue only when its acceptance criteria are met and the relevant tests pass. Then update the parent issue checklist.
+5. Close or replace stale and duplicate issues instead of leaving conflicting requirements open.
+6. Never describe a feature as implemented based only on architecture text, a scaffold, a placeholder, a mock, or a unit test that skips the real integration.
+
+### Required structure for coding issues
+
+Every coding issue should include:
+
+- **Objective:** one result to deliver.
+- **Current state:** what actually exists today and the relevant modules/files.
+- **Scope:** intended edits and explicit out-of-scope work.
+- **Dependencies:** earlier issues that must land first.
+- **Acceptance criteria:** observable behavior, failure cases and security expectations.
+- **Tests:** commands and scenarios that prove correctness.
+- **Documentation/contracts:** README, OpenAPI, Kafka schema, config or migration changes required.
+- **Definition of done:** code, tests, docs, and linked PR complete.
+
+### README accuracy rules
+
+- Mark features as implemented only after verifying code and tests. Otherwise label them planned or not yet verified.
+- Treat proposed endpoint paths, event names and storage/provider choices as proposals until an implementation and contract are committed.
+- Document breaking changes and migration steps whenever public contracts or persistent data layouts change.
+- Keep a compact implementation-status section current with the actual capabilities of the repository.
+
 ## Current implementation status
 
 ## Current implementation status
