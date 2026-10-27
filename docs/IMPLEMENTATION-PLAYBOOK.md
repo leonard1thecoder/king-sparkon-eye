@@ -1,0 +1,195 @@
+# King Sparkon Eye — Agent Implementation Playbook
+
+> **Purpose:** Coordinate AI coding agents so the existing GitHub issues are implemented in a safe order, with minimal overlap and no conflicting branches, contracts, or architectural decisions.
+>
+> **Status:** This is an implementation guide, not proof that the planned service is already implemented. Always verify the current repository and issue state before starting work.
+
+## 1. Non-negotiable rules
+
+1. **One actionable issue = one branch = one pull request.** Use `issue/<number>-<short-slug>`, branch from the latest `main`, and never commit directly to `main`.
+2. **The issue is the unit of work.** Read its acceptance criteria and dependencies before coding. Do not silently expand its scope or bundle unrelated issues.
+3. **Inspect before planning.** Read this guide, `README.md`, `AGENTS.md`, the assigned issue, its parent/dependencies, and relevant open/closed issues and PRs.
+4. **Source code beats assumptions.** Inspect the actual files, tests, configuration, schemas and migrations. This repository began as a roadmap/specification repository; do not assume a described feature already exists.
+5. **No invented contracts.** Do not guess API paths, DTO fields, database columns, Kafka schemas, ticket states, permissions, or model capabilities. If a decision is missing, record the blocker and request an issue/contract decision.
+6. **Keep repository ownership separate.** Changes to the Next.js tracker or Spring Boot tracker backend require their own issue, branch and PR in those repositories, linked to the Eye work.
+7. **Test and report honestly.** Run the relevant checks, state the exact commands and results, and identify checks that could not run. Never claim a test or feature passed without evidence.
+8. **Stop on architectural conflict.** If implementation evidence conflicts with the README, issue acceptance criteria, or a shared contract, do not make a unilateral change. Document the evidence and obtain an agreed decision first.
+9. **Update documentation with behavior.** Any approved change to API behavior, event schemas, configuration, security, deployment or user-visible states must update the relevant documentation in the same issue branch/PR.
+10. **Protect biometric data.** Never commit real personal biometric images without explicit approval. Do not log raw images, embeddings, provider prompts/responses, credentials, access tokens, or signed URLs.
+
+## 2. Source-of-truth repositories
+
+Before planning an integration, inspect these repositories and record the evidence in the issue or PR.
+
+- **Frontend:** [king-sparkon-tracker](https://github.com/leonard1thecoder/king-sparkon-tracker) — source of truth for Next.js App Router, Bun/tooling, route handlers, authentication/session behavior, API clients, TypeScript contracts, camera/scanner components, dashboards, UI patterns, accessibility and frontend tests. Read its README, root `AGENTS.md`, relevant source and tests. Follow its instruction to read the installed Next.js documentation under `node_modules/next/dist/docs/` before coding against that project's Next.js version.
+- **Ticket backend:** [king-sparkon-tracker-backend](https://github.com/leonard1thecoder/king-sparkon-tracker-backend) — source of truth for Spring Boot controllers, DTOs, services, repositories, entities/migrations, ticket/event relationships, authorization, worker permissions, status transitions, persistence and current API behavior.
+- **King Sparkon Eye:** this repository — source of truth for the new Rust vision service requirements, image validation, vision/model inference, face-identification results, and its published contracts.
+
+**Private backend access rule:** the backend repository is private. If you cannot access it, stop work that depends on its behavior and report a blocker. Ask for authorized access or the relevant source/contracts. Never fabricate endpoints, roles, schemas or ticket rules.
+
+### Responsibility boundaries
+
+| Area | Authority |
+|---|---|
+| Browser camera/upload and worker review UI | Next.js frontend |
+| Secure image ingress, objective quality checks, face detection/recognition, typed vision results | Rust Eye service |
+| Versioned asynchronous transport | Kafka |
+| Users, events, tickets, eligibility, worker authorization, persistence and final admission | Spring Boot backend |
+| Retained original photos | Private object storage with explicit access, retention and deletion policy |
+| Face templates/embeddings | Protected biometric index/store with least privilege and lifecycle controls |
+
+A face match or Kafka event **never** admits an attendee. Spring Boot must validate ticket eligibility and worker authority, and the authenticated worker must explicitly approve entry. The primary gate flow is QR-free and searches only the authorized event's enrolled gallery; do not turn it into global identification.
+
+## 3. Issue implementation map
+
+The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-eye/issues/20) is tracking-only. Implement through the task issues below. The issue descriptions are the authoritative source for their detailed scope, acceptance criteria and dependencies; use the links rather than copying their mutable requirements into this guide.
+
+| Issue | Workstream | Dependency / coordination rule |
+|---|---|---|
+| [#21](https://github.com/leonard1thecoder/king-sparkon-eye/issues/21) | Rust crate, HTTP service and configuration | Starting point; no task dependency listed. |
+| [#22](https://github.com/leonard1thecoder/king-sparkon-eye/issues/22) | DTOs, OpenAPI and typed errors | Depends on #21. Agree contract types before downstream adapters rely on them. |
+| [#23](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23) | Secure upload validation and image decoding | Depends on #21 and #22. Invalid files must be stopped before detector/provider calls. |
+| [#24](https://github.com/leonard1thecoder/king-sparkon-eye/issues/24) | ONNX detector/landmarks and objective quality checks | Depends on #21–#23. Does not implement identity comparison. |
+| [#25](https://github.com/leonard1thecoder/king-sparkon-eye/issues/25) | Frontier-vision adapter and validated quality feedback | Depends on #21–#23. Selected model: **Meta Muse Spark 1.3**, model ID `muse-spark-1.3`, for supplementary visual-quality guidance. |
+| [#26](https://github.com/leonard1thecoder/king-sparkon-eye/issues/26) | Deterministic assessment orchestration and reason codes | Depends on #22, #24 and #25. It must make hard-rule precedence explicit and keep provider failure distinct from poor image quality. |
+| [#27](https://github.com/leonard1thecoder/king-sparkon-eye/issues/27) | Private storage abstraction and enrollment metadata boundary | Depends on #21–#23 and #26. Agree the storage interface before the S3 adapter is implemented. |
+| [#28](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28) | Versioned Kafka enrollment events | Depends on #22, #27 and #26. Coordinate the event schema and failure/retry semantics. |
+| [#29](https://github.com/leonard1thecoder/king-sparkon-eye/issues/29) | Fixtures, integration/contract tests and CI | Depends progressively on #21–#28; tests must be added alongside each task, not postponed until the end. |
+| [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
+| [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on #27 and related roadmap issue #18. Align with the approved storage boundary and enrollment event contract before wiring persistence. |
+
+Related product/roadmap issues include [#1](https://github.com/leonard1thecoder/king-sparkon-eye/issues/1), [#15](https://github.com/leonard1thecoder/king-sparkon-eye/issues/15), [#16](https://github.com/leonard1thecoder/king-sparkon-eye/issues/16), [#17](https://github.com/leonard1thecoder/king-sparkon-eye/issues/17), [#18](https://github.com/leonard1thecoder/king-sparkon-eye/issues/18), and [#19](https://github.com/leonard1thecoder/king-sparkon-eye/issues/19). Read the current issue bodies for their scope and status before scheduling work.
+
+### Recommended dependency-aware sequence
+
+1. **Foundation:** #21.
+2. **Public contract:** #22.
+3. **Safe ingress:** #23.
+4. **Vision adapters:** #24 and #25 may be worked on in parallel only after the shared DTOs, configuration conventions, error types, and adapter interfaces are agreed. Keep their code scopes separate; if a shared file needs changes, coordinate first.
+5. **Policy/orchestration:** #26 after both required vision paths have agreed interfaces.
+6. **Enrollment persistence boundary:** #27.
+7. **Event publication:** #28 after the event schema and storage handoff are agreed.
+8. **S3 adapter:** #31 against the agreed #27 storage boundary; coordinate event/persistence behavior with #28. Do not change the contract independently in either branch.
+9. **Gate identification:** #30 only when its listed dependencies and enrollment/gallery design are ready.
+10. **Tests and CI:** #29 continuously throughout all phases; finish by checking the integrated flows and clean-checkout CI.
+
+This sequence is a planning aid, not permission to override the dependencies listed in GitHub issues. If an issue's dependencies or acceptance criteria change, update this guide through a reviewed documentation change.
+
+## 4. Safe parallel work and conflict prevention
+
+### Rules for multiple agents
+
+- Assign **one primary agent per issue and one dedicated branch per issue**. Two agents must not independently implement the same issue or push to the same branch unless the owner explicitly coordinates that collaboration.
+- Before starting, search open and closed issues and PRs for the intended change. Reuse a matching issue or link it; do not create duplicate implementation work.
+- Do not start a dependent issue early merely because another agent says it is nearly done. Confirm the dependency's branch/PR, agreed interfaces and required tests. If a dependent task needs a draft interface, record that interface explicitly and get agreement before both agents code against it.
+- Prefer parallel work only when modules and file ownership are distinct and interfaces are stable. Parallelism is not a reason to duplicate or prematurely define a shared contract.
+- Treat `Cargo.toml`/lockfile, application entry point, configuration types, shared errors, API DTOs/OpenAPI, event schemas, shared assessment policy, and top-level README as **coordination-sensitive files**. If another active issue is changing one, discuss the change with its owner before editing. Do not resolve a merge conflict by discarding another issue's work.
+- Keep each branch focused. If you discover a separate bug or improvement, create or link a separate issue and report it rather than adding unrelated changes to the current PR.
+- Do not edit the frontend or backend repositories from an Eye branch. Open a separate linked issue/PR in each affected repository.
+- If a contract must change, identify all producers/consumers, update the contract first or through an explicitly coordinated change, add compatibility tests, and link the affected issues/PRs. Do not merge one side while leaving the other side silently incompatible.
+- Rebase/update from the latest base branch as required by repository practice; resolve conflicts with the other change owner when the conflict affects shared behavior.
+
+### Module ownership guide
+
+These are **logical ownership areas**, not a claim that the corresponding files already exist. Confirm the actual layout in the repository before editing.
+
+| Issue | Primary ownership area | Avoid changing without coordination |
+|---|---|---|
+| #21 | Crate skeleton, runtime startup, base configuration and service lifecycle | Public API shapes, vision policy, event schema |
+| #22 | DTOs, OpenAPI, shared enums and typed error contract | Model-specific behavior, ticket/admission logic |
+| #23 | Upload limits, signature checks, decoder and normalized image ingress | Detector/provider policy and downstream persistence |
+| #24 | ONNX runtime adapter, detector/landmark outputs, objective metrics | Identity comparison, public DTOs unless agreed |
+| #25 | Frontier provider interface/adapter, response validation, advisory mapping | Hard image rules, identity decisions, admission |
+| #26 | Assessment orchestration, precedence, status/reason-code mapping | Vendor-specific implementation details, ticket state |
+| #27 | Storage interface and enrollment metadata boundary | AWS-specific behavior unless jointly agreed |
+| #28 | Kafka producer, event schema/version, retry and idempotency | Spring consumer implementation in the Eye repo |
+| #29 | Fixtures, tests, contract checks and CI | Changing production behavior only to make a test pass |
+| #30 | Event-scoped recognition flow and typed result production | Ticket eligibility or final admission authority |
+| #31 | S3 implementation, private-object controls and storage lifecycle | Redefining the #27 interface or #28 event schema unilaterally |
+
+## 5. Muse Spark 1.3 model boundary — issue #25
+
+Use **Meta Muse Spark 1.3 (`muse-spark-1.3`)** as the selected frontier vision model for supplementary visual-quality feedback, subject to successful integration and evaluation against a consented dataset.
+
+- Verify current official model/API documentation, request format, structured-output behavior, limits, privacy/retention terms and cost during implementation. Do not invent endpoints or capabilities.
+- Use the model for visible photo-quality guidance such as supported lighting/framing concerns; validate all output against application-owned types and allowlisted reason codes.
+- Keep deterministic file validation and hard photo-suitability rules authoritative. Model prose cannot turn an invalid file, no-face result, multiple-face result or other hard failure into a pass.
+- Model feedback is **not** face recognition, identity verification, liveness detection, ticket eligibility, or admission authorization.
+- Distinguish timeout/rate-limit/provider/parse failures from a poor-quality photo. Define and document the behavior when the provider is disabled or unavailable.
+- Use bounded timeouts/retries and response-size limits. Never log image content, raw prompts, raw provider responses, secrets, or sensitive identifiers.
+- Do not confuse **Muse Spark** (image understanding/vision) with **Muse Image** (image generation/editing). This issue evaluates an input photo; it does not ask the model to generate a replacement image.
+
+## 6. Standard agent workflow
+
+### Before coding
+
+- [ ] Confirm the issue is open, actionable, not duplicated, and assigned to this branch/PR.
+- [ ] Read `README.md`, `AGENTS.md`, the issue, parent epic, dependencies and related issues/PRs.
+- [ ] Inspect the current code and tests; state the actual files/modules involved.
+- [ ] Inspect both tracker source-of-truth repositories for integration work. Record inaccessible private-repo dependencies as blockers.
+- [ ] Write down the planned file/module scope, interfaces to be consumed/changed, and test plan in the issue or PR notes.
+- [ ] Confirm no other active issue branch is editing the same coordination-sensitive files.
+- [ ] Identify privacy/security implications, failure states and backward-compatibility concerns.
+
+### During implementation
+
+- [ ] Keep the diff limited to the issue's scope.
+- [ ] Add tests with the behavior, not at the end.
+- [ ] Use mocks/fakes for external vision providers, ONNX, Kafka and S3 in normal CI; do not require paid credentials or production personal data.
+- [ ] Keep external dependencies and model artifacts documented, licensed, pinned/reviewed, and configurable where appropriate.
+- [ ] Return stable typed errors and status codes; do not expose stack traces, internal paths or provider payloads.
+- [ ] Update documentation and contracts when observable behavior changes.
+- [ ] If blocked by an undocumented decision, stop at the boundary, document what is known and unknown, and ask for a decision instead of guessing.
+
+### Before opening or updating the PR
+
+- [ ] Run the checks applicable to the changed code, including formatting, lint/clippy, unit tests, integration/contract tests and build checks where available.
+- [ ] Review the full diff for unrelated changes, secrets, personal data, generated artifacts and accidental contract drift.
+- [ ] Verify README and issue text distinguish planned, partial, implemented and unverified behavior.
+- [ ] Report exact commands and results; explicitly list skipped checks and reasons.
+- [ ] Include the issue number in the PR title and `Closes #<number>` in the body when the PR fully resolves that issue.
+- [ ] Summarize what changed, why, files/modules affected, tests run, compatibility impact, known limitations and any follow-up issues.
+- [ ] Do not close the issue just because a PR exists. Close it only after merge and after its acceptance criteria are met.
+
+## 7. Required PR handoff format
+
+Use this checklist in the PR description (adapt it to the actual change):
+
+- **Issue:** #<number>
+- **Scope delivered:** concise list of behavior implemented.
+- **Files/modules changed:** actual paths, not hypothetical names.
+- **Contracts affected:** API/OpenAPI, configuration, Kafka event, persistence or none.
+- **Source evidence:** relevant existing files/tests/contracts inspected, including tracker repos for integration work.
+- **Validation:** exact commands and pass/fail results.
+- **Security/privacy:** image/embedding/provider/logging/retention implications.
+- **Failure behavior:** timeout, unavailable dependency, retry, duplicate delivery and degraded-mode behavior as relevant.
+- **Known limitations/blockers:** explicit, not hidden.
+- **Follow-up issues:** links for out-of-scope work.
+- **Acceptance criteria:** each criterion checked against code/test evidence.
+
+## 8. Definition of done
+
+An issue is ready to merge only when all applicable items are true:
+
+- Its acceptance criteria are implemented and demonstrably tested.
+- The change is isolated to the assigned issue, or every necessary cross-issue change was explicitly coordinated and documented.
+- Shared contracts remain compatible and their consumers/producers are accounted for.
+- Errors and degraded states are typed and do not masquerade as successful assessment, persistence or admission.
+- Privacy and security requirements are met; no sensitive payloads or secrets leak into logs, Kafka or committed fixtures.
+- Documentation matches the behavior that code actually implements.
+- Relevant checks have passed, or any unavoidable skipped check is explicitly explained and accepted by reviewers.
+- The PR is linked to the issue and reviewed under repository policy.
+- Any newly discovered work has a separate issue rather than being left as undocumented scope.
+
+## 9. If you discover a blocker or conflict
+
+1. Stop before making a unilateral architecture or contract change.
+2. Record the exact evidence: file/path, test, contract, issue text, or inaccessible repository.
+3. State what is confirmed, what remains unknown, and which issues/agents are affected.
+4. Propose the smallest decision needed to unblock work; do not fabricate the answer.
+5. Link the affected issues/PRs and wait for an agreed decision when compatibility or security is at stake.
+6. Update this guide only through a scoped, reviewed documentation issue/PR.
+
+---
+
+**Related references:** [Implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-eye/issues/20) · [Source-of-truth and Git workflow issue #32](https://github.com/leonard1thecoder/king-sparkon-eye/issues/32) · [Agent instructions](../AGENTS.md) · [Project README](../README.md)
