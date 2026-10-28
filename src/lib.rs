@@ -16,3 +16,4 @@ pub mod ingress;
 pub mod observability;
 pub mod provider;
 pub mod quality;
+pub mod storage;
