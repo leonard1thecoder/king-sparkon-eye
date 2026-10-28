@@ -7,6 +7,8 @@
 //!
 //! Detection is not identity comparison and not liveness detection.
 
+pub mod yunet;
+
 use crate::ingress::NormalizedImage;
 
 /// Axis-aligned box in fractions of the image size, with origin at the top-left.
