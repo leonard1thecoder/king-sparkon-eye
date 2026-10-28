@@ -58,16 +58,29 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
 | [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on #27 and related roadmap issue #18. Align with the approved storage boundary and enrollment event contract before wiring persistence. |
 
+### Status snapshot (2026-10-28)
+
+GitHub state at the time of this update. Re-check before relying on it.
+
+| State | Issues | Notes |
+|---|---|---|
+| Done (closed, merged) | #21, #22, #23, #25, #26 | #26 merged in PR #66. |
+| Closed, with caveats | #24, #29 | #24: real-face fixtures (#55) and runtime wiring are still outstanding. #29: CI gates exist. |
+| Next in sequence | #27 | Storage boundary. Its dependencies are merged. Consent design (#15) must be agreed before any retained photo is stored. |
+| Then | #28, #31, #30 | #28 needs the #27 boundary. #31 needs #27 and the S3 policy. #30 needs an approved embedding contract (#58, #59) and threshold evaluation (#61). |
+| Open blockers outside the map | #15, #58, #59, #60, #61, #38, #41–#48, #55, #11, #13, #8, #35 | Consent design, ONNX inventory and recognizer, Muse context, threshold calibration, model decision, auth epic, real-face fixtures, privacy hardening, CI and deployment, threshold evaluation, public pages. |
+| Decision pending | #64 | Reopened. PR #65 added guidance but not the decision record that #64 requires. |
+
 Related product/roadmap issues include [#1](https://github.com/leonard1thecoder/king-sparkon-eye/issues/1), [#15](https://github.com/leonard1thecoder/king-sparkon-eye/issues/15), [#16](https://github.com/leonard1thecoder/king-sparkon-eye/issues/16), [#17](https://github.com/leonard1thecoder/king-sparkon-eye/issues/17), [#18](https://github.com/leonard1thecoder/king-sparkon-eye/issues/18), and [#19](https://github.com/leonard1thecoder/king-sparkon-eye/issues/19). Model-context and prerequisite issues that gate #25, #26 and #30 include [#38](https://github.com/leonard1thecoder/king-sparkon-eye/issues/38) (model decision), [#58](https://github.com/leonard1thecoder/king-sparkon-eye/issues/58) (ONNX contract inventory), [#60](https://github.com/leonard1thecoder/king-sparkon-eye/issues/60) (Muse Spark context) and [#61](https://github.com/leonard1thecoder/king-sparkon-eye/issues/61) (threshold evaluation). The retrieval decision is [#64](https://github.com/leonard1thecoder/king-sparkon-eye/issues/64). Read the current issue bodies for their scope and status before scheduling work.
 
 ### Recommended dependency-aware sequence
 
-1. **Foundation:** #21.
-2. **Public contract:** #22.
-3. **Safe ingress:** #23.
+1. **Foundation:** #21 (done).
+2. **Public contract:** #22 (done).
+3. **Safe ingress:** #23 (done).
 4. **Vision adapters:** #24 and #25 may be worked on in parallel only after the shared DTOs, configuration conventions, error types, and adapter interfaces are agreed. Keep their code scopes separate; if a shared file needs changes, coordinate first.
-5. **Policy/orchestration:** #26 after both required vision paths have agreed interfaces.
-6. **Enrollment persistence boundary:** #27.
+5. **Policy/orchestration:** #26 (done, PR #66).
+6. **Enrollment persistence boundary:** #27 (next). Requires #15 consent design to be agreed before retained photos are stored.
 7. **Event publication:** #28 after the event schema and storage handoff are agreed.
 8. **S3 adapter:** #31 against the agreed #27 storage boundary; coordinate event/persistence behavior with #28. Do not change the contract independently in either branch.
 9. **Gate identification:** #30 only when its listed dependencies and enrollment/gallery design are ready.
