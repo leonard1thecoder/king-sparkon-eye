@@ -84,3 +84,47 @@ fn api_key_is_redacted_in_debug_output() {
         Some("super-secret-value")
     );
 }
+
+#[test]
+fn image_limit_defaults_match_documented_values() {
+    let config = Config::from_lookup(lookup(HashMap::new())).unwrap();
+    let limits = config.image_limits;
+    assert_eq!(limits.max_upload_bytes, 10 * 1024 * 1024);
+    assert_eq!(limits.max_width, 4096);
+    assert_eq!(limits.max_height, 4096);
+    assert_eq!(limits.max_pixels, 16_777_216);
+    assert_eq!(limits.max_decode_alloc_bytes, 256 * 1024 * 1024);
+    assert_eq!(
+        limits.decode_timeout,
+        std::time::Duration::from_millis(5_000)
+    );
+}
+
+#[test]
+fn image_limits_are_configurable() {
+    let map = HashMap::from([
+        ("EYE_UPLOAD_MAX_BYTES", "2048"),
+        ("EYE_IMAGE_MAX_WIDTH", "800"),
+        ("EYE_IMAGE_DECODE_TIMEOUT_MS", "250"),
+    ]);
+    let limits = Config::from_lookup(lookup(map)).unwrap().image_limits;
+    assert_eq!(limits.max_upload_bytes, 2048);
+    assert_eq!(limits.max_width, 800);
+    assert_eq!(limits.decode_timeout, std::time::Duration::from_millis(250));
+}
+
+#[test]
+fn zero_or_non_numeric_image_limit_is_rejected_by_name() {
+    for (name, value) in [
+        ("EYE_UPLOAD_MAX_BYTES", "0"),
+        ("EYE_IMAGE_MAX_PIXELS", "lots"),
+    ] {
+        let map = HashMap::from([(name, value)]);
+        let err = Config::from_lookup(lookup(map)).unwrap_err();
+        assert!(
+            matches!(err, ConfigError::Invalid { name: n, .. } if n == name),
+            "{name}"
+        );
+        assert!(!err.to_string().contains(value));
+    }
+}

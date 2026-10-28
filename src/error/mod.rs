@@ -17,6 +17,8 @@ pub enum ErrorCode {
     UnsupportedMediaType,
     RateLimited,
     ServiceUnavailable,
+    ImageMalformed,
+    ImageDimensionsExceeded,
     Internal,
 }
 
@@ -29,6 +31,8 @@ impl ErrorCode {
         ErrorCode::UnsupportedMediaType,
         ErrorCode::RateLimited,
         ErrorCode::ServiceUnavailable,
+        ErrorCode::ImageMalformed,
+        ErrorCode::ImageDimensionsExceeded,
         ErrorCode::Internal,
     ];
 }
@@ -64,6 +68,12 @@ pub enum ApiError {
     RateLimited,
     #[error("a required dependency is temporarily unavailable")]
     ServiceUnavailable,
+    #[error("uploaded image is malformed or truncated")]
+    ImageMalformed,
+    #[error("image dimensions exceed the allowed limits")]
+    ImageDimensionsExceeded,
+    #[error("image processing timed out")]
+    ImageDecodeTimeout,
     /// Deliberately generic: internal causes are logged server-side, never returned.
     #[error("internal error")]
     Internal,
@@ -78,14 +88,22 @@ impl ApiError {
             ApiError::PayloadTooLarge => ErrorCode::PayloadTooLarge,
             ApiError::UnsupportedMediaType => ErrorCode::UnsupportedMediaType,
             ApiError::RateLimited => ErrorCode::RateLimited,
-            ApiError::ServiceUnavailable => ErrorCode::ServiceUnavailable,
+            ApiError::ServiceUnavailable | ApiError::ImageDecodeTimeout => {
+                ErrorCode::ServiceUnavailable
+            }
+            ApiError::ImageMalformed => ErrorCode::ImageMalformed,
+            ApiError::ImageDimensionsExceeded => ErrorCode::ImageDimensionsExceeded,
             ApiError::Internal => ErrorCode::Internal,
         }
     }
 
     pub fn status(&self) -> StatusCode {
         match self {
-            ApiError::NotReady | ApiError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            ApiError::NotReady | ApiError::ServiceUnavailable | ApiError::ImageDecodeTimeout => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+            ApiError::ImageMalformed => StatusCode::BAD_REQUEST,
+            ApiError::ImageDimensionsExceeded => StatusCode::UNPROCESSABLE_ENTITY,
             ApiError::NotFound => StatusCode::NOT_FOUND,
             ApiError::Validation(_) => StatusCode::BAD_REQUEST,
             ApiError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,

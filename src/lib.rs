@@ -11,5 +11,6 @@ pub mod contract;
 pub mod domain;
 pub mod error;
 pub mod inference;
+pub mod ingress;
 pub mod observability;
 pub mod provider;
