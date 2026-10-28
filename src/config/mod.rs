@@ -62,6 +62,20 @@ impl Default for ImageLimits {
     }
 }
 
+pub const DEFAULT_VISION_TIMEOUT_MS: u64 = 10_000;
+pub const DEFAULT_VISION_MAX_RESPONSE_BYTES: usize = 64 * 1024;
+pub const DEFAULT_VISION_MAX_RETRIES: u32 = 2;
+
+/// Settings for the frontier vision provider (issue #25). Only used when the provider is enabled.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VisionConfig {
+    pub base_url: String,
+    pub model: String,
+    pub timeout: Duration,
+    pub max_response_bytes: usize,
+    pub max_retries: u32,
+}
+
 /// Runtime configuration for the service.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -73,6 +87,8 @@ pub struct Config {
     pub vision_provider_api_key: Option<SecretString>,
     /// Upload and decode limits for image ingress.
     pub image_limits: ImageLimits,
+    /// Frontier vision provider settings.
+    pub vision: VisionConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -85,6 +101,11 @@ pub const ENV_BIND_ADDR: &str = "EYE_BIND_ADDR";
 pub const ENV_LOG_FILTER: &str = "EYE_LOG_FILTER";
 pub const ENV_VISION_PROVIDER_ENABLED: &str = "EYE_VISION_PROVIDER_ENABLED";
 pub const ENV_VISION_PROVIDER_API_KEY: &str = "EYE_VISION_PROVIDER_API_KEY";
+pub const ENV_VISION_PROVIDER_BASE_URL: &str = "EYE_VISION_PROVIDER_BASE_URL";
+pub const ENV_VISION_PROVIDER_MODEL: &str = "EYE_VISION_PROVIDER_MODEL";
+pub const ENV_VISION_PROVIDER_TIMEOUT_MS: &str = "EYE_VISION_PROVIDER_TIMEOUT_MS";
+pub const ENV_VISION_PROVIDER_MAX_RESPONSE_BYTES: &str = "EYE_VISION_PROVIDER_MAX_RESPONSE_BYTES";
+pub const ENV_VISION_PROVIDER_MAX_RETRIES: &str = "EYE_VISION_PROVIDER_MAX_RETRIES";
 pub const ENV_UPLOAD_MAX_BYTES: &str = "EYE_UPLOAD_MAX_BYTES";
 pub const ENV_IMAGE_MAX_WIDTH: &str = "EYE_IMAGE_MAX_WIDTH";
 pub const ENV_IMAGE_MAX_HEIGHT: &str = "EYE_IMAGE_MAX_HEIGHT";
@@ -155,12 +176,35 @@ impl Config {
             )?),
         };
 
+        let vision = VisionConfig {
+            base_url: non_empty(lookup(ENV_VISION_PROVIDER_BASE_URL))
+                .unwrap_or_else(|| "https://api.meta.ai/v1".to_owned()),
+            model: non_empty(lookup(ENV_VISION_PROVIDER_MODEL))
+                .unwrap_or_else(|| "muse-spark-1.3".to_owned()),
+            timeout: Duration::from_millis(positive(
+                &lookup,
+                ENV_VISION_PROVIDER_TIMEOUT_MS,
+                DEFAULT_VISION_TIMEOUT_MS,
+            )?),
+            max_response_bytes: positive(
+                &lookup,
+                ENV_VISION_PROVIDER_MAX_RESPONSE_BYTES,
+                DEFAULT_VISION_MAX_RESPONSE_BYTES as u64,
+            )? as usize,
+            max_retries: non_negative_u32(
+                &lookup,
+                ENV_VISION_PROVIDER_MAX_RETRIES,
+                DEFAULT_VISION_MAX_RETRIES,
+            )?,
+        };
+
         Ok(Self {
             bind_addr,
             log_filter,
             vision_provider_enabled,
             vision_provider_api_key,
             image_limits,
+            vision,
         })
     }
 }
@@ -179,6 +223,20 @@ where
                 reason: "expected a positive whole number".to_owned(),
             }),
         },
+    }
+}
+
+/// Reads a whole number that may be zero. Unset or blank uses the default.
+fn non_negative_u32<F>(lookup: &F, name: &'static str, default: u32) -> Result<u32, ConfigError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    match non_empty(lookup(name)) {
+        None => Ok(default),
+        Some(raw) => raw.parse::<u32>().map_err(|_| ConfigError::Invalid {
+            name,
+            reason: "expected a whole number of 0 or more".to_owned(),
+        }),
     }
 }
 

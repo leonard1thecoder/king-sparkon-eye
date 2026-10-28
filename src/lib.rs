@@ -5,6 +5,7 @@
 //! validation, ONNX inference, provider adapters and assessment policy are
 //! planned in later issues and are intentionally not implemented here.
 
+pub mod advisory;
 pub mod api;
 pub mod config;
 pub mod contract;

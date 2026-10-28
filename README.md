@@ -253,7 +253,8 @@ This conversation is a planning reference. The README, source code, API contract
 - **Image ingress (issue #23):** `src/ingress/` validates and decodes uploads before any model call. It enforces byte, dimension, pixel and decode-memory limits, detects format from file signatures (client names and MIME types are ignored), checks structure, applies EXIF orientation, and normalises to 8-bit RGB. It is a library pipeline. No HTTP route serves it yet.
 - **Face detection and objective checks (issue #24, partial):** `src/inference/` defines the `FaceDetector` trait, validated normalised boxes, and a zero/one/many classification that keeps the three outcomes distinct. `src/quality/` provides blur (Laplacian variance), exposure (mean luma and clipping), face size and framing checks. Each check returns Pass, Fail or Unknown, and an unmeasurable value is never a pass. Thresholds are uncalibrated defaults and must be evaluated against a consented dataset (#8, #17).
 - **YuNet adapter (issue #24, partial):** `src/inference/yunet.rs` loads the vendored runtime and model, checks the model's input and output shapes, and implements preprocessing (BGR, letterboxed to 640×640), decoding and NMS. It follows OpenCV's `FaceDetectorYN`. Known differences: NMS uses float IoU rather than OpenCV's integer rectangles, and the input is letterboxed rather than resized. ONNX Runtime can be initialised only once per process, and every later call must use the same runtime path. The adapter is not yet called from startup or a route. Wiring it into startup is part of #26. Accuracy on real faces is unverified (see the fixtures issue).
-- **Not yet implemented:** routes for the assessment and gate operations, the frontier vision provider, assessment policy, enrollment storage, Kafka events, S3 and gate identification. Module placeholders exist for these areas, and their issues (#24–#31) own them.
+- **Frontier vision guidance (issue #25):** `src/provider/` (interface, PNG encoding, mock, Meta Muse Spark adapter) and `src/advisory/` (strict validation, guidance mapping, merge with deterministic results). The model only supplies guidance. It cannot change suitability, face detection or ingress decisions. The adapter is disabled by default, and nothing calls it yet (wiring is part of #26).
+- **Not yet implemented:** routes for the assessment and gate operations, assessment policy, enrollment storage, Kafka events, S3 and gate identification. Module placeholders exist for these areas, and their issues (#24–#31) own them.
 
 **Inference artifacts (issue #24):** the detector is YuNet (`face_detection_yunet_2023mar.onnx`, MIT). It outputs face boxes and 5-point landmarks. The runtime is ONNX Runtime 1.31.1 for Linux x86_64 (CPU), MIT. Both are checked into `artifacts/`, with SHA-256 hashes, sources and licences recorded in `artifacts/manifest.json`. `tests/artifacts_test.rs` verifies them in CI, so nothing is downloaded at build or test time. The model takes a fixed 640×640 input. See "Vendored inference artifacts" below.
 
@@ -314,6 +315,41 @@ Uploads are checked by `src/ingress/` before any inference. Defaults apply when 
 - **Model I/O (verified with the pinned runtime):** input `[1, 3, 640, 640]` float32, fixed size. Outputs `cls_{8,16,32}`, `obj_{8,16,32}`, `bbox_{8,16,32}` and `kps_{8,16,32}`, for strides 8, 16 and 32 (6400, 1600 and 400 anchors).
 - **Size:** the runtime is 29 MB uncompressed and stays in git history. Changing it later means rewriting history or accepting the growth.
 - **Scope:** Linux x86_64 only. Other platforms need their own runtime artifacts, added through the same manifest process.
+
+## Frontier vision provider (issue #25)
+
+**Status:** implemented as a library. Disabled by default. Not yet called from any route (that is #26).
+
+**Provider and model (verified against Meta's API reference, <https://dev.meta.ai/docs/api-reference>):**
+- Base URL `https://api.meta.ai/v1` (override with `EYE_VISION_PROVIDER_BASE_URL`), endpoint `POST /chat/completions`, `Authorization: Bearer <key>`.
+- Model `muse-spark-1.3`. The standard variant, whose inputs Meta states are *not used to improve our products*. The `-contributor` variant is **not** used, because it permits training on inputs.
+- Output is constrained by a strict JSON schema (`response_format: json_schema`, `strict: true`).
+
+**What is sent:** the normalised image, re-encoded as PNG (so EXIF and other metadata are dropped), plus a fixed system and user prompt. No ticket, event, user or gate data is sent. The prompt tells the model to ignore any text inside the image.
+
+**What is not verified, and must be decided before enabling in production:**
+- Meta does not state log or data-retention periods for API inputs or outputs. Zero data retention is priced, but its terms are not defined in the docs. Enabling this feature sends face photographs to a third party, so a privacy and legal review is required first.
+- The image dimension limit is not stated. Inline images are limited to 50 MB, and this service enforces its own, smaller upload limits first.
+
+**Cost:** muse-spark-1.3 is priced at $1.25 per 1M input tokens and $4.25 per 1M output tokens. Image tokens scale with resolution (a ~1280 px image is about 1,300–1,500 tokens, per the docs). Rate limit is 3,000 requests per minute per team.
+
+**Configuration:**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `EYE_VISION_PROVIDER_ENABLED` | `false` | Off means no calls are made. The result is `AdvisoryStatus::Disabled`. |
+| `EYE_VISION_PROVIDER_API_KEY` | unset | Required when enabled. Never logged. |
+| `EYE_VISION_PROVIDER_BASE_URL` | `https://api.meta.ai/v1` | Base URL |
+| `EYE_VISION_PROVIDER_MODEL` | `muse-spark-1.3` | Model ID |
+| `EYE_VISION_PROVIDER_TIMEOUT_MS` | `10000` | Per-request timeout |
+| `EYE_VISION_PROVIDER_MAX_RESPONSE_BYTES` | `65536` | Response size limit, enforced while reading |
+| `EYE_VISION_PROVIDER_MAX_RETRIES` | `2` | Retries for 429, 500 and 503 only (honours `Retry-After`). Zero is allowed. |
+
+**Failure behaviour:** each failure is a distinct `ProviderError`, so it is never mistaken for a poor photo. Rate limiting (429) and 500/503 are retried with backoff. Timeouts and 504 are not retried, because Meta says a 504 must not simply be retried. Requests rejected with 400, 401, 402, 403, 404 or 413 are not retried. Invalid output (bad JSON, unknown fields, bad enum values, oversized text, contradictions, or a truncated or refused reply) is rejected and adds no guidance.
+
+**Guardrails:** the provider's output is parsed strictly, and only fixed guidance codes (`MOVE_CLOSER`, `MOVE_BACK`, `CENTER_FACE`, `IMPROVE_LIGHTING`, `AVOID_BACKLIGHT`, `REMOVE_OBSTRUCTION`, `RETAKE`) are ever returned. The model's free text is never shown to users. The merge copies the deterministic suitability and reason codes through unchanged, and an exhaustive test confirms this for every valid model output. Only error kinds are logged, never bodies or images.
+
+**Not yet in the API contract:** the guidance codes above are not yet in `openapi/eye.openapi.json`. They will be added with the assessment route in #26.
 
 ## API contract
 
