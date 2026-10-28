@@ -248,4 +248,37 @@ This conversation is a planning reference. The README, source code, API contract
 
 ## Current implementation status
 
-This repository was initially empty. Build and test the service incrementally through the issues. Do not interpret this design document or any proposed event/route name as proof that code, model integrations, storage, Kafka topics or deployed APIs already exist.
+- **Implemented (issue #21):** Rust crate and HTTP service skeleton; environment-based configuration with redacted secrets; `GET /health/live` and `GET /health/ready`; request IDs (`x-request-id`); structured JSON logging; graceful shutdown on Ctrl-C/SIGTERM; typed JSON errors for unknown routes.
+- **Not yet implemented:** upload validation, ONNX inference, the frontier vision provider, assessment policy, enrollment storage, Kafka events, S3 and gate identification. Module placeholders exist for these areas, and their issues (#22–#31) own them.
+
+Do not interpret this design document or any proposed event/route name as proof that code, model integrations, storage, Kafka topics or deployed APIs already exist.
+
+## Local run
+
+Requires a stable Rust toolchain (edition 2024).
+
+```bash
+cargo run                                   # listens on 0.0.0.0:8080 by default
+EYE_BIND_ADDR=127.0.0.1:18080 cargo run     # custom bind address
+curl -i http://127.0.0.1:18080/health/live
+curl -i http://127.0.0.1:18080/health/ready
+```
+
+Configuration (all optional):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `EYE_BIND_ADDR` | `0.0.0.0:8080` | Socket address to listen on |
+| `EYE_LOG_FILTER` | `info` | `tracing` filter directive |
+| `EYE_VISION_PROVIDER_ENABLED` | `false` | Enables the frontier vision provider (issue #25) |
+| `EYE_VISION_PROVIDER_API_KEY` | unset | Provider credential; required only when the provider is enabled. Never committed, never logged. |
+
+The service starts without any optional credentials. `/health/ready` returns `503` with `missing_credentials` if the provider is enabled without a key.
+
+Checks:
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
