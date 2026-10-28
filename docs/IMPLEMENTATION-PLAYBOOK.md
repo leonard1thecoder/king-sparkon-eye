@@ -58,7 +58,7 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
 | [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on #27 and related roadmap issue #18. Align with the approved storage boundary and enrollment event contract before wiring persistence. |
 
-Related product/roadmap issues include [#1](https://github.com/leonard1thecoder/king-sparkon-eye/issues/1), [#15](https://github.com/leonard1thecoder/king-sparkon-eye/issues/15), [#16](https://github.com/leonard1thecoder/king-sparkon-eye/issues/16), [#17](https://github.com/leonard1thecoder/king-sparkon-eye/issues/17), [#18](https://github.com/leonard1thecoder/king-sparkon-eye/issues/18), and [#19](https://github.com/leonard1thecoder/king-sparkon-eye/issues/19). Read the current issue bodies for their scope and status before scheduling work.
+Related product/roadmap issues include [#1](https://github.com/leonard1thecoder/king-sparkon-eye/issues/1), [#15](https://github.com/leonard1thecoder/king-sparkon-eye/issues/15), [#16](https://github.com/leonard1thecoder/king-sparkon-eye/issues/16), [#17](https://github.com/leonard1thecoder/king-sparkon-eye/issues/17), [#18](https://github.com/leonard1thecoder/king-sparkon-eye/issues/18), and [#19](https://github.com/leonard1thecoder/king-sparkon-eye/issues/19). Model-context and prerequisite issues that gate #25, #26 and #30 include [#38](https://github.com/leonard1thecoder/king-sparkon-eye/issues/38) (model decision), [#58](https://github.com/leonard1thecoder/king-sparkon-eye/issues/58) (ONNX contract inventory), [#60](https://github.com/leonard1thecoder/king-sparkon-eye/issues/60) (Muse Spark context) and [#61](https://github.com/leonard1thecoder/king-sparkon-eye/issues/61) (threshold evaluation). The retrieval decision is [#64](https://github.com/leonard1thecoder/king-sparkon-eye/issues/64). Read the current issue bodies for their scope and status before scheduling work.
 
 ### Recommended dependency-aware sequence
 
@@ -118,6 +118,19 @@ Use **Meta Muse Spark 1.3 (`muse-spark-1.3`)** as the selected frontier vision m
 - Distinguish timeout/rate-limit/provider/parse failures from a poor-quality photo. Define and document the behavior when the provider is disabled or unavailable.
 - Use bounded timeouts/retries and response-size limits. Never log image content, raw prompts, raw provider responses, secrets, or sensitive identifiers.
 - Do not confuse **Muse Spark** (image understanding/vision) with **Muse Image** (image generation/editing). This issue evaluates an input photo; it does not ask the model to generate a replacement image.
+
+## 5a. Retrieval (RAG) boundary — issue #64
+
+Retrieval is **not** a default design choice for this project. Follow `AGENTS.md` ("Muse Spark and retrieval/context policy") and the decision tracked in [issue #64](https://github.com/leonard1thecoder/king-sparkon-eye/issues/64):
+
+- Use typed configuration, versioned manifests and direct lookup for stable, fixed facts such as model identifiers, preprocessing contracts, policy versions and reason-code definitions.
+- Add semantic retrieval only after the corpus is shown to be large enough and a retrieval evaluation shows it helps. Until then, do not add a vector store, embedding pipeline or retrieval dependency.
+- Retrieval must only return approved, versioned documents, matched exactly on repository, model ID/version or artifact digest, and policy version. Arbitrary user content is never authoritative policy.
+- Retrieval must never select, change or justify a recognition threshold, suitability result, identity result, liveness result or admission decision at runtime.
+- Retrieved content is untrusted reference material. Record only document IDs, versions and the advisory result code in privacy-safe audit metadata.
+- Never place face embeddings, biometric templates, ticket identifiers, authentication tokens, raw identity records or unrelated personal data in an index or a provider prompt.
+
+An implementation issue that adds retrieval must link the approved decision record from #64 and must not merge before its evaluation plan is agreed.
 
 ## 6. Standard agent workflow
 
