@@ -251,7 +251,13 @@ This conversation is a planning reference. The README, source code, API contract
 - **Implemented (issue #21):** Rust crate and HTTP service skeleton; environment-based configuration with redacted secrets; `GET /health/live` and `GET /health/ready`; request IDs (`x-request-id`); structured JSON logging; graceful shutdown on Ctrl-C/SIGTERM; typed JSON errors for unknown routes.
 - **Contract defined, not implemented (issue #22):** typed DTOs and error codes in `src/contract/` and `src/error/`, and the OpenAPI document `openapi/eye.openapi.json`. The assessment and gate operations are documented there, but no route serves them yet.
 - **Image ingress (issue #23):** `src/ingress/` validates and decodes uploads before any model call. It enforces byte, dimension, pixel and decode-memory limits, detects format from file signatures (client names and MIME types are ignored), checks structure, applies EXIF orientation, and normalises to 8-bit RGB. It is a library pipeline. No HTTP route serves it yet.
-- **Not yet implemented:** routes for the assessment and gate operations, ONNX inference, the frontier vision provider, assessment policy, enrollment storage, Kafka events, S3 and gate identification. Module placeholders exist for these areas, and their issues (#24–#31) own them.
+- **Face detection and objective checks (issue #24, partial):** `src/inference/` defines the `FaceDetector` trait, validated normalised boxes, and a zero/one/many classification that keeps the three outcomes distinct. `src/quality/` provides blur (Laplacian variance), exposure (mean luma and clipping), face size and framing checks. Each check returns Pass, Fail or Unknown, and an unmeasurable value is never a pass. Thresholds are uncalibrated defaults and must be evaluated against a consented dataset (#8, #17).
+- **YuNet adapter (issue #24, partial):** `src/inference/yunet.rs` loads the vendored runtime and model, checks the model's input and output shapes, and implements preprocessing (BGR, letterboxed to 640×640), decoding and NMS. It follows OpenCV's `FaceDetectorYN`. Known differences: NMS uses float IoU rather than OpenCV's integer rectangles, and the input is letterboxed rather than resized. ONNX Runtime can be initialised only once per process, and every later call must use the same runtime path. The adapter is not yet called from startup or a route. Wiring it into startup is part of #26. Accuracy on real faces is unverified (see the fixtures issue).
+- **Not yet implemented:** routes for the assessment and gate operations, the frontier vision provider, assessment policy, enrollment storage, Kafka events, S3 and gate identification. Module placeholders exist for these areas, and their issues (#24–#31) own them.
+
+**Inference artifacts (issue #24):** the detector is YuNet (`face_detection_yunet_2023mar.onnx`, MIT). It outputs face boxes and 5-point landmarks. The runtime is ONNX Runtime 1.31.1 for Linux x86_64 (CPU), MIT. Both are checked into `artifacts/`, with SHA-256 hashes, sources and licences recorded in `artifacts/manifest.json`. `tests/artifacts_test.rs` verifies them in CI, so nothing is downloaded at build or test time. The model takes a fixed 640×640 input. See "Vendored inference artifacts" below.
+
+**Still outstanding for #24:** the ONNX adapter itself (preprocessing, decoding, loading the runtime), and fixtures of real faces for the zero/one/many tests. No licence-cleared face photos are in the repo yet.
 
 Do not interpret this design document or any proposed event/route name as proof that code, model integrations, storage, Kafka topics or deployed APIs already exist.
 
@@ -295,6 +301,19 @@ Uploads are checked by `src/ingress/` before any inference. Defaults apply when 
 **Errors:** `400 IMAGE_MALFORMED` for empty, truncated or structurally invalid files. `422 IMAGE_DIMENSIONS_EXCEEDED` for oversized dimensions or memory. `503 SERVICE_UNAVAILABLE` for decode timeout. Error messages are fixed and never include decoder details.
 
 **Privacy:** image bytes are never logged. Decoded pixels are held only in memory, for the duration of the request.
+
+## Vendored inference artifacts
+
+| Artifact | Path | Version | Licence | Purpose |
+|---|---|---|---|---|
+| ONNX Runtime (Linux x86_64, CPU) | `artifacts/onnxruntime/1.31.1/linux-x86_64/libonnxruntime.so.1.31.1` | 1.31.1 | MIT | Executes ONNX models |
+| YuNet face detector | `artifacts/models/yunet-2023mar/face_detection_yunet_2023mar.onnx` | 2023mar | MIT | Face boxes and 5-point landmarks |
+
+- **Provenance:** `artifacts/manifest.json` records each file's source, SHA-256, size and licence hash. The runtime is extracted unchanged from the PyPI wheel `onnxruntime-1.31.1-cp312-cp312-manylinux_2_28_x86_64.whl` (SHA-256 `1f3dea47…d536`). The model is the OpenCV model zoo file, whose Git LFS object hash matches the recorded one.
+- **Verification:** `cargo test --test artifacts_test` checks every hash, size and licence file. Changing an artifact requires updating the manifest in a reviewed change.
+- **Model I/O (verified with the pinned runtime):** input `[1, 3, 640, 640]` float32, fixed size. Outputs `cls_{8,16,32}`, `obj_{8,16,32}`, `bbox_{8,16,32}` and `kps_{8,16,32}`, for strides 8, 16 and 32 (6400, 1600 and 400 anchors).
+- **Size:** the runtime is 29 MB uncompressed and stays in git history. Changing it later means rewriting history or accepting the growth.
+- **Scope:** Linux x86_64 only. Other platforms need their own runtime artifacts, added through the same manifest process.
 
 ## API contract
 
