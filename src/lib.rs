@@ -14,3 +14,4 @@ pub mod inference;
 pub mod ingress;
 pub mod observability;
 pub mod provider;
+pub mod quality;
