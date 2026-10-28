@@ -227,6 +227,10 @@ This policy is tracked by [Issue #32 — Source-of-truth repositories and one-is
 
 ### After implementation
 
+- Search all Markdown files for the issue number, feature name and changed contract/behavior. Update every affected document in the same issue branch/PR; include the README, `AGENTS.md`, implementation playbook and issue audit when their status, guidance or sequencing is affected.
+- In the PR description, enumerate docs reviewed, updated and intentionally unchanged (with reasons). Do not make unrelated edits just to touch every Markdown file.
+- Reconcile issue acceptance criteria, roadmap/status tables, examples and links with merged code and test evidence. Never mark work done solely because a PR was opened.
+
 1. Run all relevant formatters, linters, unit tests, integration/contract tests and build checks.
 2. Verify README commands, API paths, status names, environment variables and Kafka schemas against code and tests.
 3. Include changed modules, tests run, API/schema/migration impacts, operational/security implications and known limitations in the PR body.
