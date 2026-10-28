@@ -79,6 +79,18 @@ If an urgent production mitigation must happen before a normal issue can be crea
 - Rust vision, ONNX/model inference, photo validation and recognition-result production belong in king-sparkon-eye.
 - Changes requiring more than one repository must be split into linked repository-specific issues/PRs. Do not guess a contract when the consumer/provider repo change is not yet merged or explicitly agreed.
 
+## Mandatory issue-linked documentation synchronization
+
+Whenever an issue is fixed, implemented, or its status/acceptance criteria materially change, update **all Markdown documents affected by that issue in the same issue branch and PR**. This is a required acceptance criterion, not optional cleanup.
+
+1. Identify impacted Markdown by searching the repository for the issue number, feature name, API/event/schema/config terms, and user-visible behavior. Inspect the README, relevant `AGENTS.md`/playbook guidance, architecture/API/decision docs, and affected feature docs as applicable.
+2. Update every document whose claims, status, examples, instructions, contracts, prerequisites, or roadmap are changed by the fix. At minimum, check README and the implementation playbook when the change affects implementation status, execution order, agent workflow, or architecture.
+3. Do not blindly edit unrelated Markdown. If a document was inspected and does not need a change, record why in the PR summary or checklist.
+4. Keep implemented, partial, planned, blocked, and unverified states distinct. Never describe a PR as completed before it is merged, or a feature as shipped without code/test evidence.
+5. Synchronize linked issue acceptance criteria/checklists and related docs when they have become stale. Cross-link follow-up work rather than silently broadening the current issue.
+6. In the PR body, list all Markdown files reviewed and changed, and state any relevant files intentionally left unchanged with a short reason. Validate links, headings, code fences, and consistency between README, `AGENTS.md`, playbook, and contracts.
+7. A fix is not documentation-complete until the issue's relevant Markdown has been reconciled and the handoff says what changed, what did not change, and what remains blocked.
+
 ## Documentation accuracy
 
 Distinguish implemented, partial, planned and unverified functionality. Code and tests establish what is currently implemented; issue acceptance criteria establish what the task must add. Keep README, API schemas, Kafka event schemas and issue checklists synchronized.

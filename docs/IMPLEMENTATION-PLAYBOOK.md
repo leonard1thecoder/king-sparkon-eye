@@ -16,6 +16,7 @@
 8. **Stop on architectural conflict.** If implementation evidence conflicts with the README, issue acceptance criteria, or a shared contract, do not make a unilateral change. Document the evidence and obtain an agreed decision first.
 9. **Update documentation with behavior.** Any approved change to API behavior, event schemas, configuration, security, deployment or user-visible states must update the relevant documentation in the same issue branch/PR.
 10. **Protect biometric data.** Never commit real personal biometric images without explicit approval. Do not log raw images, embeddings, provider prompts/responses, credentials, access tokens, or signed URLs.
+11. **Synchronize all affected Markdown with every issue fix.** Search for issue/feature references and update every impacted README, agent instruction, playbook, architecture/API/decision document and feature doc in the same issue branch/PR. Do not update unrelated docs mechanically; list files reviewed, changed and intentionally unchanged in the PR. Keep status claims evidence-based and reconcile issue acceptance criteria when stale.
 
 ## 2. Source-of-truth repositories
 
@@ -52,41 +53,43 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 | [#24](https://github.com/leonard1thecoder/king-sparkon-eye/issues/24) | ONNX detector/landmarks and objective quality checks | Depends on #21–#23. Does not implement identity comparison. |
 | [#25](https://github.com/leonard1thecoder/king-sparkon-eye/issues/25) | Frontier-vision adapter and validated quality feedback | Depends on #21–#23. Selected model: **Meta Muse Spark 1.3**, model ID `muse-spark-1.3`, for supplementary visual-quality guidance. |
 | [#26](https://github.com/leonard1thecoder/king-sparkon-eye/issues/26) | Deterministic assessment orchestration and reason codes | Depends on #22, #24 and #25. It must make hard-rule precedence explicit and keep provider failure distinct from poor image quality. |
-| [#27](https://github.com/leonard1thecoder/king-sparkon-eye/issues/27) | Private storage abstraction and enrollment metadata boundary | Depends on #21–#23 and #26. Agree the storage interface before the S3 adapter is implemented. |
-| [#28](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28) | Versioned Kafka enrollment events | Depends on #22, #27 and #26. Coordinate the event schema and failure/retry semantics. |
+| [#27](https://github.com/leonard1thecoder/king-sparkon-eye/issues/27) | Private storage abstraction and enrollment metadata boundary | **Merged in PR #69.** In-memory only; consent reference is shape-checked, idempotency is process-local, and the trait is synchronous. Not production S3 or HTTP persistence. |
+| [#28](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28) | Versioned Kafka enrollment events | Depends on #22, #26 and the #27 boundary. Confirm event schema, idempotency, consent lifecycle, and storage-success/event-failure recovery before coding. |
 | [#29](https://github.com/leonard1thecoder/king-sparkon-eye/issues/29) | Fixtures, integration/contract tests and CI | Depends progressively on #21–#28; tests must be added alongside each task, not postponed until the end. |
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
-| [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on #27 and related roadmap issue #18. Align with the approved storage boundary and enrollment event contract before wiring persistence. |
+| [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on merged #27 and roadmap #18. Resolve sync/async trait, authoritative consent, persistent idempotency, access denial, retention/deletion, and #28 failure recovery before wiring persistence. |
 
-### Status snapshot (2026-10-28)
+### Status snapshot (reviewed 2026-10-28 after PR #69)
 
-GitHub state at the time of this update. Re-check before relying on it.
+This is a dated snapshot, not live issue state. Refresh GitHub issue/PR states and comments before every new execution; a merge can make the recommended next task stale.
 
 | State | Issues | Notes |
 |---|---|---|
-| Done (closed, merged) | #21, #22, #23, #25, #26 | #26 merged in PR #66. |
-| Closed, with caveats | #24, #29 | #24: real-face fixtures (#55) and runtime wiring are still outstanding. #29: CI gates exist. |
-| Next in sequence | #27 | Storage boundary. Its dependencies are merged. Consent design (#15) must be agreed before any retained photo is stored. |
-| Then | #28, #31, #30 | #28 needs the #27 boundary. #31 needs #27 and the S3 policy. #30 needs an approved embedding contract (#58, #59) and threshold evaluation (#61). |
-| Open blockers outside the map | #15, #58, #59, #60, #61, #38, #41–#48, #55, #11, #13, #8, #35 | Consent design, ONNX inventory and recognizer, Muse context, threshold calibration, model decision, auth epic, real-face fixtures, privacy hardening, CI and deployment, threshold evaluation, public pages. |
-| Decision pending | #64 | Reopened. PR #65 added guidance but not the decision record that #64 requires. |
+| Done (closed, merged) | #21, #22, #23, #25, #26, #27 | #26 merged in PR #66. #27 storage boundary merged in PR #69; it is an in-memory abstraction, not production S3 persistence. |
+| Closed, with caveats | #24, #29 | #24: real-face fixtures (#55) and runtime wiring remain outstanding. #29: CI gates exist; run them against the integrated branch. |
+| Next candidate, not unblocked | #28 | Kafka enrollment events. Confirm the event contract, storage-success/Kafka-failure recovery, idempotency, and consent lifecycle before implementation. |
+| Coordinated follow-up | #31 | S3 adapter. Align with #27 and #28; resolve the synchronous-versus-async storage interface before wiring S3. Require private access, deletion/retention, persistent idempotency and failure recovery. |
+| Blocked recognition path | #30 | Do not start until #58/#59 establish and verify the embedding contract, #55 supplies licensed/consented real-face fixtures, #61 evaluates thresholds, and event-scoped authorization is defined. |
+| Open blockers outside the map | #15, #58, #59, #60, #61, #38, #41–#48, #55, #11, #13, #8, #35, #64, #71 | Consent record/policy; ONNX inventory and recognizer; Muse context; threshold evaluation; model decision; auth work; real-face fixtures; privacy hardening; deployment; threshold calibration; public pages; retrieval decision; playbook refresh. |
+| Decision pending | #64 | Open. PR #65 documents a boundary but does not provide the decision record required by #64. |
+| Documentation defect | #71 | Refreshes this playbook and the issue audit after PR #69. #67 is reopened to track the stale snapshot. |
+
+**Storage decisions still unresolved after PR #69:** the ObjectStore trait is synchronous and may need to become async for S3; consent references are only shape-checked until #15 defines an authoritative consent record; timestamps are caller-supplied; in-memory idempotency does not survive restart; access-denial behavior belongs to S3/auth work (#31/#47). Do not present these as solved or retain real photos until consent and persistence controls are implemented.
 
 Related product/roadmap issues include [#1](https://github.com/leonard1thecoder/king-sparkon-eye/issues/1), [#15](https://github.com/leonard1thecoder/king-sparkon-eye/issues/15), [#16](https://github.com/leonard1thecoder/king-sparkon-eye/issues/16), [#17](https://github.com/leonard1thecoder/king-sparkon-eye/issues/17), [#18](https://github.com/leonard1thecoder/king-sparkon-eye/issues/18), and [#19](https://github.com/leonard1thecoder/king-sparkon-eye/issues/19). Model-context and prerequisite issues that gate #25, #26 and #30 include [#38](https://github.com/leonard1thecoder/king-sparkon-eye/issues/38) (model decision), [#58](https://github.com/leonard1thecoder/king-sparkon-eye/issues/58) (ONNX contract inventory), [#60](https://github.com/leonard1thecoder/king-sparkon-eye/issues/60) (Muse Spark context) and [#61](https://github.com/leonard1thecoder/king-sparkon-eye/issues/61) (threshold evaluation). The retrieval decision is [#64](https://github.com/leonard1thecoder/king-sparkon-eye/issues/64). Read the current issue bodies for their scope and status before scheduling work.
 
 ### Recommended dependency-aware sequence
 
-1. **Foundation:** #21 (done).
-2. **Public contract:** #22 (done).
-3. **Safe ingress:** #23 (done).
-4. **Vision adapters:** #24 and #25 may be worked on in parallel only after the shared DTOs, configuration conventions, error types, and adapter interfaces are agreed. Keep their code scopes separate; if a shared file needs changes, coordinate first.
-5. **Policy/orchestration:** #26 (done, PR #66).
-6. **Enrollment persistence boundary:** #27 (next). Requires #15 consent design to be agreed before retained photos are stored.
-7. **Event publication:** #28 after the event schema and storage handoff are agreed.
-8. **S3 adapter:** #31 against the agreed #27 storage boundary; coordinate event/persistence behavior with #28. Do not change the contract independently in either branch.
-9. **Gate identification:** #30 only when its listed dependencies and enrollment/gallery design are ready.
-10. **Tests and CI:** #29 continuously throughout all phases; finish by checking the integrated flows and clean-checkout CI.
+1. **Refresh evidence first:** read current GitHub states/comments for the selected issue, its dependencies, related closed issues and PRs. The snapshot above is not a substitute for this check.
+2. **Resolve consent and persistence design:** review #15 and the explicit open questions from PR #69. If the consent-record contract or storage async decision is still unresolved, create/finish the decision issue before retaining real photos or implementing S3.
+3. **Event publication (#28):** proceed only after the event schema, consent reference, idempotency key, and storage-success/Kafka-failure recovery are agreed. Keep event payloads free of raw photos, embeddings and secrets.
+4. **S3 adapter (#31):** coordinate with #28 and #27; agree sync/async storage behavior first. Implement private access, encryption, deletion/retention, persistent idempotency, access-denial tests and retry/orphan recovery. Do not claim production persistence before tests and deployment configuration exist.
+5. **Recognition contract (#58 → #59):** inventory the actual recognizer artifact and verify its model contract before implementing embeddings. Never infer dimensions, normalization, alignment, metric or threshold.
+6. **Evaluation gate (#55, #61, #12):** obtain licensed/consented real-face fixtures and run subject-disjoint evaluation before threshold claims or recognition rollout.
+7. **Gate identification (#30):** only after #58/#59/#61 and event-scoped authorization/session design are satisfied. Results are candidate signals, never admission decisions.
+8. **Cross-cutting gates:** continue #29 tests/CI throughout; track #11 privacy/security, #13 deployment, #41–#48 authentication and #35 public pages independently. Integration with Tracker requires verified frontend/backend source; stop if private backend access is unavailable.
 
-This sequence is a planning aid, not permission to override the dependencies listed in GitHub issues. If an issue's dependencies or acceptance criteria change, update this guide through a reviewed documentation change.
+This sequence is a planning aid, not permission to override the dependencies in GitHub issues. If an issue or PR changes the implementation state, update this guide in a scoped PR and refresh the audit snapshot.
 
 ## 4. Safe parallel work and conflict prevention
 
@@ -157,6 +160,14 @@ An implementation issue that adds retrieval must link the approved decision reco
 - [ ] Confirm no other active issue branch is editing the same coordination-sensitive files.
 - [ ] Identify privacy/security implications, failure states and backward-compatibility concerns.
 
+### Documentation synchronization for every issue
+
+- Search all Markdown for the issue number, feature name, changed behavior, contract/schema/config names, and linked decision references.
+- Update every affected Markdown file in the same issue branch and PR. Check `README.md`, `AGENTS.md`, this playbook, the issue audit, and any relevant architecture/API/event/decision docs; update only those whose claims or instructions are affected.
+- Reconcile implementation status, dependencies, examples, links, acceptance criteria, and next-step guidance. A merged fix can make a dated issue audit or recommended sequence stale.
+- In the PR description, list Markdown files reviewed, changed, and intentionally left unchanged with reasons. Verify docs agree with source/tests and each other; do not claim unrun checks passed.
+- If the fix changes no user-visible behavior or contract, still assess the docs; state briefly why no content update is needed rather than skipping the review.
+
 ### During implementation
 
 - [ ] Keep the diff limited to the issue's scope.
@@ -194,6 +205,9 @@ Use this checklist in the PR description (adapt it to the actual change):
 - **Acceptance criteria:** each criterion checked against code/test evidence.
 
 ## 8. Definition of done
+
+- [ ] All Markdown documents affected by the issue were searched and reconciled in this branch; PR states which files changed and which were intentionally unchanged.
+- [ ] README, AGENTS.md, implementation playbook, issue audit and any relevant contracts do not contradict the verified implementation state.
 
 An issue is ready to merge only when all applicable items are true:
 

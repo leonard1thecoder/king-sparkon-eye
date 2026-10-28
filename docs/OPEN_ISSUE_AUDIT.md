@@ -1,6 +1,6 @@
 # Open issue audit and recommended execution order
 
-**Snapshot:** 40 open issues returned by GitHub search for this repository on 2026-10-28. This is a triage recommendation based on issue titles and descriptions, not a claim that the implementation or dependencies have been verified in code. Re-check issue state, comments, linked PRs, and branch status before starting work.
+**Original snapshot:** 40 open issues returned by GitHub search on 2026-10-28. This is a historical triage list, not a live or exhaustive issue list. **Follow-up review:** 2026-10-28 after PR #69 merged #27 and issue #71 was created. Recommendations are based on issue/PR descriptions and inspected repository docs; re-check current issue state, comments, linked PRs, branches and code before starting work. The playbook and audit must be refreshed when merges change the next actionable task.
 
 ## Executive recommendation
 
@@ -11,7 +11,7 @@ Do not run all P0 issues in parallel. First establish contracts and a runnable s
 1. **Contract and runnable baseline:** #2, #3, #42, #58. Confirm service state, API/event boundaries, auth ownership, and actual ONNX artifacts/contracts.
 2. **Safe deterministic photo assessment:** #4, #7, #8, #9, #26, #10. Add model-backed tests with clearly separated unknown/unavailable states. Keep frontier feedback advisory.
 3. **Authentication and access control:** #43 → #44; #45 and #46 depend on the identity/credential contracts; #47 and #48 close the security boundary. Do not expose sensitive routes before authorization tests exist.
-4. **Persistence and events:** #15 design → #27 private storage boundary → #31 S3; #28 Kafka publication and idempotency. Verify consent and deletion lifecycle before retaining biometrics.
+4. **Persistence and events:** #15 consent-record design is still a gate for real retention. #27 is merged by PR #69 as an in-memory storage abstraction only; it is not durable production storage. Before #28/#31, resolve the synchronous-versus-async storage interface, authoritative consent validation, persistent idempotency, deletion/retention, access denial and storage-success/Kafka-failure recovery. See #71 for the stale-playbook bug.
 5. **Recognition:** #59 embedding adapter only after #58; #55 real-face fixtures and #12 evaluation; #61 threshold calibration. #16/#30 event-scoped 1:N follows a verified embedding contract and event authorization.
 6. **End-to-end integration:** #11 security hardening, #14 integration documentation, #19 worker-approved admission, #17 spoof/fallback, #13 deployment hardening. #18 is the umbrella roadmap requirement; implement via its coding tasks.
 7. **Muse Spark:** verify the provider/model API in #5/#38, implement provider contract #25 if present in current issue history, then #6 and #60. Do not make Muse Spark a recognition or policy authority.
@@ -41,7 +41,7 @@ Do not run all P0 issues in parallel. First establish contracts and a runnable s
 | [#19](https://github.com/leonard1thecoder/king-sparkon-eye/issues/19) | [P2] Implement worker-approved admission after QR-free facial identification | **Cross-repository integration gate.** Requires verified Tracker backend contract/access; only Spring Boot may authorize and persist final admission. |
 | [#20](https://github.com/leonard1thecoder/king-sparkon-eye/issues/20) | [EPIC] Implement Rust MVP through coding issues and keep roadmap synchronized | **Tracking epic.** Keep child issues small, update README as code changes, and avoid duplicate work with older roadmap tickets. |
 | [#26](https://github.com/leonard1thecoder/king-sparkon-eye/issues/26) | [CODE][P0] Implement deterministic assessment orchestration and reason codes | **Prefer as implementation ticket for #9.** Confirm overlap, then link/close or mark the roadmap item superseded only according to repository policy; avoid two implementations of the same orchestrator. |
-| [#27](https://github.com/leonard1thecoder/king-sparkon-eye/issues/27) | [CODE][P1] Implement private image storage and enrollment metadata boundary | **Storage foundation.** Define opaque object references and metadata ownership; require consent and lifecycle behavior before accepting retained photos. |
+| [#27](https://github.com/leonard1thecoder/king-sparkon-eye/issues/27) | [CODE][P1] Implement private image storage and enrollment metadata boundary | **Merged in PR #69.** In-memory only, synchronous interface, shape-only consent reference and process-local idempotency. Does not provide S3, HTTP wiring, durable storage, or authoritative consent verification. Follow up through #15/#31 and confirm interface design before S3. |
 | [#28](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28) | [CODE][P1] Publish versioned enrollment events to Kafka with retry and idempotency | **After event schema and storage boundary.** Define at-least-once handling, idempotency key, retry/backoff, and storage-success/event-failure recovery. |
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | [CODE][P1] Implement QR-free event-scoped 1:N gate identification results | **After verified embedding model and event authorization.** Results are candidate suggestions, never admission decisions. |
 | [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | [CODE][P1] Store accepted enrollment photos in private AWS S3 after ONNX assessment passes | **After #27 and consent/storage policy.** Private bucket, least privilege, encryption, opaque keys, deletion, and retry recovery. |
@@ -69,3 +69,17 @@ Do not run all P0 issues in parallel. First establish contracts and a runnable s
 - Keep #13 CI work early and incremental; tests belong with each feature, while #10/#48 provide integration-level release gates.
 - Verify the private Tracker backend source before #19 or any claim about event/worker authorization, DTOs, ticket states, or admission endpoints.
 - No issue should be closed solely because a branch or PR exists. Close only after acceptance criteria are verified and the PR is merged.
+
+
+## Execution-state delta after PR #69 (reviewed 2026-10-28)
+
+This addendum supersedes the original audit's recommendation that #27 is still pending; it does not rewrite the historical 40-issue snapshot.
+
+- **Completed:** #27 merged in PR #69. Inspect `src/storage/mod.rs`, `tests/storage_test.rs`, and the updated README before extending it.
+- **Not production-ready:** the store is in-memory, HTTP routes and S3 are not wired, idempotency is process-local, consent is only shape-checked, and the storage trait is synchronous. PR #69 also notes access-denial coverage is deferred to #31/#47.
+- **Do not start #31 blindly:** settle whether the storage trait must be async before implementing S3; define the authoritative consent record through #15; specify persistent idempotency, retention/deletion, and failure recovery.
+- **#28:** agree the versioned event contract and storage-success/Kafka-failure retry semantics. Never publish raw images or embeddings by default.
+- **#30:** remains blocked on verified recognition artifacts/contracts (#58/#59), consented real-face fixtures (#55), threshold evaluation (#61/#12), and event-scoped authorization.
+- **New documentation bug:** #71 tracks the stale playbook snapshot; #67 has been reopened to track the follow-up handoff. Treat both as documentation work, not permission to implement storage or recognition.
+- **Recommended next action:** inspect #15 and PR #69's unresolved decisions, then update or create a focused decision issue if the consent-record/storage-interface choices are not explicit. After that, select #28 or #31 based on agreed contracts—not priority labels alone.
+
