@@ -193,6 +193,21 @@ Use this checklist in the PR description (adapt it to the actual change):
 - **Follow-up issues:** links for out-of-scope work.
 - **Acceptance criteria:** each criterion checked against code/test evidence.
 
+## 7.1 Mandatory documentation synchronization for every issue
+
+Documentation is part of issue completion. Before implementation, discover the Markdown files that describe the affected behavior; before opening/updating the PR, ensure those files match the verified result.
+
+- [ ] Review `README.md`, `AGENTS.md`, this playbook, the issue and related issue/PR links, plus relevant architecture, API/model-contract, test/setup, operations, security/privacy and deployment Markdown.
+- [ ] Update every relevant Markdown file in the same issue branch/PR. Keep code behavior, tests, examples, contracts, setup instructions and implementation-status claims consistent.
+- [ ] Update this playbook when issue status, sequencing, dependencies, blockers, ownership, validation gates or agent workflow changes. Date status snapshots and ground them in current source/issue/PR evidence; preserve old snapshots as historical.
+- [ ] Update `AGENTS.md` when a reusable mandatory agent rule changes, and check consistency between the two documents.
+- [ ] Synchronize issue acceptance criteria/checklists and cross-links when verified scope or status changes.
+- [ ] In the PR description, list Markdown files reviewed and updated, and explain why any materially relevant file was left unchanged.
+- [ ] Validate links, paths, examples, status wording and cross-document consistency. Run available documentation checks and report exact commands/results; clearly explain checks not run.
+- [ ] Do not edit unrelated Markdown merely to satisfy a count, and do not invent implementation details or mark unverified behavior as shipped.
+
+**Documentation completion gate:** an issue is not done while relevant Markdown is stale or contradictory. If a design or contract decision is unresolved, document the verified facts, unknowns and blocker instead of guessing.
+
 ## 8. Definition of done
 
 An issue is ready to merge only when all applicable items are true:
