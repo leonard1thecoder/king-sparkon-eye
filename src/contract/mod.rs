@@ -76,13 +76,17 @@ impl MatchOutcome {
     ];
 }
 
-/// Allowlisted reason codes. The list is initial and is finalised in issue #26.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Allowlisted reason codes, finalised in issue #26. Each code is produced by the deterministic
+/// path, or is reserved until its check exists. `LowResolution` and `FaceNotFrontal` are reserved
+/// because no current check measures them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReasonCode {
     NoFaceDetected,
     MultipleFaces,
     FaceTooSmall,
+    FaceTooLarge,
+    FaceOutOfFrame,
     FaceNotFrontal,
     PoorLighting,
     LowResolution,
@@ -94,6 +98,8 @@ impl ReasonCode {
         ReasonCode::NoFaceDetected,
         ReasonCode::MultipleFaces,
         ReasonCode::FaceTooSmall,
+        ReasonCode::FaceTooLarge,
+        ReasonCode::FaceOutOfFrame,
         ReasonCode::FaceNotFrontal,
         ReasonCode::PoorLighting,
         ReasonCode::LowResolution,
