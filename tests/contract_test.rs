@@ -198,6 +198,9 @@ fn error_messages_contain_no_paths_or_internal_details() {
         ApiError::UnsupportedMediaType,
         ApiError::RateLimited,
         ApiError::ServiceUnavailable,
+        ApiError::ImageMalformed,
+        ApiError::ImageDimensionsExceeded,
+        ApiError::ImageDecodeTimeout,
         ApiError::Internal,
     ];
     messages.extend(samples.iter().map(|e| e.body().message));
@@ -231,6 +234,9 @@ fn every_api_error_has_a_documented_code_and_status() {
         ApiError::UnsupportedMediaType,
         ApiError::RateLimited,
         ApiError::ServiceUnavailable,
+        ApiError::ImageMalformed,
+        ApiError::ImageDimensionsExceeded,
+        ApiError::ImageDecodeTimeout,
         ApiError::Internal,
     ];
     for err in samples {
@@ -456,7 +462,7 @@ fn all_operations_document_error_responses() {
         let responses = spec["paths"][path]["post"]["responses"]
             .as_object()
             .unwrap();
-        for status in ["400", "413", "415", "429", "500", "503"] {
+        for status in ["400", "413", "415", "422", "429", "500", "503"] {
             assert!(responses.contains_key(status), "{path} missing {status}");
         }
     }

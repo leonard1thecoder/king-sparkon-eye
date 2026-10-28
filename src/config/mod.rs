@@ -5,6 +5,7 @@
 
 use std::fmt;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8080";
 pub const DEFAULT_LOG_FILTER: &str = "info";
@@ -30,6 +31,37 @@ impl fmt::Debug for SecretString {
     }
 }
 
+pub const DEFAULT_UPLOAD_MAX_BYTES: usize = 10 * 1024 * 1024;
+pub const DEFAULT_IMAGE_MAX_WIDTH: u32 = 4096;
+pub const DEFAULT_IMAGE_MAX_HEIGHT: u32 = 4096;
+pub const DEFAULT_IMAGE_MAX_PIXELS: u64 = 16_777_216;
+pub const DEFAULT_IMAGE_MAX_DECODE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
+pub const DEFAULT_IMAGE_DECODE_TIMEOUT_MS: u64 = 5_000;
+
+/// Resource limits for uploaded images. Enforced before any model call (issue #23).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageLimits {
+    pub max_upload_bytes: usize,
+    pub max_width: u32,
+    pub max_height: u32,
+    pub max_pixels: u64,
+    pub max_decode_alloc_bytes: u64,
+    pub decode_timeout: Duration,
+}
+
+impl Default for ImageLimits {
+    fn default() -> Self {
+        Self {
+            max_upload_bytes: DEFAULT_UPLOAD_MAX_BYTES,
+            max_width: DEFAULT_IMAGE_MAX_WIDTH,
+            max_height: DEFAULT_IMAGE_MAX_HEIGHT,
+            max_pixels: DEFAULT_IMAGE_MAX_PIXELS,
+            max_decode_alloc_bytes: DEFAULT_IMAGE_MAX_DECODE_ALLOC_BYTES,
+            decode_timeout: Duration::from_millis(DEFAULT_IMAGE_DECODE_TIMEOUT_MS),
+        }
+    }
+}
+
 /// Runtime configuration for the service.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -39,6 +71,8 @@ pub struct Config {
     pub vision_provider_enabled: bool,
     /// Credential for the vision provider. Optional; required only when the provider is enabled.
     pub vision_provider_api_key: Option<SecretString>,
+    /// Upload and decode limits for image ingress.
+    pub image_limits: ImageLimits,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -51,6 +85,12 @@ pub const ENV_BIND_ADDR: &str = "EYE_BIND_ADDR";
 pub const ENV_LOG_FILTER: &str = "EYE_LOG_FILTER";
 pub const ENV_VISION_PROVIDER_ENABLED: &str = "EYE_VISION_PROVIDER_ENABLED";
 pub const ENV_VISION_PROVIDER_API_KEY: &str = "EYE_VISION_PROVIDER_API_KEY";
+pub const ENV_UPLOAD_MAX_BYTES: &str = "EYE_UPLOAD_MAX_BYTES";
+pub const ENV_IMAGE_MAX_WIDTH: &str = "EYE_IMAGE_MAX_WIDTH";
+pub const ENV_IMAGE_MAX_HEIGHT: &str = "EYE_IMAGE_MAX_HEIGHT";
+pub const ENV_IMAGE_MAX_PIXELS: &str = "EYE_IMAGE_MAX_PIXELS";
+pub const ENV_IMAGE_MAX_DECODE_ALLOC_BYTES: &str = "EYE_IMAGE_MAX_DECODE_ALLOC_BYTES";
+pub const ENV_IMAGE_DECODE_TIMEOUT_MS: &str = "EYE_IMAGE_DECODE_TIMEOUT_MS";
 
 impl Config {
     /// Loads configuration from the process environment.
@@ -88,12 +128,57 @@ impl Config {
         let vision_provider_api_key =
             non_empty(lookup(ENV_VISION_PROVIDER_API_KEY)).map(SecretString::new);
 
+        let defaults = ImageLimits::default();
+        let image_limits = ImageLimits {
+            max_upload_bytes: positive(
+                &lookup,
+                ENV_UPLOAD_MAX_BYTES,
+                defaults.max_upload_bytes as u64,
+            )? as usize,
+            max_width: positive(&lookup, ENV_IMAGE_MAX_WIDTH, u64::from(defaults.max_width))?
+                as u32,
+            max_height: positive(
+                &lookup,
+                ENV_IMAGE_MAX_HEIGHT,
+                u64::from(defaults.max_height),
+            )? as u32,
+            max_pixels: positive(&lookup, ENV_IMAGE_MAX_PIXELS, defaults.max_pixels)?,
+            max_decode_alloc_bytes: positive(
+                &lookup,
+                ENV_IMAGE_MAX_DECODE_ALLOC_BYTES,
+                defaults.max_decode_alloc_bytes,
+            )?,
+            decode_timeout: Duration::from_millis(positive(
+                &lookup,
+                ENV_IMAGE_DECODE_TIMEOUT_MS,
+                DEFAULT_IMAGE_DECODE_TIMEOUT_MS,
+            )?),
+        };
+
         Ok(Self {
             bind_addr,
             log_filter,
             vision_provider_enabled,
             vision_provider_api_key,
+            image_limits,
         })
+    }
+}
+
+/// Reads a positive integer limit. Unset or blank uses the default. Zero and non-numbers are rejected.
+fn positive<F>(lookup: &F, name: &'static str, default: u64) -> Result<u64, ConfigError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    match non_empty(lookup(name)) {
+        None => Ok(default),
+        Some(raw) => match raw.parse::<u64>() {
+            Ok(value) if value > 0 => Ok(value),
+            _ => Err(ConfigError::Invalid {
+                name,
+                reason: "expected a positive whole number".to_owned(),
+            }),
+        },
     }
 }
 
