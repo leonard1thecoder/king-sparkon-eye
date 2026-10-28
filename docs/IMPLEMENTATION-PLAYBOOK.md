@@ -16,6 +16,7 @@
 8. **Stop on architectural conflict.** If implementation evidence conflicts with the README, issue acceptance criteria, or a shared contract, do not make a unilateral change. Document the evidence and obtain an agreed decision first.
 9. **Update documentation with behavior.** Any approved change to API behavior, event schemas, configuration, security, deployment or user-visible states must update the relevant documentation in the same issue branch/PR.
 10. **Protect biometric data.** Never commit real personal biometric images without explicit approval. Do not log raw images, embeddings, provider prompts/responses, credentials, access tokens, or signed URLs.
+11. **Synchronize all affected Markdown with every issue fix.** Search for issue/feature references and update every impacted README, agent instruction, playbook, architecture/API/decision document and feature doc in the same issue branch/PR. Do not update unrelated docs mechanically; list files reviewed, changed and intentionally unchanged in the PR. Keep status claims evidence-based and reconcile issue acceptance criteria when stale.
 
 ## 2. Source-of-truth repositories
 
@@ -159,6 +160,14 @@ An implementation issue that adds retrieval must link the approved decision reco
 - [ ] Confirm no other active issue branch is editing the same coordination-sensitive files.
 - [ ] Identify privacy/security implications, failure states and backward-compatibility concerns.
 
+### Documentation synchronization for every issue
+
+- Search all Markdown for the issue number, feature name, changed behavior, contract/schema/config names, and linked decision references.
+- Update every affected Markdown file in the same issue branch and PR. Check `README.md`, `AGENTS.md`, this playbook, the issue audit, and any relevant architecture/API/event/decision docs; update only those whose claims or instructions are affected.
+- Reconcile implementation status, dependencies, examples, links, acceptance criteria, and next-step guidance. A merged fix can make a dated issue audit or recommended sequence stale.
+- In the PR description, list Markdown files reviewed, changed, and intentionally left unchanged with reasons. Verify docs agree with source/tests and each other; do not claim unrun checks passed.
+- If the fix changes no user-visible behavior or contract, still assess the docs; state briefly why no content update is needed rather than skipping the review.
+
 ### During implementation
 
 - [ ] Keep the diff limited to the issue's scope.
@@ -196,6 +205,9 @@ Use this checklist in the PR description (adapt it to the actual change):
 - **Acceptance criteria:** each criterion checked against code/test evidence.
 
 ## 8. Definition of done
+
+- [ ] All Markdown documents affected by the issue were searched and reconciled in this branch; PR states which files changed and which were intentionally unchanged.
+- [ ] README, AGENTS.md, implementation playbook, issue audit and any relevant contracts do not contradict the verified implementation state.
 
 An issue is ready to merge only when all applicable items are true:
 
