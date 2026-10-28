@@ -82,3 +82,30 @@ If an urgent production mitigation must happen before a normal issue can be crea
 ## Documentation accuracy
 
 Distinguish implemented, partial, planned and unverified functionality. Code and tests establish what is currently implemented; issue acceptance criteria establish what the task must add. Keep README, API schemas, Kafka event schemas and issue checklists synchronized.
+
+
+## Evidence-first issue triage and delivery
+
+- At task start, refresh the default branch, inspect the exact issue body and comments, and search open/closed issues and PRs for overlap. An issue title or priority prefix is not proof that its prerequisites are satisfied.
+- Treat P0/P1/P2 as proposed sequencing signals, not permission to skip dependencies, security review, model validation, or acceptance criteria. Record blockers and dependency edges explicitly.
+- Separate tracking epics, architecture decisions, documentation tasks, implementation tasks, and evaluation gates. Do not treat an epic as an implementation ticket or mark an issue complete based on a PR being opened.
+- For audits, report the issue number, current title, proposed priority, dependency/blocker, and a concrete next action. Distinguish observed repository facts from recommendations.
+- Before starting an implementation issue, confirm its prerequisites are merged or explicitly document why a safe independent slice is possible. Avoid parallel work that changes the same contract without an agreed owner.
+
+## Muse Spark and retrieval/context policy
+
+- Muse Spark is a supplementary visual-quality explainer/advisor only. It is not the face detector, embedding generator, identity matcher, liveness authority, consent authority, ticket eligibility service, or admission decision-maker.
+- Build provider context from versioned, typed Rust-owned evidence. Include only fields actually produced by the active pipeline; unavailable values remain `null`/unknown with an explicit availability status, never fabricated defaults.
+- Keep model-contract knowledge (model ID/version or artifact digest, input/output contract, preprocessing, threshold/policy versions) separate from per-request measurements (face count, detector confidence, landmark validity, image-quality metrics, deterministic assessment and reason codes).
+- If retrieval is used, retrieve only approved, versioned model manifests, policy docs, and reason-code definitions. Apply repository/version filters and exact model/policy-version matching. Do not retrieve arbitrary user content as authoritative policy.
+- Do not send face embeddings, biometric templates, ticket identifiers, authentication tokens, raw identity records, or unrelated personal data to Muse Spark by default. Minimize image transmission; verify provider request format, data handling, and model identifier against authoritative provider documentation before implementation.
+- Treat all provider output as untrusted advice. Validate against a strict schema, bound its size, map it to application-owned advisory codes, and keep it out of deterministic decision fields. Provider timeout, malformed output, refusal, or outage must not turn a passing image into a failing image or vice versa.
+- Keep prompt, retrieved-document IDs/versions, provider/model version, input-schema version, and advisory result code in privacy-safe audit metadata. Never log raw photos, embeddings, secrets, or unrestricted provider payloads.
+- RAG is not required for a small, fixed set of stable model facts. Prefer typed configuration/manifests and direct lookup for deterministic runtime behavior; add semantic retrieval only when the corpus and retrieval evaluation justify it. Retrieval must never select or change a recognition threshold at runtime.
+
+## Face-recognition evidence and safety gates
+
+- Do not document an ONNX model's identity, version, dimensions, normalization, alignment, outputs, embedding dimension, metric, or threshold until verified against the actual artifact metadata, authoritative model documentation, and Rust preprocessing/postprocessing.
+- Detector confidence, landmark validity, photo quality, embedding similarity, liveness, and admission are separate concepts and must remain separate in APIs, logs, tests, and UI.
+- Recognition threshold changes require versioned evaluation evidence on licensed/consented, subject-disjoint data. Synthetic tensors alone do not establish real-world recognition accuracy.
+- A candidate match remains a candidate. Ambiguous or out-of-distribution cases must abstain or route to manual review; no Rust result or Kafka delivery can automatically admit a ticket.
