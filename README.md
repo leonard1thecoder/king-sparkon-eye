@@ -249,7 +249,8 @@ This conversation is a planning reference. The README, source code, API contract
 ## Current implementation status
 
 - **Implemented (issue #21):** Rust crate and HTTP service skeleton; environment-based configuration with redacted secrets; `GET /health/live` and `GET /health/ready`; request IDs (`x-request-id`); structured JSON logging; graceful shutdown on Ctrl-C/SIGTERM; typed JSON errors for unknown routes.
-- **Not yet implemented:** upload validation, ONNX inference, the frontier vision provider, assessment policy, enrollment storage, Kafka events, S3 and gate identification. Module placeholders exist for these areas, and their issues (#22–#31) own them.
+- **Contract defined, not implemented (issue #22):** typed DTOs and error codes in `src/contract/` and `src/error/`, and the OpenAPI document `openapi/eye.openapi.json`. The assessment and gate operations are documented there, but no route serves them yet.
+- **Not yet implemented:** upload validation, ONNX inference, the frontier vision provider, assessment policy, enrollment storage, Kafka events, S3 and gate identification. Module placeholders exist for these areas, and their issues (#23–#31) own them.
 
 Do not interpret this design document or any proposed event/route name as proof that code, model integrations, storage, Kafka topics or deployed APIs already exist.
 
@@ -274,6 +275,13 @@ Configuration (all optional):
 | `EYE_VISION_PROVIDER_API_KEY` | unset | Provider credential; required only when the provider is enabled. Never committed, never logged. |
 
 The service starts without any optional credentials. `/health/ready` returns `503` with `missing_credentials` if the provider is enabled without a key.
+
+## API contract
+
+- **Source of truth:** [`openapi/eye.openapi.json`](openapi/eye.openapi.json) (OpenAPI 3.1). Operations: `POST /v1/enrollment/photo-assessments` and `POST /v1/gate/identifications`, plus the health endpoints.
+- **Rust types:** `src/contract/mod.rs` and `src/error/mod.rs` mirror the schemas. `tests/contract_test.rs` fails if the enums, field names, examples or error codes drift from the document.
+- **Separate outcomes:** photo suitability (`suitability`), persistence (`persistence`) and face-match outcome (`outcome`) are separate fields. No response has an admission field. Only Spring Boot admits an attendee, after a worker approves entry.
+- **QR-free gate:** the gate request carries a server-issued `gateSessionId` and an image. It never carries ticket QR data or a ticket ID.
 
 Checks:
 

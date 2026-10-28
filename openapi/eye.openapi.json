@@ -1,0 +1,274 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "King Sparkon Eye API",
+    "version": "0.1.0",
+    "description": "Wire contract for the Rust vision service. Source of truth for buyer photo assessment and QR-free, event-scoped gate identification. Image suitability, persistence and face-match outcome are separate fields. Nothing here represents final admission: only Spring Boot admits an attendee, after an authenticated worker approves entry. Operations listed under paths are contract definitions. Only the health endpoints are implemented so far (issue #21)."
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "summary": "Liveness probe",
+        "operationId": "getLiveness",
+        "responses": {
+          "200": {
+            "description": "Process is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status"],
+                  "properties": { "status": { "type": "string", "const": "ok" } }
+                },
+                "example": { "status": "ok" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Readiness probe",
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "description": "Required dependencies are configured.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReadinessResponse" },
+                "example": {
+                  "status": "ready",
+                  "dependencies": [ { "name": "vision_provider", "required": false, "state": "disabled" } ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required dependency is missing credentials.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReadinessResponse" },
+                "example": {
+                  "status": "not_ready",
+                  "dependencies": [ { "name": "vision_provider", "required": true, "state": "missing_credentials" } ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/enrollment/photo-assessments": {
+      "post": {
+        "summary": "Assess a buyer enrollment photo",
+        "description": "Accepts a multipart request with an `image` part and optional metadata. Rust validates the file, runs objective checks and optional frontier-model guidance, then returns suitability. Persistence is reported separately and is not implied by a passed assessment.",
+        "operationId": "createPhotoAssessment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["image"],
+                "properties": {
+                  "image": { "type": "string", "format": "binary", "description": "JPEG, PNG or WebP. Size and dimension limits are enforced before inference." },
+                  "clientRequestId": { "$ref": "#/components/schemas/Identifier" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Assessment completed. Check `suitability` for the outcome.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PhotoAssessmentResponse" },
+                "example": {
+                  "assessmentId": "asm_7f3c2a91",
+                  "requestId": "req_5d1e0b44",
+                  "suitability": "RETAKE_REQUIRED",
+                  "reasonCodes": ["POOR_LIGHTING", "FACE_NOT_FRONTAL"],
+                  "persistence": "NOT_REQUESTED",
+                  "modelVersion": "muse-spark-1.3",
+                  "policyVersion": "photo-policy-0.1.0"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/Internal" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/v1/gate/identifications": {
+      "post": {
+        "summary": "Identify an attendee at the gate (QR-free)",
+        "description": "Accepts a live capture and a server-issued, event-scoped gate session reference. No ticket QR data and no ticket ID are sent in the primary flow. Rust searches only the session's authorized event gallery and returns a candidate outcome. The result is not an admission. Spring Boot resolves the candidate to a ticket, and a worker must approve entry.",
+        "operationId": "createGateIdentification",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["image", "gateSessionId"],
+                "properties": {
+                  "image": { "type": "string", "format": "binary", "description": "Live capture from the gate camera." },
+                  "gateSessionId": { "$ref": "#/components/schemas/Identifier" },
+                  "clientRequestId": { "$ref": "#/components/schemas/Identifier" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Identification completed. `outcome` is a candidate result, not an admission.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GateIdentificationResponse" },
+                "example": {
+                  "requestId": "req_9a4f7c10",
+                  "gateSessionId": "gs_20261028_gate3",
+                  "outcome": "LIKELY_MATCH",
+                  "reasonCodes": [],
+                  "recognizerVersion": "unselected-recognizer-0.0.0",
+                  "policyVersion": "gate-policy-0.1.0"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/Internal" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "ValidationFailed": {
+        "description": "A field failed validation. The message names the field and rule, never the submitted value.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" }, "example": { "code": "VALIDATION_FAILED", "message": "request validation failed: field `gateSessionId` contains disallowed characters" } } }
+      },
+      "PayloadTooLarge": {
+        "description": "Upload exceeds the configured byte limit.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" }, "example": { "code": "PAYLOAD_TOO_LARGE", "message": "payload exceeds the allowed size" } } }
+      },
+      "UnsupportedMediaType": {
+        "description": "Upload type is not allowed.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" }, "example": { "code": "UNSUPPORTED_MEDIA_TYPE", "message": "unsupported media type" } } }
+      },
+      "RateLimited": {
+        "description": "Too many requests.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" }, "example": { "code": "RATE_LIMITED", "message": "too many requests" } } }
+      },
+      "ServiceUnavailable": {
+        "description": "A required dependency is temporarily unavailable. This is an operational failure, not a poor photo.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" }, "example": { "code": "SERVICE_UNAVAILABLE", "message": "a required dependency is temporarily unavailable" } } }
+      },
+      "Internal": {
+        "description": "Unexpected server error. Details are logged server-side and never returned.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" }, "example": { "code": "INTERNAL", "message": "internal error" } } }
+      }
+    },
+    "schemas": {
+      "Identifier": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "description": "Opaque identifier. Letters, digits, '.', '_' and '-' only."
+      },
+      "SuitabilityStatus": {
+        "type": "string",
+        "description": "Image suitability from objective and supplementary checks. Not an identity decision. ASSESSMENT_UNAVAILABLE is an operational failure, distinct from a poor photo.",
+        "enum": ["ASSESSMENT_PASSED", "RETAKE_REQUIRED", "REVIEW_REQUIRED", "ASSESSMENT_UNAVAILABLE"]
+      },
+      "PersistenceStatus": {
+        "type": "string",
+        "description": "Storage and metadata persistence. Rust reports PENDING until Spring Boot confirms, and never reports CONFIRMED on its own.",
+        "enum": ["NOT_REQUESTED", "PENDING", "CONFIRMED", "FAILED"]
+      },
+      "MatchOutcome": {
+        "type": "string",
+        "description": "Event-scoped identification outcome. A candidate is not an admission.",
+        "enum": ["LIKELY_MATCH", "UNCERTAIN", "LIKELY_MISMATCH", "NO_CANDIDATE", "UNAVAILABLE"]
+      },
+      "ReasonCode": {
+        "type": "string",
+        "description": "Allowlisted reason code. Initial list, finalised in issue #26.",
+        "enum": ["NO_FACE_DETECTED", "MULTIPLE_FACES", "FACE_TOO_SMALL", "FACE_NOT_FRONTAL", "POOR_LIGHTING", "LOW_RESOLUTION", "IMAGE_BLURRY"]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": ["NOT_READY", "NOT_FOUND", "VALIDATION_FAILED", "PAYLOAD_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "INTERNAL"]
+      },
+      "ErrorBody": {
+        "type": "object",
+        "required": ["code", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "$ref": "#/components/schemas/ErrorCode" },
+          "message": { "type": "string" }
+        }
+      },
+      "PhotoAssessmentResponse": {
+        "type": "object",
+        "required": ["assessmentId", "requestId", "suitability", "reasonCodes", "persistence", "policyVersion"],
+        "additionalProperties": false,
+        "properties": {
+          "assessmentId": { "type": "string" },
+          "requestId": { "type": "string" },
+          "suitability": { "$ref": "#/components/schemas/SuitabilityStatus" },
+          "reasonCodes": { "type": "array", "items": { "$ref": "#/components/schemas/ReasonCode" } },
+          "persistence": { "$ref": "#/components/schemas/PersistenceStatus" },
+          "modelVersion": { "type": ["string", "null"], "description": "Frontier model version used for supplementary guidance. Null when the provider is disabled." },
+          "policyVersion": { "type": "string" }
+        }
+      },
+      "GateIdentificationResponse": {
+        "type": "object",
+        "description": "Has no admission field by design. Final admission is recorded only by Spring Boot after worker approval.",
+        "required": ["requestId", "gateSessionId", "outcome", "reasonCodes", "recognizerVersion", "policyVersion"],
+        "additionalProperties": false,
+        "properties": {
+          "requestId": { "type": "string" },
+          "gateSessionId": { "type": "string" },
+          "outcome": { "$ref": "#/components/schemas/MatchOutcome" },
+          "reasonCodes": { "type": "array", "items": { "$ref": "#/components/schemas/ReasonCode" } },
+          "recognizerVersion": { "type": "string" },
+          "policyVersion": { "type": "string" }
+        }
+      },
+      "ReadinessResponse": {
+        "type": "object",
+        "required": ["status", "dependencies"],
+        "properties": {
+          "status": { "type": "string", "enum": ["ready", "not_ready"] },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "required", "state"],
+              "properties": {
+                "name": { "type": "string" },
+                "required": { "type": "boolean" },
+                "state": { "type": "string", "enum": ["ok", "disabled", "missing_credentials"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
