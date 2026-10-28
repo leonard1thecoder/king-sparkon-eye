@@ -96,6 +96,21 @@ Whenever an issue is fixed, implemented, or its status/acceptance criteria mater
 Distinguish implemented, partial, planned and unverified functionality. Code and tests establish what is currently implemented; issue acceptance criteria establish what the task must add. Keep README, API schemas, Kafka event schemas and issue checklists synchronized.
 
 
+
+## Mandatory issue-scoped documentation synchronization
+
+Every issue fix includes reviewing and updating the documentation affected by that issue. This is part of the fix, not optional cleanup.
+
+1. **Discover affected Markdown.** Search and inspect the README, this file, `docs/IMPLEMENTATION-PLAYBOOK.md`, relevant architecture/design notes, API or model-contract docs, test/development instructions, operations/privacy docs, and any other Markdown describing the affected behavior. Follow links from the issue, related issues and relevant PRs.
+2. **Update all relevant docs in the same issue branch and PR.** Make each affected Markdown file accurate for the verified implementation and tests. Update README feature/status claims, contracts, setup/test commands, limitations and examples when the issue changes them. Do not change unrelated documents just to increase the file count.
+3. **Keep the playbook current.** Update `docs/IMPLEMENTATION-PLAYBOOK.md` when work changes implementation status, issue sequencing/dependencies, blockers, ownership boundaries, validation requirements or agent workflow. Refresh dated status snapshots from current issue/PR/source evidence; preserve historical snapshots as historical rather than silently rewriting them.
+4. **Keep agent rules aligned.** Update `AGENTS.md` when a fix exposes a reusable workflow rule or changes a mandatory constraint. Ensure it does not conflict with the playbook, README or security/privacy invariants.
+5. **Synchronize issue and PR evidence.** Update acceptance criteria/checklists and cross-link related issues when the scope or verified status changes. In the PR description, list Markdown files reviewed, files updated, and the reason for leaving any materially relevant file unchanged.
+6. **Verify the documentation.** Check links and paths, terminology, contract examples, implementation-status claims, dependency order and consistency across affected Markdown. Run applicable documentation/link checks when available; report exact commands and results. Never claim a check ran when it did not.
+7. **Treat docs as part of done.** Do not mark the issue complete while relevant documentation is stale or contradictory. If a needed decision is unresolved, document the known facts, unknowns and blocker without inventing behavior.
+
+This requirement applies to bug fixes, features, refactors, configuration/schema changes and documentation issues. The scope is every *relevant* Markdown file, not every Markdown file in the repository.
+
 ## Evidence-first issue triage and delivery
 
 - At task start, refresh the default branch, inspect the exact issue body and comments, and search open/closed issues and PRs for overlap. An issue title or priority prefix is not proof that its prerequisites are satisfied.
