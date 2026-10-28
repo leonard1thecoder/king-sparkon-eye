@@ -1,52 +1,111 @@
-//! Typed API errors. Responses carry stable codes and never include stack traces,
-//! internal paths or provider payloads.
+//! Typed API errors. Responses carry stable codes and fixed messages. They never
+//! include stack traces, internal paths, provider payloads or secrets.
 
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// Stable, machine-readable error codes. Wire names are listed in openapi/eye.openapi.json.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
     NotReady,
     NotFound,
+    ValidationFailed,
+    PayloadTooLarge,
+    UnsupportedMediaType,
+    RateLimited,
+    ServiceUnavailable,
     Internal,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+impl ErrorCode {
+    pub const ALL: &'static [ErrorCode] = &[
+        ErrorCode::NotReady,
+        ErrorCode::NotFound,
+        ErrorCode::ValidationFailed,
+        ErrorCode::PayloadTooLarge,
+        ErrorCode::UnsupportedMediaType,
+        ErrorCode::RateLimited,
+        ErrorCode::ServiceUnavailable,
+        ErrorCode::Internal,
+    ];
+}
+
+/// Wire body for every error response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ErrorBody {
     pub code: ErrorCode,
     pub message: String,
 }
 
-#[derive(Debug, thiserror::Error)]
+/// A rejected field. Only the field name and rule are exposed, never the submitted value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("field `{field}` {rule}")]
+pub struct ValidationError {
+    pub field: &'static str,
+    pub rule: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ApiError {
     #[error("service is not ready")]
     NotReady,
     #[error("resource not found")]
     NotFound,
+    #[error("request validation failed: {0}")]
+    Validation(ValidationError),
+    #[error("payload exceeds the allowed size")]
+    PayloadTooLarge,
+    #[error("unsupported media type")]
+    UnsupportedMediaType,
+    #[error("too many requests")]
+    RateLimited,
+    #[error("a required dependency is temporarily unavailable")]
+    ServiceUnavailable,
+    /// Deliberately generic: internal causes are logged server-side, never returned.
+    #[error("internal error")]
+    Internal,
 }
 
 impl ApiError {
+    pub fn code(&self) -> ErrorCode {
+        match self {
+            ApiError::NotReady => ErrorCode::NotReady,
+            ApiError::NotFound => ErrorCode::NotFound,
+            ApiError::Validation(_) => ErrorCode::ValidationFailed,
+            ApiError::PayloadTooLarge => ErrorCode::PayloadTooLarge,
+            ApiError::UnsupportedMediaType => ErrorCode::UnsupportedMediaType,
+            ApiError::RateLimited => ErrorCode::RateLimited,
+            ApiError::ServiceUnavailable => ErrorCode::ServiceUnavailable,
+            ApiError::Internal => ErrorCode::Internal,
+        }
+    }
+
     pub fn status(&self) -> StatusCode {
         match self {
-            ApiError::NotReady => StatusCode::SERVICE_UNAVAILABLE,
+            ApiError::NotReady | ApiError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             ApiError::NotFound => StatusCode::NOT_FOUND,
+            ApiError::Validation(_) => StatusCode::BAD_REQUEST,
+            ApiError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+            ApiError::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            ApiError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+            ApiError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
     pub fn body(&self) -> ErrorBody {
-        match self {
-            ApiError::NotReady => ErrorBody {
-                code: ErrorCode::NotReady,
-                message: self.to_string(),
-            },
-            ApiError::NotFound => ErrorBody {
-                code: ErrorCode::NotFound,
-                message: self.to_string(),
-            },
+        ErrorBody {
+            code: self.code(),
+            message: self.to_string(),
         }
+    }
+}
+
+impl From<ValidationError> for ApiError {
+    fn from(err: ValidationError) -> Self {
+        ApiError::Validation(err)
     }
 }
 
