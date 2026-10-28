@@ -423,11 +423,13 @@
       },
       "ReasonCode": {
         "type": "string",
-        "description": "Allowlisted reason code. Initial list, finalised in issue #26.",
+        "description": "Allowlisted reason code, finalised in issue #26.",
         "enum": [
           "NO_FACE_DETECTED",
           "MULTIPLE_FACES",
           "FACE_TOO_SMALL",
+          "FACE_TOO_LARGE",
+          "FACE_OUT_OF_FRAME",
           "FACE_NOT_FRONTAL",
           "POOR_LIGHTING",
           "LOW_RESOLUTION",
