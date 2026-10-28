@@ -358,10 +358,13 @@ Uploads are checked by `src/ingress/` before any inference. Defaults apply when 
 - **Separate outcomes:** photo suitability (`suitability`), persistence (`persistence`) and face-match outcome (`outcome`) are separate fields. No response has an admission field. Only Spring Boot admits an attendee, after a worker approves entry.
 - **QR-free gate:** the gate request carries a server-issued `gateSessionId` and an image. It never carries ticket QR data or a ticket ID.
 
-Checks:
+Checks (run these before opening a PR; CI runs the same commands):
 
 ```bash
-cargo fmt --check
+cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test
+cargo test --all-features --locked
+cargo audit --deny warnings   # needs: cargo install cargo-audit --locked
 ```
+
+**Continuous integration** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`, in three jobs: formatting and clippy, tests, and a RustSec dependency audit of `Cargo.lock`. CI needs no provider keys and downloads no inference binaries, because the ONNX Runtime and YuNet model are vendored under `artifacts/` and verified by `tests/artifacts_test.rs`. Actions are pinned to major versions, not commit SHAs. Pin them to SHAs before enabling branch protection.
