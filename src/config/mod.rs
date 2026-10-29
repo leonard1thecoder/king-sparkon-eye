@@ -76,7 +76,10 @@ pub struct VisionConfig {
     pub max_retries: u32,
 }
 
-/// Runtime configuration for durable enrollment persistence and Kafka delivery.
+/// Draft configuration shape for the disabled enrollment/outbox runtime.
+///
+/// It is intentionally not parsed into `Config` until the Kafka dependency is locked
+/// and the private backend consent-verification contract is confirmed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnrollmentRuntimeConfig {
     pub database_rest_url: String,
