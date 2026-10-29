@@ -4,7 +4,7 @@
 
 King Sparkon Eye is designed to let an authorized gate worker find an enrolled attendee through a live face-recognition check, review the matched ticket information, and explicitly approve entry. Ticket validity and the final admission decision remain under the existing Spring Boot ticket-management backend.
 
-> **Project status:** This repository is currently a roadmap/specification repository. The issues below describe the implementation to build; they do not claim the Rust service, Kafka integration, or facial-recognition workflow is already implemented.
+> **Project status (2026-10-30):** This repository now contains a Rust codebase, mounted OAuth routes and two partial Eye-owned PostgreSQL persistence foundations. The OAuth HTTP runtime still uses a PostgREST RPC adapter, while PR #118 added a separate direct-SQLx persistence layer; these paths have not yet been reconciled or fully wired. Kafka/outbox source is draft-only and not exported or started. These integrations are **not production-ready**; verify CI and the open acceptance criteria before deployment.
 
 ## Agent source-of-truth repositories — required before planning
 
@@ -115,6 +115,8 @@ The UI must distinguish **assessment passed**, **persistence pending**, and **pe
 If no candidate is found, several candidates are ambiguous, the match is uncertain, consent is missing, or Rust/Kafka is unavailable, the workflow must offer a defined human/manual fallback. QR scanning can remain an optional fallback if the product chooses, but it is not required for the main face-recognition flow.
 
 ## OAuth runtime configuration (issue #45)
+
+> **Persistence integration gate:** the mounted OAuth runtime currently uses `src/auth/durable_store.rs` and the PostgREST RPC migration under `db/migrations/`. PR #118 separately added direct SQLx persistence in `src/persistence/` with `migrations/0001_oauth_identity.sql`; the OAuth routes do not yet use that SQLx layer. Consolidate to one approved persistence path before production rollout.
 
 OAuth routes are disabled when every OAuth variable is unset. Partial configuration makes startup fail with a configuration error. When enabled, configure an **Eye-owned** Supabase/PostgreSQL project with the schema from `db/migrations/202610290001_eye_auth_and_oauth.sql` applied before deployment.
 
@@ -398,3 +400,5 @@ cargo audit --deny warnings   # needs: cargo install cargo-audit --locked
 The PostgreSQL persistence tests (`tests/persistence_test.rs`, issue #112) need a disposable PostgreSQL 16 database. Set `EYE_TEST_DATABASE_URL` to run them. If it is unset, each test prints `SKIPPED` and passes, so CI must set it for those checks to count. Migrations are in `migrations/` and are applied by `persistence::migrate`. They are not applied automatically at request time.
 
 **Continuous integration** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`, in three jobs: formatting and clippy, tests, and a RustSec dependency audit of `Cargo.lock`. CI needs no provider keys and downloads no inference binaries, because the ONNX Runtime and YuNet model are vendored under `artifacts/` and verified by `tests/artifacts_test.rs`. Actions are pinned to major versions, not commit SHAs. Pin them to SHAs before enabling branch protection.
+
+**Current CI repair (2026-10-30):** main CI run 40971910655 failed formatting, tests and container build after PR #118 merged. The repair removes the unsupported reqwest `form` feature, keeps the incomplete Kafka draft modules out of the compiled service, and adds a PostgreSQL 16 service to CI so the SQLx persistence integration tests run instead of silently skipping.
