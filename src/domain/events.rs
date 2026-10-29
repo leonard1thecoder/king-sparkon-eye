@@ -334,14 +334,18 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
                 Err(err) => {
                     last_err = err;
                     if attempts < self.retry_policy.max_attempts {
-                        let base = self.retry_policy.base_delay_ms
+                        let base = self
+                            .retry_policy
+                            .base_delay_ms
                             .saturating_mul(1u64.saturating_shl(attempts.saturating_sub(1)))
                             .min(self.retry_policy.max_delay_ms);
                         let clock_jitter = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .map(|duration| duration.subsec_nanos() as u64 % 31)
                             .unwrap_or(0);
-                        let delay_ms = base.saturating_add(clock_jitter).min(self.retry_policy.max_delay_ms);
+                        let delay_ms = base
+                            .saturating_add(clock_jitter)
+                            .min(self.retry_policy.max_delay_ms);
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                     }
                 }
