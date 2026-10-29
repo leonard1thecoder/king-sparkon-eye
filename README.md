@@ -4,7 +4,7 @@
 
 King Sparkon Eye is designed to let an authorized gate worker find an enrolled attendee through a live face-recognition check, review the matched ticket information, and explicitly approve entry. Ticket validity and the final admission decision remain under the existing Spring Boot ticket-management backend.
 
-> **Project status:** This repository is currently a roadmap/specification repository. The issues below describe the implementation to build; they do not claim the Rust service, Kafka integration, or facial-recognition workflow is already implemented.
+> **Project status (2026-10-30):** This repository now contains a working Rust codebase, mounted OAuth routes, Eye-owned PostgreSQL auth storage, and enrollment/outbox runtime code. These integrations are still being verified and are **not production-ready**. Check the live issue/PR status and CI before deployment; code presence or a merged PR is not proof of a passing build or a complete cross-repository contract.
 
 ## Agent source-of-truth repositories — required before planning
 
@@ -396,3 +396,5 @@ cargo audit --deny warnings   # needs: cargo install cargo-audit --locked
 ```
 
 **Continuous integration** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`, in three jobs: formatting and clippy, tests, and a RustSec dependency audit of `Cargo.lock`. CI needs no provider keys and downloads no inference binaries, because the ONNX Runtime and YuNet model are vendored under `artifacts/` and verified by `tests/artifacts_test.rs`. Actions are pinned to major versions, not commit SHAs. Pin them to SHAs before enabling branch protection.
+
+**Current CI repair:** PRs #116 (Kafka/outbox) and #117 (OAuth runtime) were merged with failing CI runs. Issue [#13](https://github.com/leonard1thecoder/king-sparkon-eye/issues/13) has been reopened; branch `issue/13-restore-main-ci` fixes the recorded compiler/module and dependency-feature failures. Do not treat the merged OAuth/Kafka runtime as verified until the new PR's formatting, clippy, tests and container build all pass.
