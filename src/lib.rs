@@ -11,6 +11,9 @@ pub mod auth;
 pub mod config;
 pub mod contract;
 pub mod domain;
+
+// Enrollment/outbox draft modules stay unexported until their dependency, runtime wiring,
+// and private backend consent-contract gates are satisfied (issues #28 and #113).
 pub mod error;
 pub mod inference;
 pub mod ingress;
