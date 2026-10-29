@@ -22,7 +22,10 @@ use crate::error::ValidationError;
 /// Minimum allowed password length for operators and administrators.
 pub const MIN_PASSWORD_LEN: usize = 10;
 
+pub mod apikey;
 pub mod jwt;
+
+pub use apikey::*;
 pub use jwt::*;
 
 /// Operator roles in Eye.
