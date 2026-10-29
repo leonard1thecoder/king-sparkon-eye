@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use king_sparkon_eye::config::{
-    Config, ConfigError, DEFAULT_BIND_ADDR, ENV_BIND_ADDR, ENV_VISION_PROVIDER_API_KEY,
-    ENV_VISION_PROVIDER_ENABLED, SecretString, ENV_OAUTH_GOOGLE_CLIENT_ID,
-    ENV_OAUTH_GOOGLE_CLIENT_SECRET, ENV_OAUTH_GOOGLE_REDIRECT_URL, ENV_OAUTH_DATABASE_REST_URL,
-    ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, ENV_OAUTH_CALLBACK_URLS, ENV_OAUTH_EXCHANGE_SECRET,
-    ENV_JWT_SIGNING_SECRET,
+    Config, ConfigError, DEFAULT_BIND_ADDR, ENV_BIND_ADDR, ENV_JWT_SIGNING_SECRET,
+    ENV_OAUTH_CALLBACK_URLS, ENV_OAUTH_DATABASE_REST_URL, ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY,
+    ENV_OAUTH_EXCHANGE_SECRET, ENV_OAUTH_GOOGLE_CLIENT_ID, ENV_OAUTH_GOOGLE_CLIENT_SECRET,
+    ENV_OAUTH_GOOGLE_REDIRECT_URL, ENV_VISION_PROVIDER_API_KEY, ENV_VISION_PROVIDER_ENABLED,
+    SecretString,
 };
 
 fn lookup(map: HashMap<&'static str, &'static str>) -> impl Fn(&str) -> Option<String> {
@@ -134,19 +134,42 @@ fn zero_or_non_numeric_image_limit_is_rejected_by_name() {
 
 #[test]
 fn kafka_disabled_by_default_and_enabled_requires_durable_storage_and_consent_authority() {
-    use king_sparkon_eye::config::{ENV_KAFKA_ENABLED, ENV_KAFKA_BOOTSTRAP_SERVERS};
-    assert!(Config::from_lookup(lookup(HashMap::new())).unwrap().enrollment_runtime.is_none());
+    use king_sparkon_eye::config::{ENV_KAFKA_BOOTSTRAP_SERVERS, ENV_KAFKA_ENABLED};
+    assert!(
+        Config::from_lookup(lookup(HashMap::new()))
+            .unwrap()
+            .enrollment_runtime
+            .is_none()
+    );
 
     let map = HashMap::from([(ENV_KAFKA_ENABLED, "true")]);
     let error = Config::from_lookup(lookup(map)).unwrap_err();
-    assert!(matches!(error, ConfigError::Invalid { name: ENV_KAFKA_DATABASE_REST_URL, .. }));
+    assert!(matches!(
+        error,
+        ConfigError::Invalid {
+            name: ENV_KAFKA_DATABASE_REST_URL,
+            ..
+        }
+    ));
 
     let map = HashMap::from([
         (ENV_KAFKA_ENABLED, "true"),
-        (ENV_KAFKA_DATABASE_REST_URL, "https://eye-db.example/rest/v1"),
-        (ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, "database-service-role-key-at-least-32"),
-        (ENV_CONSENT_VERIFY_URL, "https://tracker.example/api/internal/eye/consent/verify"),
-        (ENV_CONSENT_SERVICE_KEY, "consent-service-key-at-least-32-bytes"),
+        (
+            ENV_KAFKA_DATABASE_REST_URL,
+            "https://eye-db.example/rest/v1",
+        ),
+        (
+            ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY,
+            "database-service-role-key-at-least-32",
+        ),
+        (
+            ENV_CONSENT_VERIFY_URL,
+            "https://tracker.example/api/internal/eye/consent/verify",
+        ),
+        (
+            ENV_CONSENT_SERVICE_KEY,
+            "consent-service-key-at-least-32-bytes",
+        ),
         (ENV_KAFKA_BOOTSTRAP_SERVERS, "broker.example:9093"),
     ]);
     let config = Config::from_lookup(lookup(map)).unwrap();
@@ -159,46 +182,79 @@ fn kafka_disabled_by_default_and_enabled_requires_durable_storage_and_consent_au
 #[test]
 fn kafka_runtime_requires_tls_and_exact_consent_path() {
     use king_sparkon_eye::config::{
-        ENV_KAFKA_ENABLED, ENV_KAFKA_DATABASE_REST_URL, ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY,
-        ENV_CONSENT_VERIFY_URL, ENV_CONSENT_SERVICE_KEY, ENV_KAFKA_BOOTSTRAP_SERVERS,
+        ENV_CONSENT_SERVICE_KEY, ENV_CONSENT_VERIFY_URL, ENV_KAFKA_BOOTSTRAP_SERVERS,
+        ENV_KAFKA_DATABASE_REST_URL, ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, ENV_KAFKA_ENABLED,
         ENV_KAFKA_SECURITY_PROTOCOL,
     };
     let base = [
         (ENV_KAFKA_ENABLED, "true"),
-        (ENV_KAFKA_DATABASE_REST_URL, "https://eye-db.example/rest/v1"),
-        (ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, "database-service-role-key-at-least-32"),
-        (ENV_CONSENT_VERIFY_URL, "https://tracker.example/api/internal/eye/consent/verify"),
-        (ENV_CONSENT_SERVICE_KEY, "consent-service-key-at-least-32-bytes"),
+        (
+            ENV_KAFKA_DATABASE_REST_URL,
+            "https://eye-db.example/rest/v1",
+        ),
+        (
+            ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY,
+            "database-service-role-key-at-least-32",
+        ),
+        (
+            ENV_CONSENT_VERIFY_URL,
+            "https://tracker.example/api/internal/eye/consent/verify",
+        ),
+        (
+            ENV_CONSENT_SERVICE_KEY,
+            "consent-service-key-at-least-32-bytes",
+        ),
         (ENV_KAFKA_BOOTSTRAP_SERVERS, "broker.example:9093"),
     ];
     let mut map = HashMap::from(base);
     map.insert(ENV_KAFKA_SECURITY_PROTOCOL, "PLAINTEXT");
     assert!(matches!(
         Config::from_lookup(lookup(map)),
-        Err(ConfigError::Invalid { name: ENV_KAFKA_SECURITY_PROTOCOL, .. })
+        Err(ConfigError::Invalid {
+            name: ENV_KAFKA_SECURITY_PROTOCOL,
+            ..
+        })
     ));
 
     let mut map = HashMap::from(base);
-    map.insert(ENV_CONSENT_VERIFY_URL, "https://tracker.example/api/consent/guess");
+    map.insert(
+        ENV_CONSENT_VERIFY_URL,
+        "https://tracker.example/api/consent/guess",
+    );
     assert!(matches!(
         Config::from_lookup(lookup(map)),
-        Err(ConfigError::Invalid { name: ENV_CONSENT_VERIFY_URL, .. })
+        Err(ConfigError::Invalid {
+            name: ENV_CONSENT_VERIFY_URL,
+            ..
+        })
     ));
 }
 
 #[test]
 fn kafka_secrets_are_redacted_and_local_http_requires_explicit_loopback() {
     use king_sparkon_eye::config::{
-        ENV_KAFKA_ENABLED, ENV_KAFKA_DATABASE_REST_URL, ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY,
-        ENV_CONSENT_VERIFY_URL, ENV_CONSENT_SERVICE_KEY, ENV_KAFKA_BOOTSTRAP_SERVERS,
-        ENV_KAFKA_ALLOW_LOCALHOST_HTTP,
+        ENV_CONSENT_SERVICE_KEY, ENV_CONSENT_VERIFY_URL, ENV_KAFKA_ALLOW_LOCALHOST_HTTP,
+        ENV_KAFKA_BOOTSTRAP_SERVERS, ENV_KAFKA_DATABASE_REST_URL,
+        ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, ENV_KAFKA_ENABLED,
     };
     let map = HashMap::from([
         (ENV_KAFKA_ENABLED, "true"),
-        (ENV_KAFKA_DATABASE_REST_URL, "https://eye-db.example/rest/v1"),
-        (ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, "private-database-key-123456789012345"),
-        (ENV_CONSENT_VERIFY_URL, "https://tracker.example/api/internal/eye/consent/verify"),
-        (ENV_CONSENT_SERVICE_KEY, "private-consent-key-123456789012345678"),
+        (
+            ENV_KAFKA_DATABASE_REST_URL,
+            "https://eye-db.example/rest/v1",
+        ),
+        (
+            ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY,
+            "private-database-key-123456789012345",
+        ),
+        (
+            ENV_CONSENT_VERIFY_URL,
+            "https://tracker.example/api/internal/eye/consent/verify",
+        ),
+        (
+            ENV_CONSENT_SERVICE_KEY,
+            "private-consent-key-123456789012345678",
+        ),
         (ENV_KAFKA_BOOTSTRAP_SERVERS, "broker.example:9093"),
     ]);
     let config = Config::from_lookup(lookup(map)).unwrap();
@@ -209,11 +265,28 @@ fn kafka_secrets_are_redacted_and_local_http_requires_explicit_loopback() {
     let map = HashMap::from([
         (ENV_KAFKA_ENABLED, "true"),
         (ENV_KAFKA_ALLOW_LOCALHOST_HTTP, "true"),
-        (ENV_KAFKA_DATABASE_REST_URL, "http://localhost:54321/rest/v1"),
-        (ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, "database-service-role-key-at-least-32"),
-        (ENV_CONSENT_VERIFY_URL, "http://127.0.0.1:8080/api/internal/eye/consent/verify"),
-        (ENV_CONSENT_SERVICE_KEY, "consent-service-key-at-least-32-bytes"),
+        (
+            ENV_KAFKA_DATABASE_REST_URL,
+            "http://localhost:54321/rest/v1",
+        ),
+        (
+            ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY,
+            "database-service-role-key-at-least-32",
+        ),
+        (
+            ENV_CONSENT_VERIFY_URL,
+            "http://127.0.0.1:8080/api/internal/eye/consent/verify",
+        ),
+        (
+            ENV_CONSENT_SERVICE_KEY,
+            "consent-service-key-at-least-32-bytes",
+        ),
         (ENV_KAFKA_BOOTSTRAP_SERVERS, "broker.example:9093"),
     ]);
-    assert!(Config::from_lookup(lookup(map)).unwrap().enrollment_runtime.is_some());
+    assert!(
+        Config::from_lookup(lookup(map))
+            .unwrap()
+            .enrollment_runtime
+            .is_some()
+    );
 }
