@@ -434,24 +434,25 @@ impl OutboxRuntime {
     }
 
     async fn process_row(&self, row: ClaimedOutboxRow) {
-        let event: PhotoEnrolledEventV1 = match serde_json::from_value::<PhotoEnrolledEventV1>(row.payload.clone()) {
-            Ok(event)
-                if event.validate().is_ok()
-                    && event.event_id == row.event_id
-                    && event.enrollment_id == row.enrollment_id
-                    && event.consent_reference == row.consent_reference
-                    && event.policy_version == row.policy_version =>
-            {
-                event
-            }
-            _ => {
-                let _ = self
-                    .store
-                    .dead_letter(&row.event_id, "EVENT_CONTRACT_INVALID", now_ms())
-                    .await;
-                return;
-            }
-        };
+        let event: PhotoEnrolledEventV1 =
+            match serde_json::from_value::<PhotoEnrolledEventV1>(row.payload.clone()) {
+                Ok(event)
+                    if event.validate().is_ok()
+                        && event.event_id == row.event_id
+                        && event.enrollment_id == row.enrollment_id
+                        && event.consent_reference == row.consent_reference
+                        && event.policy_version == row.policy_version =>
+                {
+                    event
+                }
+                _ => {
+                    let _ = self
+                        .store
+                        .dead_letter(&row.event_id, "EVENT_CONTRACT_INVALID", now_ms())
+                        .await;
+                    return;
+                }
+            };
 
         match self
             .consent
