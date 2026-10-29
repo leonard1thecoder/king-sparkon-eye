@@ -1,6 +1,19 @@
 # Open issue audit and recommended execution order
 
-## Current snapshot (2026-10-29)
+## Current snapshot (2026-10-30)
+
+### Verified main-branch state
+
+- **#13 reopened:** main CI run 40971910655 failed formatting, tests and the container build after PR #118 merged. The build failure is caused by the unsupported reqwest `form` feature; the formatter also reports unformatted Rust files. Repair branch: `issue/13-restore-main-ci-v2`.
+- **CI database coverage:** PR #118 added direct SQLx persistence tests that skip when `EYE_TEST_DATABASE_URL` is unset. The #13 repair adds a PostgreSQL 16 service and sets that variable so CI executes the tests against a disposable database.
+- **#112 remains open:** PR #118 added direct SQLx persistence, while the mounted OAuth runtime from PR #117 still uses a separate PostgREST RPC store and migration. These are parallel persistence paths; route/storage consolidation, user/session state and PKCE verifier encryption remain open.
+- **#45 remains open:** mounted OAuth routes exist, but CI and end-to-end route acceptance are not verified, and the runtime is not wired to the SQLx layer from #118.
+- **#28/#113 remain open:** the outbox migration and draft code exist, but the rdkafka dependency/lock, Config parser and startup worker wiring are missing. The draft is not compiled or production-enabled. The private backend consent/consumer contracts remain unconfirmed.
+- **#31 remains closed:** production S3 lifecycle and orphan-reconciliation acceptance still require a source/test audit before deployment.
+
+The 2026-10-29 snapshot below is historical and must not be used as the current status.
+
+## Historical snapshot (2026-10-29)
 
 Built from GitHub issue and PR state on 2026-10-29. The 2026-10-28 audit below is historical. Refresh this section before any new execution.
 
