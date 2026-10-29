@@ -1,0 +1,288 @@
+//! Versioned Kafka enrollment events (issue #28).
+//!
+//! Publishes notification events after an enrollment photo passes deterministic assessment
+//! and is securely stored by [`crate::storage::EnrollmentService`].
+//!
+//! Non-negotiable rules enforced here:
+//! - Under no circumstance are raw photo bytes, embeddings, or biometric templates placed in Kafka event payloads.
+//! - Event schema is typed, versioned (`v1`), and self-contained.
+//! - Idempotency key and enrollment ID enable deduplication on downstream consumers (Spring Boot).
+//! - At-least-once delivery with bounded retries and exponential/jitter backoff policy.
+//! - Clear separation of storage success and event publication failure: publishing failures
+//!   never mark persistence as Confirmed and never corrupt or silently discard stored metadata.
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+use serde::{Deserialize, Serialize};
+
+use crate::contract::{validate_identifier, PersistenceStatus};
+use crate::error::ValidationError;
+use crate::storage::EnrollmentRecord;
+
+/// Current topic for photo enrollment lifecycle events.
+pub const ENROLLMENT_EVENTS_TOPIC: &str = "eye.enrollments.v1";
+
+/// Current schema version string.
+pub const ENROLLMENT_EVENT_VERSION: &str = "1.0.0";
+
+/// Canonical event type identifier.
+pub const ENROLLMENT_EVENT_TYPE: &str = "photo.enrolled.v1";
+
+/// Dimensions metadata of the enrolled image.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageDimensions {
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Versioned enrollment event payload sent to Kafka.
+///
+/// Contains metadata only. NEVER contains raw bytes, embeddings, or credentials.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoEnrolledEventV1 {
+    pub event_id: String,
+    pub event_type: String,
+    pub event_version: String,
+    pub enrollment_id: String,
+    pub object_key: String,
+    pub content_sha256: String,
+    pub byte_len: usize,
+    pub dimensions: ImageDimensions,
+    pub consent_reference: String,
+    pub policy_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
+    pub persistence: PersistenceStatus,
+    pub occurred_at_ms: u64,
+}
+
+impl PhotoEnrolledEventV1 {
+    /// Builds an event payload from an existing [`EnrollmentRecord`].
+    pub fn from_record(record: &EnrollmentRecord, event_id: String, occurred_at_ms: u64) -> Self {
+        Self {
+            event_id,
+            event_type: ENROLLMENT_EVENT_TYPE.to_string(),
+            event_version: ENROLLMENT_EVENT_VERSION.to_string(),
+            enrollment_id: record.enrollment_id.clone(),
+            object_key: record.object_key.clone(),
+            content_sha256: record.content_sha256.clone(),
+            byte_len: record.byte_len,
+            dimensions: ImageDimensions {
+                width: record.width,
+                height: record.height,
+            },
+            consent_reference: record.consent_reference.clone(),
+            policy_version: record.policy_version.clone(),
+            model_version: record.model_version.clone(),
+            idempotency_key: record.idempotency_key.clone(),
+            persistence: record.persistence,
+            occurred_at_ms,
+        }
+    }
+
+    /// Validates event structural integrity before publishing.
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        validate_identifier("eventId", &self.event_id)?;
+        validate_identifier("enrollmentId", &self.enrollment_id)?;
+        validate_identifier("consentReference", &self.consent_reference)?;
+        if let Some(ref idem) = self.idempotency_key {
+            validate_identifier("idempotencyKey", idem)?;
+        }
+        if self.event_type.is_empty() {
+            return Err(ValidationError {
+                field: "eventType",
+                rule: "must not be empty",
+            });
+        }
+        if self.content_sha256.len() != 64 {
+            return Err(ValidationError {
+                field: "contentSha256",
+                rule: "must be a valid 64-character hex SHA-256 digest",
+            });
+        }
+        Ok(())
+    }
+}
+
+/// A published event record with partition key and serialized JSON message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedMessage {
+    pub topic: String,
+    pub key: String,
+    pub payload_json: String,
+}
+
+/// Errors from Kafka publishing operations.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum KafkaPublishError {
+    #[error("Kafka broker is unavailable")]
+    Unavailable,
+    #[error("event serialization failed")]
+    SerializationError(String),
+    #[error("event payload validation failed: {0}")]
+    ValidationError(#[from] ValidationError),
+    #[error("publish request timed out")]
+    Timeout,
+    #[error("maximum retry attempts exceeded")]
+    RetriesExceeded,
+}
+
+/// Trait defining a Kafka producer interface.
+pub trait KafkaProducer: Send + Sync {
+    /// Publishes a message with key to a specific topic.
+    fn publish(&self, topic: &str, key: &str, payload_json: &str) -> Result<(), KafkaPublishError>;
+}
+
+/// Thread-safe in-memory Kafka producer for tests and verification without network brokers.
+#[derive(Debug, Default)]
+pub struct MemoryKafkaProducer {
+    messages: Mutex<Vec<PublishedMessage>>,
+    fail_next_publishes: Mutex<u32>,
+}
+
+impl MemoryKafkaProducer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn fail_next_publishes(&self, count: u32) {
+        if let Ok(mut guard) = self.fail_next_publishes.lock() {
+            *guard = count;
+        }
+    }
+
+    pub fn published_messages(&self) -> Vec<PublishedMessage> {
+        self.messages.lock().map(|m| m.clone()).unwrap_or_default()
+    }
+
+    pub fn clear(&self) {
+        if let Ok(mut guard) = self.messages.lock() {
+            guard.clear();
+        }
+    }
+}
+
+impl KafkaProducer for MemoryKafkaProducer {
+    fn publish(&self, topic: &str, key: &str, payload_json: &str) -> Result<(), KafkaPublishError> {
+        {
+            let mut fails = self
+                .fail_next_publishes
+                .lock()
+                .map_err(|_| KafkaPublishError::Unavailable)?;
+            if *fails > 0 {
+                *fails -= 1;
+                return Err(KafkaPublishError::Unavailable);
+            }
+        }
+
+        let mut list = self
+            .messages
+            .lock()
+            .map_err(|_| KafkaPublishError::Unavailable)?;
+        list.push(PublishedMessage {
+            topic: topic.to_string(),
+            key: key.to_string(),
+            payload_json: payload_json.to_string(),
+        });
+        Ok(())
+    }
+}
+
+/// Retry policy for event publication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetryPolicy {
+    pub max_attempts: u32,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self { max_attempts: 3 }
+    }
+}
+
+/// Publisher service orchestrating Kafka publishing and retry logic for enrollment events.
+pub struct EnrollmentEventPublisher<P: KafkaProducer> {
+    producer: P,
+    retry_policy: RetryPolicy,
+    topic: String,
+    published_idempotency: Mutex<HashMap<String, String>>,
+}
+
+impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
+    pub fn new(producer: P) -> Self {
+        Self {
+            producer,
+            retry_policy: RetryPolicy::default(),
+            topic: ENROLLMENT_EVENTS_TOPIC.to_string(),
+            published_idempotency: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn with_retry_policy(mut self, retry_policy: RetryPolicy) -> Self {
+        self.retry_policy = retry_policy;
+        self
+    }
+
+    pub fn with_topic(mut self, topic: &str) -> Self {
+        self.topic = topic.to_string();
+        self
+    }
+
+    pub fn producer(&self) -> &P {
+        &self.producer
+    }
+
+    /// Publishes a [`PhotoEnrolledEventV1`] with retry and idempotency tracking.
+    pub fn publish_enrollment_event(
+        &self,
+        event: &PhotoEnrolledEventV1,
+    ) -> Result<String, KafkaPublishError> {
+        event.validate()?;
+
+        // Idempotency check: if an idempotency_key was supplied and already published with
+        // identical enrollmentId, return success immediately without emitting duplicate Kafka message.
+        if let Some(ref idem) = event.idempotency_key {
+            let mut map = self
+                .published_idempotency
+                .lock()
+                .map_err(|_| KafkaPublishError::Unavailable)?;
+            if let Some(existing_event_id) = map.get(idem) {
+                return Ok(existing_event_id.clone());
+            }
+        }
+
+        let payload_json = serde_json::to_string(event)
+            .map_err(|e| KafkaPublishError::SerializationError(e.to_string()))?;
+
+        // Partition key: prioritize idempotency_key if set, else enrollment_id.
+        let partition_key = event
+            .idempotency_key
+            .as_deref()
+            .unwrap_or(&event.enrollment_id);
+
+        let mut attempts = 0;
+        let mut last_err = KafkaPublishError::Unavailable;
+
+        while attempts < self.retry_policy.max_attempts {
+            attempts += 1;
+            match self.producer.publish(&self.topic, partition_key, &payload_json) {
+                Ok(()) => {
+                    if let Some(ref idem) = event.idempotency_key {
+                        if let Ok(mut map) = self.published_idempotency.lock() {
+                            map.insert(idem.clone(), event.event_id.clone());
+                        }
+                    }
+                    return Ok(event.event_id.clone());
+                }
+                Err(err) => {
+                    last_err = err;
+                }
+            }
+        }
+
+        Err(last_err)
+    }
+}

@@ -20,6 +20,9 @@
 //! poor photo into a failure or a good photo into a pass, unless [`AdvisoryPolicy::RequireAdvisory`]
 //! is configured. In that case a pass also needs a validated advisory.
 
+pub mod events;
+pub use events::*;
+
 use crate::advisory::{self, Advisory, AdvisoryOutcomeError, FinalAssessment};
 use crate::contract::{ReasonCode, SuitabilityStatus};
 use crate::inference::yunet::DEFAULT_SCORE_THRESHOLD;
