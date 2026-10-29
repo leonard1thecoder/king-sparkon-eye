@@ -131,4 +131,3 @@ fn zero_or_non_numeric_image_limit_is_rejected_by_name() {
         assert!(!err.to_string().contains(value));
     }
 }
-
