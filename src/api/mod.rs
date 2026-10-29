@@ -1,5 +1,6 @@
 //! HTTP routes: liveness, readiness and request-ID/tracing middleware.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -13,12 +14,14 @@ use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
 use crate::error::ApiError;
+use crate::auth::oauth_runtime::OAuthRuntime;
 
 pub const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
+    pub oauth: Option<Arc<OAuthRuntime>>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -107,15 +110,35 @@ async fn not_found() -> ApiError {
 }
 
 pub fn router(config: Config) -> Router {
+    let oauth = config.oauth.clone().and_then(|oauth_config| {
+        match OAuthRuntime::new(oauth_config) {
+            Ok(runtime) => Some(Arc::new(runtime)),
+            Err(_) => {
+                // Never echo OAuth settings or secrets. The four auth routes remain mounted
+                // but fail closed with 503 while health/readiness continues to expose service status.
+                tracing::error!("OAuth runtime initialization failed; OAuth routes are disabled");
+                None
+            }
+        }
+    });
     let state = AppState {
         config: Arc::new(config),
+        oauth,
     };
     Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
+        .merge(OAuthRuntime::routes())
         .fallback(not_found)
         .with_state(state)
-        .layer(TraceLayer::new_for_http())
+        // Never log query strings: Google's callback query contains the provider code and state.
+        .layer(TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
+            tracing::info_span!(
+                "http_request",
+                method = %request.method(),
+                path = %request.uri().path()
+            )
+        }))
         .layer(PropagateRequestIdLayer::new(REQUEST_ID_HEADER))
         .layer(SetRequestIdLayer::new(REQUEST_ID_HEADER, MakeRequestUuid))
 }

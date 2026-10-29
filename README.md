@@ -114,6 +114,28 @@ The UI must distinguish **assessment passed**, **persistence pending**, and **pe
 
 If no candidate is found, several candidates are ambiguous, the match is uncertain, consent is missing, or Rust/Kafka is unavailable, the workflow must offer a defined human/manual fallback. QR scanning can remain an optional fallback if the product chooses, but it is not required for the main face-recognition flow.
 
+## OAuth runtime configuration (issue #45)
+
+OAuth routes are disabled when every OAuth variable is unset. Partial configuration makes startup fail with a configuration error. When enabled, configure an **Eye-owned** Supabase/PostgreSQL project with the schema from `db/migrations/202610290001_eye_auth_and_oauth.sql` applied before deployment.
+
+Required server-side environment variables:
+
+- `EYE_GOOGLE_CLIENT_ID`, `EYE_GOOGLE_CLIENT_SECRET`: Google OAuth client credentials.
+- `EYE_GOOGLE_REDIRECT_URL`: the exact registered Eye server callback URL ending in `/v1/auth/google/callback`. This is not the frontend return URL.
+- `EYE_OAUTH_CALLBACK_URLS`: comma-separated, exact frontend/BFF return URLs. Production must use HTTPS.
+- `EYE_DATABASE_REST_URL`: the Eye database PostgREST base URL (for example, the project's `/rest/v1` URL).
+- `EYE_DATABASE_SERVICE_ROLE_KEY`: the private Eye database service-role key. Never expose it to frontend code.
+- `EYE_OAUTH_EXCHANGE_SECRET`: at least 32 bytes; configured only on the Eye service and trusted frontend server/BFF.
+- `EYE_JWT_SIGNING_SECRET`: at least 32 bytes; dedicated Eye JWT signing key.
+- Optional `EYE_JWT_KID`: token key identifier, default `key-2026-v1`.
+- Optional `EYE_OAUTH_ALLOW_LOCALHOST_HTTP=true`: only for explicit local development with loopback callback and database URLs. Do not set this in production.
+
+The registered Google redirect URL must be registered with Google exactly. Provider tokens are used only by Rust and never forwarded to the BFF. The BFF calls `POST /v1/auth/oauth/exchange` with `X-Eye-OAuth-Exchange-Secret` plus the one-time `code` and exact `callbackUrl`; the browser must not receive the exchange secret. `POST /v1/auth/refresh` accepts an Eye refresh token and rotates it through the durable database function.
+
+The new database migration creates Eye-owned auth, identity-link, transaction, handoff, refresh-token, and rate-limit state. Apply it to a dedicated Eye database through the project migration workflow before enabling OAuth; this repository does not run Flyway or apply it automatically. The runtime uses PostgREST RPCs so the store functions execute their locking/consume-once semantics in PostgreSQL. Behind a reverse proxy, also apply edge rate limiting and configure trusted-proxy networking: the runtime rate limiter sees the direct TCP peer address and intentionally does not trust caller-supplied forwarded headers.
+
+This runtime integration still does **not** make a legal consent decision. Biometric enrollment consent remains fail-closed until the backend-owned consent verification contract and approved consent capture flow exist.
+
 ## Event contracts
 
 Event names below are proposed contract names and must be confirmed/versioned during implementation.
