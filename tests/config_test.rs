@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use king_sparkon_eye::config::{
     Config, ConfigError, DEFAULT_BIND_ADDR, ENV_BIND_ADDR, ENV_VISION_PROVIDER_API_KEY,
-    ENV_VISION_PROVIDER_ENABLED, SecretString,
+    ENV_VISION_PROVIDER_ENABLED, SecretString, ENV_OAUTH_GOOGLE_CLIENT_ID,
+    ENV_OAUTH_GOOGLE_CLIENT_SECRET, ENV_OAUTH_GOOGLE_REDIRECT_URL, ENV_OAUTH_DATABASE_REST_URL,
+    ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, ENV_OAUTH_CALLBACK_URLS, ENV_OAUTH_EXCHANGE_SECRET,
+    ENV_JWT_SIGNING_SECRET,
 };
 
 fn lookup(map: HashMap<&'static str, &'static str>) -> impl Fn(&str) -> Option<String> {

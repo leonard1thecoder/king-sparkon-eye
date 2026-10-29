@@ -108,8 +108,23 @@ pub struct Config {
     pub image_limits: ImageLimits,
     /// Frontier vision provider settings.
     pub vision: VisionConfig,
-    /// Present only when the durable enrollment/outbox Kafka runtime is enabled.
-    pub enrollment_runtime: Option<EnrollmentRuntimeConfig>,
+    /// OAuth runtime is disabled unless every required server-side setting is supplied.
+    pub oauth: Option<OAuthRuntimeConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuthRuntimeConfig {
+    pub google_client_id: String,
+    pub google_redirect_url: String,
+    pub google_client_secret: SecretString,
+    /// PostgREST URL for an Eye-owned PostgreSQL database (normally ending in /rest/v1).
+    pub database_rest_url: String,
+    pub database_service_role_key: SecretString,
+    pub callback_urls: String,
+    pub allow_localhost_http: bool,
+    pub exchange_secret: SecretString,
+    pub jwt_signing_secret: SecretString,
+    pub jwt_kid: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -133,6 +148,16 @@ pub const ENV_IMAGE_MAX_HEIGHT: &str = "EYE_IMAGE_MAX_HEIGHT";
 pub const ENV_IMAGE_MAX_PIXELS: &str = "EYE_IMAGE_MAX_PIXELS";
 pub const ENV_IMAGE_MAX_DECODE_ALLOC_BYTES: &str = "EYE_IMAGE_MAX_DECODE_ALLOC_BYTES";
 pub const ENV_IMAGE_DECODE_TIMEOUT_MS: &str = "EYE_IMAGE_DECODE_TIMEOUT_MS";
+pub const ENV_OAUTH_GOOGLE_CLIENT_ID: &str = "EYE_GOOGLE_CLIENT_ID";
+pub const ENV_OAUTH_GOOGLE_CLIENT_SECRET: &str = "EYE_GOOGLE_CLIENT_SECRET";
+pub const ENV_OAUTH_GOOGLE_REDIRECT_URL: &str = "EYE_GOOGLE_REDIRECT_URL";
+pub const ENV_OAUTH_DATABASE_REST_URL: &str = "EYE_DATABASE_REST_URL";
+pub const ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY: &str = "EYE_DATABASE_SERVICE_ROLE_KEY";
+pub const ENV_OAUTH_CALLBACK_URLS: &str = "EYE_OAUTH_CALLBACK_URLS";
+pub const ENV_OAUTH_ALLOW_LOCALHOST_HTTP: &str = "EYE_OAUTH_ALLOW_LOCALHOST_HTTP";
+pub const ENV_OAUTH_EXCHANGE_SECRET: &str = "EYE_OAUTH_EXCHANGE_SECRET";
+pub const ENV_JWT_SIGNING_SECRET: &str = "EYE_JWT_SIGNING_SECRET";
+pub const ENV_JWT_KID: &str = "EYE_JWT_KID";
 
 pub const ENV_KAFKA_ENABLED: &str = "EYE_KAFKA_ENABLED";
 pub const ENV_KAFKA_DATABASE_REST_URL: &str = "EYE_DATABASE_REST_URL";
@@ -237,6 +262,8 @@ impl Config {
             )?,
         };
 
+        let oauth = parse_oauth_config(&lookup)?;
+
         Ok(Self {
             bind_addr,
             log_filter,
@@ -244,142 +271,191 @@ impl Config {
             vision_provider_api_key,
             image_limits,
             vision,
-            enrollment_runtime,
+            oauth,
         })
     }
 }
 
 
-fn parse_enrollment_runtime<F>(lookup: &F) -> Result<Option<EnrollmentRuntimeConfig>, ConfigError>
+fn parse_oauth_config<F>(lookup: &F) -> Result<Option<OAuthRuntimeConfig>, ConfigError>
 where
     F: Fn(&str) -> Option<String>,
 {
-    let enabled = match non_empty(lookup(ENV_KAFKA_ENABLED)).as_deref() {
+    let client_id = non_empty(lookup(ENV_OAUTH_GOOGLE_CLIENT_ID));
+    let client_secret = non_empty(lookup(ENV_OAUTH_GOOGLE_CLIENT_SECRET));
+    let google_redirect_url = non_empty(lookup(ENV_OAUTH_GOOGLE_REDIRECT_URL));
+    let database_url = non_empty(lookup(ENV_OAUTH_DATABASE_REST_URL));
+    let database_key = non_empty(lookup(ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY));
+    let callback_urls = non_empty(lookup(ENV_OAUTH_CALLBACK_URLS));
+    let exchange_secret = non_empty(lookup(ENV_OAUTH_EXCHANGE_SECRET));
+    let jwt_secret = non_empty(lookup(ENV_JWT_SIGNING_SECRET));
+    let allow_localhost_http = match non_empty(lookup(ENV_OAUTH_ALLOW_LOCALHOST_HTTP)).as_deref() {
         None | Some("false") | Some("0") => false,
         Some("true") | Some("1") => true,
-        Some(_) => return Err(ConfigError::Invalid {
-            name: ENV_KAFKA_ENABLED,
-            reason: "expected true/false or 1/0".to_owned(),
-        }),
+        Some(_) => {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_ALLOW_LOCALHOST_HTTP,
+                reason: "expected true/false or 1/0".to_owned(),
+            });
+        }
     };
-    if !enabled {
+
+    let provided = [
+        client_id.is_some(),
+        client_secret.is_some(),
+        google_redirect_url.is_some(),
+        database_url.is_some(),
+        database_key.is_some(),
+        callback_urls.is_some(),
+        exchange_secret.is_some(),
+        jwt_secret.is_some(),
+    ];
+    if provided.iter().all(|present| !present) {
+        if allow_localhost_http {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_ALLOW_LOCALHOST_HTTP,
+                reason: "cannot be enabled when OAuth is disabled".to_owned(),
+            });
+        }
         return Ok(None);
     }
-
-    let database_url = non_empty(lookup(ENV_KAFKA_DATABASE_REST_URL));
-    let database_key = non_empty(lookup(ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY));
-    let consent_url = non_empty(lookup(ENV_CONSENT_VERIFY_URL));
-    let consent_key = non_empty(lookup(ENV_CONSENT_SERVICE_KEY));
-    let bootstrap = non_empty(lookup(ENV_KAFKA_BOOTSTRAP_SERVERS));
-    let protocol = non_empty(lookup(ENV_KAFKA_SECURITY_PROTOCOL))
-        .unwrap_or_else(|| "SSL".to_owned())
-        .to_ascii_uppercase();
-    let allow_localhost_http = match non_empty(lookup(ENV_KAFKA_ALLOW_LOCALHOST_HTTP)).as_deref() {
-        None | Some("false") | Some("0") => false,
-        Some("true") | Some("1") => true,
-        Some(_) => return Err(ConfigError::Invalid {
-            name: ENV_KAFKA_ALLOW_LOCALHOST_HTTP,
-            reason: "expected true/false or 1/0".to_owned(),
-        }),
-    };
-
-    if database_url.is_none() {
-        return Err(ConfigError::Invalid { name: ENV_KAFKA_DATABASE_REST_URL, reason: "required when Kafka is enabled".to_owned() });
-    }
-    if database_key.as_deref().is_none_or(|secret| secret.len() < 32) {
-        return Err(ConfigError::Invalid { name: ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, reason: "required and must contain at least 32 bytes".to_owned() });
-    }
-    if consent_url.is_none() {
-        return Err(ConfigError::Invalid { name: ENV_CONSENT_VERIFY_URL, reason: "required when Kafka is enabled".to_owned() });
-    }
-    if consent_key.as_deref().is_none_or(|secret| secret.len() < 32) {
-        return Err(ConfigError::Invalid { name: ENV_CONSENT_SERVICE_KEY, reason: "required and must contain at least 32 bytes".to_owned() });
-    }
-    if bootstrap.as_deref().is_none_or(|servers| servers.trim().is_empty() || servers.contains(' ') || servers.contains("://")) {
-        return Err(ConfigError::Invalid { name: ENV_KAFKA_BOOTSTRAP_SERVERS, reason: "expected a comma-separated host:port list, not a URL".to_owned() });
-    }
-    if !matches!(protocol.as_str(), "SSL" | "SASL_SSL") {
-        return Err(ConfigError::Invalid { name: ENV_KAFKA_SECURITY_PROTOCOL, reason: "TLS is required; use SSL or SASL_SSL".to_owned() });
+    if provided.iter().any(|present| !present) {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_CALLBACK_URLS,
+            reason: "OAuth requires all server-side client, database, callback, exchange and JWT settings".to_owned(),
+        });
     }
 
-    let parsed_database = reqwest::Url::parse(database_url.as_deref().unwrap_or_default()).map_err(|_| ConfigError::Invalid {
-        name: ENV_KAFKA_DATABASE_REST_URL, reason: "expected an absolute PostgREST /rest/v1 URL".to_owned()
+    let client_id = client_id.unwrap_or_default();
+    let client_secret = client_secret.unwrap_or_default();
+    let google_redirect_url = google_redirect_url.unwrap_or_default();
+    let database_url = database_url.unwrap_or_default();
+    let database_key = database_key.unwrap_or_default();
+    let callback_urls = callback_urls.unwrap_or_default();
+    let exchange_secret = exchange_secret.unwrap_or_default();
+    let jwt_secret = jwt_secret.unwrap_or_default();
+
+    if exchange_secret.len() < 32 {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_EXCHANGE_SECRET,
+            reason: "must contain at least 32 bytes".to_owned(),
+        });
+    }
+    if jwt_secret.len() < 32 {
+        return Err(ConfigError::Invalid {
+            name: ENV_JWT_SIGNING_SECRET,
+            reason: "must contain at least 32 bytes".to_owned(),
+        });
+    }
+
+    let parsed_google_redirect = reqwest::Url::parse(&google_redirect_url).map_err(|_| ConfigError::Invalid {
+        name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
+        reason: "expected an absolute HTTPS URL ending in /v1/auth/google/callback".to_owned(),
     })?;
-    if parsed_database.path().trim_end_matches('/') != "/rest/v1"
-        || !parsed_database.username().is_empty()
-        || parsed_database.password().is_some()
-        || parsed_database.query().is_some()
-        || parsed_database.fragment().is_some()
+    if parsed_google_redirect.path() != "/v1/auth/google/callback"
+        || !parsed_google_redirect.username().is_empty()
+        || parsed_google_redirect.password().is_some()
+        || parsed_google_redirect.query().is_some()
+        || parsed_google_redirect.fragment().is_some()
+        || parsed_google_redirect.as_str() != google_redirect_url
     {
-        return Err(ConfigError::Invalid { name: ENV_KAFKA_DATABASE_REST_URL, reason: "must end in /rest/v1 and contain no credentials, query or fragment".to_owned() });
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
+            reason: "must be an exact absolute URL ending in /v1/auth/google/callback".to_owned(),
+        });
     }
-    validate_runtime_url(
-        consent_url.as_deref().unwrap_or_default(),
-        "/api/internal/eye/consent/verify",
-        ENV_CONSENT_VERIFY_URL,
-        allow_localhost_http,
-    )?;
-    match parsed_database.scheme() {
+    match parsed_google_redirect.scheme() {
         "https" => {}
-        "http" if allow_localhost_http && is_loopback_host(parsed_database.host_str()) => {}
-        _ => return Err(ConfigError::Invalid { name: ENV_KAFKA_DATABASE_REST_URL, reason: "HTTPS required except explicit loopback development".to_owned() }),
+        "http" if allow_localhost_http && is_loopback_host(parsed_google_redirect.host_str()) => {}
+        _ => return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
+            reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
+        }),
     }
 
-    let sasl_mechanism = non_empty(lookup(ENV_KAFKA_SASL_MECHANISM));
-    let sasl_username = non_empty(lookup(ENV_KAFKA_SASL_USERNAME));
-    let sasl_password = non_empty(lookup(ENV_KAFKA_SASL_PASSWORD));
-    if protocol == "SASL_SSL" && (sasl_mechanism.is_none() || sasl_username.is_none() || sasl_password.is_none()) {
-        return Err(ConfigError::Invalid { name: ENV_KAFKA_SASL_USERNAME, reason: "SASL_SSL requires SASL mechanism, username and password".to_owned() });
-    }
-    if protocol == "SSL" && (sasl_mechanism.is_some() || sasl_username.is_some() || sasl_password.is_some()) {
-        return Err(ConfigError::Invalid { name: ENV_KAFKA_SECURITY_PROTOCOL, reason: "SASL settings require SASL_SSL".to_owned() });
-    }
-
-    let ca = non_empty(lookup(ENV_KAFKA_SSL_CA_LOCATION));
-    let cert = non_empty(lookup(ENV_KAFKA_SSL_CERT_LOCATION));
-    let key = non_empty(lookup(ENV_KAFKA_SSL_KEY_LOCATION));
-    let key_password = non_empty(lookup(ENV_KAFKA_SSL_KEY_PASSWORD));
-    if cert.is_some() != key.is_some() {
-        return Err(ConfigError::Invalid { name: ENV_KAFKA_SSL_CERT_LOCATION, reason: "client certificate and private key must be configured together".to_owned() });
-    }
-
-    Ok(Some(EnrollmentRuntimeConfig {
-        database_rest_url: database_url.unwrap_or_default().trim_end_matches('/').to_owned(),
-        database_service_role_key: SecretString::new(database_key.unwrap_or_default()),
-        consent_verify_url: consent_url.unwrap_or_default(),
-        consent_service_key: SecretString::new(consent_key.unwrap_or_default()),
-        bootstrap_servers: bootstrap.unwrap_or_default(),
-        security_protocol: protocol,
-        sasl_mechanism,
-        sasl_username: sasl_username.map(SecretString::new),
-        sasl_password: sasl_password.map(SecretString::new),
-        ssl_ca_location: ca,
-        ssl_certificate_location: cert,
-        ssl_key_location: key,
-        ssl_key_password: key_password.map(SecretString::new),
-        allow_localhost_http,
-    }))
-}
-
-fn validate_runtime_url(
-    raw: &str,
-    expected_path: &str,
-    name: &'static str,
-    allow_localhost_http: bool,
-) -> Result<(), ConfigError> {
-    let url = reqwest::Url::parse(raw).map_err(|_| ConfigError::Invalid {
-        name, reason: "expected an absolute HTTPS URL".to_owned()
+    let parsed_database_url = reqwest::Url::parse(&database_url).map_err(|_| ConfigError::Invalid {
+        name: ENV_OAUTH_DATABASE_REST_URL,
+        reason: "expected an absolute HTTPS PostgREST URL".to_owned(),
     })?;
-    if !url.username().is_empty() || url.password().is_some() || url.query().is_some()
-        || url.fragment().is_some() || url.path() != expected_path || url.as_str() != raw
+    if !parsed_database_url.username().is_empty()
+        || parsed_database_url.password().is_some()
+        || parsed_database_url.query().is_some()
+        || parsed_database_url.fragment().is_some()
     {
-        return Err(ConfigError::Invalid { name, reason: "URL must have the exact configured path without credentials/query/fragment".to_owned() });
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_DATABASE_REST_URL,
+            reason: "credentials, query strings and fragments are not allowed in the URL".to_owned(),
+        });
     }
-    match url.scheme() {
-        "https" => Ok(()),
-        "http" if allow_localhost_http && is_loopback_host(url.host_str()) => Ok(()),
-        _ => Err(ConfigError::Invalid { name, reason: "HTTPS required except explicit loopback development".to_owned() })
+    match parsed_database_url.scheme() {
+        "https" => {}
+        "http" if allow_localhost_http && is_loopback_host(parsed_database_url.host_str()) => {}
+        _ => {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_DATABASE_REST_URL,
+                reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
+            });
+        }
     }
+
+    let mut seen_callbacks = std::collections::HashSet::new();
+    let mut callback_count = 0usize;
+    for raw in callback_urls.split(',').map(str::trim) {
+        if raw.is_empty() || raw.contains('*') {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_CALLBACK_URLS,
+                reason: "must be a comma-separated list of exact absolute callback URLs".to_owned(),
+            });
+        }
+        let url = reqwest::Url::parse(raw).map_err(|_| ConfigError::Invalid {
+            name: ENV_OAUTH_CALLBACK_URLS,
+            reason: "must be a comma-separated list of exact absolute callback URLs".to_owned(),
+        })?;
+        if url.as_str() != raw
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_CALLBACK_URLS,
+                reason: "callback URLs cannot contain credentials, query strings, fragments or non-canonical forms".to_owned(),
+            });
+        }
+        match url.scheme() {
+            "https" => {}
+            "http" if allow_localhost_http && is_loopback_host(url.host_str()) => {}
+            _ => {
+                return Err(ConfigError::Invalid {
+                    name: ENV_OAUTH_CALLBACK_URLS,
+                    reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
+                });
+            }
+        }
+        if !seen_callbacks.insert(raw.to_owned()) {
+            continue;
+        }
+        callback_count += 1;
+    }
+    if callback_count == 0 {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_CALLBACK_URLS,
+            reason: "at least one exact callback URL is required".to_owned(),
+        });
+    }
+
+    Ok(Some(OAuthRuntimeConfig {
+        google_client_id: client_id,
+        google_redirect_url,
+        google_client_secret: SecretString::new(client_secret),
+        database_rest_url: database_url.trim_end_matches('/').to_owned(),
+        database_service_role_key: SecretString::new(database_key),
+        callback_urls,
+        allow_localhost_http,
+        exchange_secret: SecretString::new(exchange_secret),
+        jwt_signing_secret: SecretString::new(jwt_secret),
+        jwt_kid: non_empty(lookup(ENV_JWT_KID)).unwrap_or_else(|| "key-2026-v1".to_owned()),
+    }))
 }
 
 fn is_loopback_host(host: Option<&str>) -> bool {

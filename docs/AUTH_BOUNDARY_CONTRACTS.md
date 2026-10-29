@@ -52,15 +52,15 @@ This specification defines the Rust-owned authentication boundary, tokens, crede
 
 ## 3. Google OAuth 2.0 Authorization-Code Flow
 
-**Status: approved contract; HTTP/runtime integration is not yet implemented.** The decisions below supersede the earlier unspecified fields, but this document is not evidence that the routes exist.
+**Status: routes and durable OAuth/session runtime wired on `issue/45-google-oauth-routes`; CI verification still required.** OAuth routes return `503` when disabled or PostgreSQL/PostgREST persistence is unavailable. Apply `db/migrations/202610290001_eye_auth_and_oauth.sql` to the dedicated Eye database before enabling the runtime.
 
 ### 3.1 Approved routes and handoff
 
 | Method | Path | Contract / status |
 |---|---|---|
-| `GET` | `/v1/auth/google/start` | Starts the server-side Google authorization-code flow. Must use cryptographic state, nonce and PKCE S256; the selected frontend callback must be an exact member of the configured allowlist. Route is not mounted yet. |
-| `GET` | `/v1/auth/google/callback` | Rust callback. Validates provider response and OIDC token; creates a short-lived handoff code only after identity linking succeeds. Route is not mounted yet. |
-| `POST` | `/v1/auth/oauth/exchange` | Server-to-server frontend/BFF exchange of the opaque code for the Eye session. The request/response DTO and its authenticated caller policy must be implemented with the existing Eye session contract; route is not mounted yet. |
+| `GET` | `/v1/auth/google/start` | Starts the server-side Google authorization-code flow. Requires `callback_url` to exactly match `EYE_OAUTH_CALLBACK_URLS`; creates server-side state/nonce/PKCE transaction and sets the HttpOnly transaction cookie. |
+| `GET` | `/v1/auth/google/callback` | Rust callback registered as `EYE_GOOGLE_REDIRECT_URL`; consumes the state transaction, redeems code using PKCE, verifies Google ID token and stores a one-time handoff. |
+| `POST` | `/v1/auth/oauth/exchange` | Server-to-server BFF exchange; `X-Eye-OAuth-Exchange-Secret` required. JSON body contains `code` and exact `callbackUrl`; response is the Eye token pair. |
 
 The operational probes remain `GET /health/live` and `GET /health/ready`; do not rename them to `/v1/health` or `/v1/ready`. The current router only mounts those health routes.
 
@@ -76,20 +76,20 @@ Handoff rules:
 - Attributes: `HttpOnly; Secure; SameSite=Lax; Path=/v1/auth/google`; maximum age **600 seconds**. Production must set `Secure`. Local HTTP is allowed only for explicitly configured localhost development.
 - Bind state, nonce and PKCE verifier to server-side transaction state. Validate all three during callback handling and clear the transaction cookie on success and failure. Do not put the verifier or transaction secrets in client-readable storage.
 - `EYE_OAUTH_CALLBACK_URLS` is a comma-separated list of exact absolute callback URLs. Production entries must use HTTPS. HTTP is permitted only for localhost development. Reject wildcard/prefix matches, credentials in URLs, query/fragment variants and unlisted redirects. Missing or invalid configuration fails closed.
-- The callback-selection request parameter and the exchange DTO still need to be concretely wired and tested; this contract does not authorize an unspecified redirect parameter or an open redirect.
+- The frontend callback-selection parameter is `callback_url`; the exchange JSON DTO uses `code` and `callbackUrl`. The Eye provider callback URL is a separate required `EYE_GOOGLE_REDIRECT_URL` setting ending in `/v1/auth/google/callback`. Do not reuse Tracker/Spring OAuth login tickets or JWTs.
 
 ### 3.3 OIDC discovery, keys and identity linking
 
 - Fetch Google OIDC discovery metadata from Google's trusted issuer and use its advertised endpoints. Do not hard-code a signing key or accept issuer metadata from a user-supplied URL.
 - Bound discovery/JWKS HTTP timeouts and cache lifetime. Refresh when a token contains an unknown `kid`. If no valid cached key exists and refresh fails, fail closed; never skip signature, issuer, audience, expiry, nonce, state or PKCE validation.
 - The verified Google `sub` is the provider identity key and must be uniquely linked in durable Eye identity storage. Email-based linking requires `email_verified = true`. Reject conflicting provider/user links; do not let one Google subject attach to multiple Eye users.
-- The current `IdentityStore` and `MemoryIdentityStore` do not provide durable provider-link persistence. The handoff primitive is process-local as well; neither is production-ready for multi-instance deployment. A durable identity/session transaction contract is a required follow-up, not something to simulate with memory storage.
+- The PostgreSQL RPC migration and `DurableEyeStore` define durable provider-subject links, state/nonce/PKCE transaction records, handoff hashes, refresh-token rotation, and database-backed rate-limit windows. This runtime requires that migration to be applied before enabling OAuth. The old `MemoryIdentityStore` and in-memory `TokenManager` remain for unit tests and are not the production OAuth path.
 
 ### 3.4 Safe failure outcomes and verification
 
 Provider cancellation, malformed callback, invalid state/nonce/PKCE, provider/JWKS outage, expired/replayed handoff, missing/unverified email and identity conflict must produce a documented safe outcome without exposing tokens or account-existence details. Apply bounded rate limits to start/callback/exchange routes before enabling them publicly.
 
-Required tests include state/nonce/PKCE, issuer/audience/signature/expiry, JWKS unknown-key and outage behavior, exact allowlist behavior, cookie attributes, handoff expiry/replay/callback binding, identity conflict, and no provider tokens in browser responses or logs. Legal consent wording and retention policy are outside this technical contract and remain unapproved.
+Runtime includes database-backed state/nonce/PKCE transaction handling, OIDC token endpoint redemption, issuer/audience/signature/expiry/nonce verification, bounded discovery/JWKS caching with unknown-key refresh, exact callback allowlisting, cookie lifecycle, durable handoff expiry/replay/callback binding, database-locked identity conflict handling, exchange authentication, durable refresh rotation, and hashed IP/route rate-limit windows. CI and dedicated database integration tests must still validate the real migration/RPC deployment. Trace spans log only the path, never OAuth query parameters. Legal consent wording and retention policy are outside this technical contract and remain unapproved.
 
 ---
 

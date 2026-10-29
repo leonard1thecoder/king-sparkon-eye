@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use king_sparkon_eye::{api, config::Config, observability};
 use tokio::signal;
 
@@ -25,7 +27,7 @@ async fn main() {
     };
     tracing::info!(%bind_addr, "king sparkon eye listening");
 
-    if let Err(err) = axum::serve(listener, app)
+    if let Err(err) = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
         .await
     {
