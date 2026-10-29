@@ -1,8 +1,8 @@
 //! Tests for identity, tenant, scope and event boundary enforcement (issue #47).
 
 use king_sparkon_eye::auth::{
-    AccessTokenClaims, ApiKeyRecord, BoundaryError, CallerIdentity, RouteGuard, UserRole,
-    EYE_TOKEN_AUDIENCE, EYE_TOKEN_ISSUER,
+    AccessTokenClaims, ApiKeyRecord, BoundaryError, CallerIdentity, EYE_TOKEN_AUDIENCE,
+    EYE_TOKEN_ISSUER, RouteGuard, UserRole,
 };
 
 fn sample_user_caller(role: UserRole, scopes: Vec<&str>, event_id: Option<&str>) -> CallerIdentity {
@@ -35,10 +35,12 @@ fn sample_api_key_caller(scopes: Vec<&str>) -> CallerIdentity {
 
 #[test]
 fn enrollment_route_requires_enrollment_write_scope() {
-    let authorized_caller = sample_user_caller(UserRole::GateOperator, vec!["enrollment:write"], None);
+    let authorized_caller =
+        sample_user_caller(UserRole::GateOperator, vec!["enrollment:write"], None);
     assert_eq!(RouteGuard::authorize_enrollment(&authorized_caller), Ok(()));
 
-    let unauthorized_caller = sample_user_caller(UserRole::GateOperator, vec!["gate:identify"], None);
+    let unauthorized_caller =
+        sample_user_caller(UserRole::GateOperator, vec!["gate:identify"], None);
     assert_eq!(
         RouteGuard::authorize_enrollment(&unauthorized_caller),
         Err(BoundaryError::ForbiddenScope)

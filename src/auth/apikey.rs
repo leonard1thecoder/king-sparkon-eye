@@ -10,9 +10,9 @@
 //! - Expired or revoked keys are strictly refused.
 //! - Scope verification ensures least-privilege device and operator authorization.
 
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::error::ValidationError;
@@ -97,18 +97,27 @@ impl MemoryApiKeyStore {
 
 impl ApiKeyStore for MemoryApiKeyStore {
     fn save_key(&self, record: ApiKeyRecord) -> Result<(), ApiKeyError> {
-        let mut map = self.keys.lock().map_err(|_| ApiKeyError::StoreUnavailable)?;
+        let mut map = self
+            .keys
+            .lock()
+            .map_err(|_| ApiKeyError::StoreUnavailable)?;
         map.insert(record.key_id.clone(), record);
         Ok(())
     }
 
     fn get_key_by_id(&self, key_id: &str) -> Result<Option<ApiKeyRecord>, ApiKeyError> {
-        let map = self.keys.lock().map_err(|_| ApiKeyError::StoreUnavailable)?;
+        let map = self
+            .keys
+            .lock()
+            .map_err(|_| ApiKeyError::StoreUnavailable)?;
         Ok(map.get(key_id).cloned())
     }
 
     fn revoke_key(&self, key_id: &str) -> Result<(), ApiKeyError> {
-        let mut map = self.keys.lock().map_err(|_| ApiKeyError::StoreUnavailable)?;
+        let mut map = self
+            .keys
+            .lock()
+            .map_err(|_| ApiKeyError::StoreUnavailable)?;
         if let Some(entry) = map.get_mut(key_id) {
             entry.revoked = true;
             Ok(())
@@ -118,7 +127,10 @@ impl ApiKeyStore for MemoryApiKeyStore {
     }
 
     fn list_keys_by_owner(&self, owner_id: &str) -> Result<Vec<ApiKeyRecord>, ApiKeyError> {
-        let map = self.keys.lock().map_err(|_| ApiKeyError::StoreUnavailable)?;
+        let map = self
+            .keys
+            .lock()
+            .map_err(|_| ApiKeyError::StoreUnavailable)?;
         Ok(map
             .values()
             .filter(|k| k.owner_id == owner_id)
@@ -210,10 +222,10 @@ impl<S: ApiKeyStore> ApiKeyService<S> {
             return Err(ApiKeyError::Revoked);
         }
 
-        if let Some(exp) = record.expires_at_ms {
-            if now_ms >= exp {
-                return Err(ApiKeyError::Expired);
-            }
+        if let Some(exp) = record.expires_at_ms
+            && now_ms >= exp
+        {
+            return Err(ApiKeyError::Expired);
         }
 
         let candidate_hash = hash_api_key(raw_key, &record.salt);
@@ -221,10 +233,10 @@ impl<S: ApiKeyStore> ApiKeyService<S> {
             return Err(ApiKeyError::InvalidKey);
         }
 
-        if let Some(scope) = required_scope {
-            if !record.scopes.iter().any(|s| s == scope || s == "admin:all") {
-                return Err(ApiKeyError::InsufficientScope);
-            }
+        if let Some(scope) = required_scope
+            && !record.scopes.iter().any(|s| s == scope || s == "admin:all")
+        {
+            return Err(ApiKeyError::InsufficientScope);
         }
 
         Ok(record)

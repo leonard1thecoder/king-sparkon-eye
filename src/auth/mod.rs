@@ -11,12 +11,11 @@
 //! - Scopes and roles are typed and validated.
 //! - Sensitive credentials (passwords, salts, hashes) are strictly excluded from debug logs and serialization.
 
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::contract::validate_identifier;
 use crate::error::ValidationError;
 
 /// Minimum allowed password length for operators and administrators.
@@ -129,8 +128,14 @@ impl MemoryIdentityStore {
 
 impl IdentityStore for MemoryIdentityStore {
     fn get_by_email(&self, email: &str) -> Result<Option<UserRecord>, AuthError> {
-        let emails = self.users_by_email.lock().map_err(|_| AuthError::StoreUnavailable)?;
-        let users = self.users_by_id.lock().map_err(|_| AuthError::StoreUnavailable)?;
+        let emails = self
+            .users_by_email
+            .lock()
+            .map_err(|_| AuthError::StoreUnavailable)?;
+        let users = self
+            .users_by_id
+            .lock()
+            .map_err(|_| AuthError::StoreUnavailable)?;
         if let Some(user_id) = emails.get(&email.to_lowercase()) {
             Ok(users.get(user_id).cloned())
         } else {
@@ -139,13 +144,22 @@ impl IdentityStore for MemoryIdentityStore {
     }
 
     fn get_by_id(&self, user_id: &str) -> Result<Option<UserRecord>, AuthError> {
-        let users = self.users_by_id.lock().map_err(|_| AuthError::StoreUnavailable)?;
+        let users = self
+            .users_by_id
+            .lock()
+            .map_err(|_| AuthError::StoreUnavailable)?;
         Ok(users.get(user_id).cloned())
     }
 
     fn save_user(&self, record: UserRecord) -> Result<(), AuthError> {
-        let mut emails = self.users_by_email.lock().map_err(|_| AuthError::StoreUnavailable)?;
-        let mut users = self.users_by_id.lock().map_err(|_| AuthError::StoreUnavailable)?;
+        let mut emails = self
+            .users_by_email
+            .lock()
+            .map_err(|_| AuthError::StoreUnavailable)?;
+        let mut users = self
+            .users_by_id
+            .lock()
+            .map_err(|_| AuthError::StoreUnavailable)?;
 
         emails.insert(record.email.to_lowercase(), record.user_id.clone());
         users.insert(record.user_id.clone(), record);

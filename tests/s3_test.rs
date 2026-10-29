@@ -2,8 +2,8 @@
 
 use king_sparkon_eye::contract::{PersistenceStatus, SuitabilityStatus};
 use king_sparkon_eye::storage::{
-    EnrollmentService, EnrollmentStatus, MockS3Client, NewEnrollment, ObjectStore, ObjectStoreError,
-    S3ObjectStore, S3StorageConfig, StorageError, OBJECT_KEY_PREFIX,
+    EnrollmentService, EnrollmentStatus, MockS3Client, NewEnrollment, OBJECT_KEY_PREFIX,
+    ObjectStoreError, S3ObjectStore, S3StorageConfig, StorageError,
 };
 
 const PHOTO_PAYLOAD: &[u8] = b"confidential-consented-photo-bytes";
@@ -28,7 +28,9 @@ fn s3_store_persists_accepted_photo_with_encryption_and_private_access() {
     let s3_store = S3ObjectStore::new(S3StorageConfig::default(), mock_client);
     let service = EnrollmentService::new(s3_store);
 
-    let record = service.create(test_enrollment(PHOTO_PAYLOAD)).expect("persisted");
+    let record = service
+        .create(test_enrollment(PHOTO_PAYLOAD))
+        .expect("persisted");
 
     assert_eq!(record.status, EnrollmentStatus::Stored);
     assert_eq!(record.persistence, PersistenceStatus::Pending);

@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::storage::{ObjectStore, ObjectStoreError, OBJECT_KEY_PREFIX};
+use crate::storage::{OBJECT_KEY_PREFIX, ObjectStore, ObjectStoreError};
 
 /// Configuration for AWS S3 private object storage.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,7 +49,8 @@ pub trait S3Operations: Send + Sync {
 
     fn delete_object(&self, bucket: &str, key: &str) -> Result<(), ObjectStoreError>;
 
-    fn list_object_keys(&self, bucket: &str, prefix: &str) -> Result<Vec<String>, ObjectStoreError>;
+    fn list_object_keys(&self, bucket: &str, prefix: &str)
+    -> Result<Vec<String>, ObjectStoreError>;
 }
 
 /// Production-ready S3 object store adapter conforming to [`ObjectStore`].
@@ -132,16 +133,16 @@ impl S3Operations for MockS3Client {
         bytes: &[u8],
         _encryption: &str,
     ) -> Result<(), ObjectStoreError> {
-        if let Ok(denied) = self.fail_denied.lock() {
-            if *denied {
-                return Err(ObjectStoreError::Denied);
-            }
+        if let Ok(denied) = self.fail_denied.lock()
+            && *denied
+        {
+            return Err(ObjectStoreError::Denied);
         }
-        if let Ok(mut count) = self.fail_unavailable.lock() {
-            if *count > 0 {
-                *count -= 1;
-                return Err(ObjectStoreError::Unavailable);
-            }
+        if let Ok(mut count) = self.fail_unavailable.lock()
+            && *count > 0
+        {
+            *count -= 1;
+            return Err(ObjectStoreError::Unavailable);
         }
 
         self.objects
@@ -152,16 +153,16 @@ impl S3Operations for MockS3Client {
     }
 
     fn delete_object(&self, _bucket: &str, key: &str) -> Result<(), ObjectStoreError> {
-        if let Ok(denied) = self.fail_denied.lock() {
-            if *denied {
-                return Err(ObjectStoreError::Denied);
-            }
+        if let Ok(denied) = self.fail_denied.lock()
+            && *denied
+        {
+            return Err(ObjectStoreError::Denied);
         }
-        if let Ok(mut count) = self.fail_unavailable.lock() {
-            if *count > 0 {
-                *count -= 1;
-                return Err(ObjectStoreError::Unavailable);
-            }
+        if let Ok(mut count) = self.fail_unavailable.lock()
+            && *count > 0
+        {
+            *count -= 1;
+            return Err(ObjectStoreError::Unavailable);
         }
 
         self.objects
@@ -176,10 +177,10 @@ impl S3Operations for MockS3Client {
         _bucket: &str,
         prefix: &str,
     ) -> Result<Vec<String>, ObjectStoreError> {
-        if let Ok(denied) = self.fail_denied.lock() {
-            if *denied {
-                return Err(ObjectStoreError::Denied);
-            }
+        if let Ok(denied) = self.fail_denied.lock()
+            && *denied
+        {
+            return Err(ObjectStoreError::Denied);
         }
         let map = self
             .objects

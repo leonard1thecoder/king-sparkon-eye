@@ -33,9 +33,7 @@ impl CallerIdentity {
             CallerIdentity::User(u) => {
                 u.role == UserRole::Admin || u.scopes.iter().any(|s| s == scope || s == "admin:all")
             }
-            CallerIdentity::ApiKey(k) => {
-                k.scopes.iter().any(|s| s == scope || s == "admin:all")
-            }
+            CallerIdentity::ApiKey(k) => k.scopes.iter().any(|s| s == scope || s == "admin:all"),
         }
     }
 

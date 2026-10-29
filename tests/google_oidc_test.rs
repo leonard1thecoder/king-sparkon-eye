@@ -3,15 +3,14 @@
 //! The RSA key in `tests/fixtures/google_oidc_test_key.p8.der` is a TEST-ONLY key generated for
 //! these tests. It is not a Google key and protects nothing.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use king_sparkon_eye::auth::google::{
-    build_authorization_url, decide_account_link, s256_challenge, verify_id_token,
     AccountLinkDecision, ExpectedIdToken, GoogleAuthError, IdTokenClaims, Jwk, LinkableAccount,
-    PkcePair,
+    PkcePair, build_authorization_url, decide_account_link, s256_challenge, verify_id_token,
 };
 use ring::rand::SystemRandom;
-use ring::signature::{RsaKeyPair, RSA_PKCS1_SHA256};
+use ring::signature::{RSA_PKCS1_SHA256, RsaKeyPair};
 
 const TEST_KEY_DER: &[u8] = include_bytes!("fixtures/google_oidc_test_key.p8.der");
 const TEST_KID: &str = "test-kid-1";
@@ -86,10 +85,11 @@ fn s256_challenge_matches_rfc7636_appendix_b_vector() {
 fn generated_pkce_verifier_is_43_to_128_unreserved_chars() {
     let pair = PkcePair::generate().unwrap();
     assert!((43..=128).contains(&pair.verifier().len()));
-    assert!(pair
-        .verifier()
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || "-._~".contains(c)));
+    assert!(
+        pair.verifier()
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-._~".contains(c))
+    );
     assert_eq!(pair.challenge(), s256_challenge(pair.verifier()));
 }
 

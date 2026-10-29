@@ -1,8 +1,7 @@
 //! Tests for signed JWT access tokens and refresh rotation (issue #44).
 
 use king_sparkon_eye::auth::{
-    AccessTokenClaims, TokenError, TokenManager, UserRole, ACCESS_TOKEN_TTL_SECS, EYE_TOKEN_AUDIENCE,
-    EYE_TOKEN_ISSUER,
+    ACCESS_TOKEN_TTL_SECS, EYE_TOKEN_AUDIENCE, EYE_TOKEN_ISSUER, TokenError, TokenManager, UserRole,
 };
 
 const SECRET: &[u8] = b"super-secret-key-32-bytes-minimum!!";
@@ -26,7 +25,9 @@ fn issuing_and_verifying_valid_access_token() {
     assert_eq!(pair.token_type, "Bearer");
     assert_eq!(pair.expires_in_secs, ACCESS_TOKEN_TTL_SECS);
 
-    let claims = manager.verify_access(&pair.access_token, now + 100).expect("valid");
+    let claims = manager
+        .verify_access(&pair.access_token, now + 100)
+        .expect("valid");
     assert_eq!(claims.iss, EYE_TOKEN_ISSUER);
     assert_eq!(claims.aud, EYE_TOKEN_AUDIENCE);
     assert_eq!(claims.sub, "usr_test_123");
@@ -40,13 +41,7 @@ fn expired_access_token_is_rejected() {
     let now = 1_700_000_000;
 
     let pair = manager
-        .issue_token_pair(
-            "usr_test_123",
-            UserRole::GateOperator,
-            vec![],
-            None,
-            now,
-        )
+        .issue_token_pair("usr_test_123", UserRole::GateOperator, vec![], None, now)
         .unwrap();
 
     // Verify after expiration time (now + ACCESS_TOKEN_TTL_SECS + 1)
@@ -60,13 +55,7 @@ fn tampered_token_is_rejected() {
     let now = 1_700_000_000;
 
     let pair = manager
-        .issue_token_pair(
-            "usr_test_123",
-            UserRole::GateOperator,
-            vec![],
-            None,
-            now,
-        )
+        .issue_token_pair("usr_test_123", UserRole::GateOperator, vec![], None, now)
         .unwrap();
 
     let tampered = format!("{}extra", pair.access_token);
@@ -98,7 +87,9 @@ fn refresh_rotation_issues_new_pair_and_invalidates_old() {
     assert_ne!(pair1.refresh_token, pair2.refresh_token);
 
     // Verify new access token works
-    let claims = manager.verify_access(&pair2.access_token, now + 60).unwrap();
+    let claims = manager
+        .verify_access(&pair2.access_token, now + 60)
+        .unwrap();
     assert_eq!(claims.sub, "usr_test_123");
 }
 

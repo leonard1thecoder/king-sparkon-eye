@@ -71,7 +71,10 @@ impl FaceEmbedding {
 /// Face recognition embedding extractor trait.
 pub trait FaceRecognizer: Send + Sync {
     /// Extracts a 128-D embedding from an aligned face crop.
-    fn extract_embedding(&self, aligned_face: &NormalizedImage) -> Result<FaceEmbedding, InferenceError>;
+    fn extract_embedding(
+        &self,
+        aligned_face: &NormalizedImage,
+    ) -> Result<FaceEmbedding, InferenceError>;
 }
 
 /// Deterministic mock recognizer for testing and verification without weights.
@@ -98,7 +101,10 @@ impl MockFaceRecognizer {
 }
 
 impl FaceRecognizer for MockFaceRecognizer {
-    fn extract_embedding(&self, _aligned_face: &NormalizedImage) -> Result<FaceEmbedding, InferenceError> {
+    fn extract_embedding(
+        &self,
+        _aligned_face: &NormalizedImage,
+    ) -> Result<FaceEmbedding, InferenceError> {
         if let Some(err) = self.fail_with {
             return Err(err);
         }
