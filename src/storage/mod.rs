@@ -14,6 +14,9 @@
 //! - A storage failure never produces a record. A failed record insert removes its object.
 //! - Retries with the same idempotency key return the same record, or a conflict if the content differs.
 
+pub mod s3;
+pub use s3::*;
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 
