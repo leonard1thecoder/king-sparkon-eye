@@ -1,5 +1,5 @@
 use king_sparkon_eye::auth::oauth_flow::{
-    CallbackAllowlist, OAuthFlowError, OneTimeHandoffStore, OAUTH_HANDOFF_TTL_SECS,
+    CallbackAllowlist, OAUTH_HANDOFF_TTL_SECS, OAuthFlowError, OneTimeHandoffStore,
 };
 
 const CALLBACK: &str = "https://tracker.example/auth/oauth/callback";
@@ -88,12 +88,18 @@ fn mismatch_consumes_code_and_never_allows_replay() {
     let allowlist = CallbackAllowlist::parse(
         "https://tracker.example/auth/oauth/callback,https://other.example/auth/callback",
         false,
-    ).unwrap();
+    )
+    .unwrap();
     let store = OneTimeHandoffStore::new();
     let code = store.issue(USER_ID, CALLBACK, &allowlist, 100).unwrap();
 
     assert_eq!(
-        store.consume(&code, "https://other.example/auth/callback", &allowlist, 101),
+        store.consume(
+            &code,
+            "https://other.example/auth/callback",
+            &allowlist,
+            101
+        ),
         Err(OAuthFlowError::CallbackMismatch)
     );
     assert_eq!(

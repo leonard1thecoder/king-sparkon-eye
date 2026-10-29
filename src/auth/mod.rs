@@ -23,9 +23,9 @@ pub const MIN_PASSWORD_LEN: usize = 10;
 
 pub mod apikey;
 pub mod google;
-pub mod oauth_flow;
 pub mod guard;
 pub mod jwt;
+pub mod oauth_flow;
 
 pub use apikey::*;
 pub use guard::*;
