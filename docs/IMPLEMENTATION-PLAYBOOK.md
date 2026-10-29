@@ -65,7 +65,7 @@ This is a dated snapshot, not live issue state. Refresh GitHub issue/PR states a
 
 | State | Issues | Notes |
 |---|---|---|
-| Done (closed, merged) | #21, #22, #23, #25, #26, #27, #28, #31, #58, #59, #42, #43, #44, #46 | Merged foundations and contract specs. #46 API key generation, hashing, scope enforcement & revocation implemented in branch `issue/46-api-key-creation-storage-rotation`. |
+| Done (closed, merged) | #21, #22, #23, #25, #26, #27, #28, #31, #58, #59, #42, #43, #44, #46, #47 | Merged foundations and contract specs. #47 route protection, scope enforcement & event boundary guards implemented in branch `issue/47-enforce-auth-and-event-boundaries`. |
 | Implemented in branch | #28, #31 | #28 in `issue/28-kafka-enrollment-events`. #31 private AWS S3 adapter in `issue/31-s3-private-storage`. |
 | Closed, with caveats | #24, #29 | #24: real-face fixtures (#55) and runtime wiring remain outstanding. #29: CI gates exist; run them against the integrated branch. |
 | Blocked recognition path | #30 | Do not start until #58/#59 establish and verify the embedding contract, #55 supplies licensed/consented real-face fixtures, #61 evaluates thresholds, and event-scoped authorization is defined. |
