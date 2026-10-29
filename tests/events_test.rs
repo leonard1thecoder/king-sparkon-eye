@@ -50,7 +50,8 @@ fn event_is_constructed_correctly_from_enrollment_record() {
 fn event_payload_never_contains_raw_photo_or_embedding() {
     let record = sample_record();
     let event =
-        PhotoEnrolledEventV1::from_record(&record, "evt-999".to_string(), 1_700_000_001_000).unwrap();
+        PhotoEnrolledEventV1::from_record(&record, "evt-999".to_string(), 1_700_000_001_000)
+            .unwrap();
     let json = serde_json::to_string(&event).expect("serialized");
 
     // Guard against biometric or raw payload leakage into Kafka
@@ -224,7 +225,8 @@ fn invalid_identifiers_in_event_are_rejected_before_publish() {
     record.enrollment_id = "invalid id with spaces!".to_string();
 
     let event =
-        PhotoEnrolledEventV1::from_record(&record, "evt-001".to_string(), 1_700_000_000_000).unwrap();
+        PhotoEnrolledEventV1::from_record(&record, "evt-001".to_string(), 1_700_000_000_000)
+            .unwrap();
     let res = publisher.publish_enrollment_event(&event);
 
     assert!(matches!(res, Err(KafkaPublishError::ValidationError(_))));
