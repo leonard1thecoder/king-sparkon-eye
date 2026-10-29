@@ -29,7 +29,7 @@ Bugs closed with their PR merged: #90 (PR #91), #100 (PR #106), #101 (PR #105), 
 | 5 | #58, #59 | Closed (PRs #83, #84) | Recognizer accuracy unverified (#61) |
 | 6 | #12, #55, #61 | Open | Blocker #95 (consented face data and thresholds) |
 | 7 | #30 | Open, blocked | Needs #61, event-scoped auth and gate-session design |
-| 8 | #11 | Open | Threat model in `THREAT_MODEL.md` (open PR #107). Mitigations need HTTP routes (#93). |
+| 8 | #11 | Open | Threat model in `THREAT_MODEL.md` (PR #107, merged). Mitigations need HTTP routes (#93). |
 | 8 | #17 | Open | Threat model in `THREAT_MODEL.md`. Fallback and operator handling are undecided. |
 | 8 | #41 | Open epic | Depends on #93 |
 | 8 | #35 | Open | Legal content for public pages. Needs owners, not code. |
