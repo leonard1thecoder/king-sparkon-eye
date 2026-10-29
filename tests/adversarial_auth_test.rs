@@ -151,7 +151,6 @@ fn expired_token_is_rejected() {
 }
 
 #[test]
-#[ignore = "BUG #101: verifier accepts a token at exp == now (RFC 7519 §4.1.4)"]
 fn token_is_rejected_exactly_at_expiry() {
     let token = signed(&claims(NOW));
     assert_eq!(
@@ -161,14 +160,15 @@ fn token_is_rejected_exactly_at_expiry() {
 }
 
 #[test]
-#[ignore = "BUG #101: verifier does not check iat against the current time"]
 fn token_issued_in_the_future_is_rejected() {
     let token = signed(&claims(NOW + 10_000));
-    assert!(verify_access_token(&token, KID, SECRET, NOW).is_err());
+    assert_eq!(
+        verify_access_token(&token, KID, SECRET, NOW),
+        Err(TokenError::NotYetValid)
+    );
 }
 
 #[test]
-#[ignore = "BUG #101: header alg is not enforced; a non-HS256 header with a matching signature is accepted"]
 fn non_hs256_algorithm_header_is_rejected() {
     let header = URL_SAFE_NO_PAD.encode(
         serde_json::to_vec(&serde_json::json!({"alg": "RS256", "typ": "JWT", "kid": KID})).unwrap(),
@@ -176,7 +176,10 @@ fn non_hs256_algorithm_header_is_rejected() {
     let body = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims(NOW)).unwrap());
     let sig = signature_for(&header, &body, SECRET);
     let token = format!("{header}.{body}.{sig}");
-    assert!(verify_access_token(&token, KID, SECRET, NOW + 1).is_err());
+    assert_eq!(
+        verify_access_token(&token, KID, SECRET, NOW + 1),
+        Err(TokenError::UnsupportedAlgorithm)
+    );
 }
 
 // ---------- JWT: refresh rotation and replay ----------
