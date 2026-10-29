@@ -22,6 +22,9 @@ use crate::error::ValidationError;
 /// Minimum allowed password length for operators and administrators.
 pub const MIN_PASSWORD_LEN: usize = 10;
 
+pub mod jwt;
+pub use jwt::*;
+
 /// Operator roles in Eye.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum UserRole {
