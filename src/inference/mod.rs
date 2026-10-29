@@ -7,7 +7,10 @@
 //!
 //! Detection is not identity comparison and not liveness detection.
 
+pub mod sface;
 pub mod yunet;
+
+pub use sface::*;
 
 use crate::ingress::NormalizedImage;
 
