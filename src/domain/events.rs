@@ -11,11 +11,11 @@
 //! - Clear separation of storage success and event publication failure: publishing failures
 //!   never mark persistence as Confirmed and never corrupt or silently discard stored metadata.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use serde::{Deserialize, Serialize};
 
-use crate::contract::{validate_identifier, PersistenceStatus};
+use crate::contract::{PersistenceStatus, validate_identifier};
 use crate::error::ValidationError;
 use crate::storage::EnrollmentRecord;
 
@@ -245,7 +245,7 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
         // Idempotency check: if an idempotency_key was supplied and already published with
         // identical enrollmentId, return success immediately without emitting duplicate Kafka message.
         if let Some(ref idem) = event.idempotency_key {
-            let mut map = self
+            let map = self
                 .published_idempotency
                 .lock()
                 .map_err(|_| KafkaPublishError::Unavailable)?;
@@ -268,12 +268,15 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
 
         while attempts < self.retry_policy.max_attempts {
             attempts += 1;
-            match self.producer.publish(&self.topic, partition_key, &payload_json) {
+            match self
+                .producer
+                .publish(&self.topic, partition_key, &payload_json)
+            {
                 Ok(()) => {
-                    if let Some(ref idem) = event.idempotency_key {
-                        if let Ok(mut map) = self.published_idempotency.lock() {
-                            map.insert(idem.clone(), event.event_id.clone());
-                        }
+                    if let Some(ref idem) = event.idempotency_key
+                        && let Ok(mut map) = self.published_idempotency.lock()
+                    {
+                        map.insert(idem.clone(), event.event_id.clone());
                     }
                     return Ok(event.event_id.clone());
                 }

@@ -1,6 +1,6 @@
 //! Tests for API key creation, hashed storage, scope enforcement and revocation (issue #46).
 
-use king_sparkon_eye::auth::{ApiKeyError, ApiKeyService, MemoryApiKeyStore, API_KEY_PREFIX};
+use king_sparkon_eye::auth::{API_KEY_PREFIX, ApiKeyError, ApiKeyService, MemoryApiKeyStore};
 
 #[test]
 fn creating_key_returns_formatted_key_and_persists_hash_only() {
@@ -13,12 +13,16 @@ fn creating_key_returns_formatted_key_and_persists_hash_only() {
             "dev_001",
             "Gate Scanner Key",
             vec!["gate:identify".to_string()],
-            Some(3600_000),
+            Some(3_600_000),
             now,
         )
         .expect("created");
 
-    assert!(created.raw_key.starts_with(&format!("{API_KEY_PREFIX}live_")));
+    assert!(
+        created
+            .raw_key
+            .starts_with(&format!("{API_KEY_PREFIX}live_"))
+    );
     assert_ne!(created.raw_key, created.record.key_hash);
     assert_eq!(created.record.owner_id, "dev_001");
     assert_eq!(created.record.scopes, vec!["gate:identify".to_string()]);
@@ -75,7 +79,13 @@ fn revoked_key_is_rejected() {
     let now = 1_700_000_000_000;
 
     let created = service
-        .create_key("dev_001", "Temp Key", vec!["gate:identify".to_string()], None, now)
+        .create_key(
+            "dev_001",
+            "Temp Key",
+            vec!["gate:identify".to_string()],
+            None,
+            now,
+        )
         .unwrap();
 
     // Revoke by key_id

@@ -1,7 +1,7 @@
 //! Tests for the face recognition embedding adapter (issue #59).
 
 use king_sparkon_eye::inference::{
-    FaceEmbedding, FaceRecognizer, InferenceError, MockFaceRecognizer, EMBEDDING_DIM,
+    EMBEDDING_DIM, FaceEmbedding, FaceRecognizer, InferenceError, MockFaceRecognizer,
 };
 use king_sparkon_eye::ingress::NormalizedImage;
 
@@ -63,12 +63,18 @@ fn cosine_similarity_identical_and_orthogonal() {
     let emb2 = FaceEmbedding::new(&raw1).unwrap();
 
     let sim_identical = emb1.cosine_similarity(&emb2);
-    assert!((sim_identical - 1.0).abs() < 1e-5, "Identical vectors must have cosine similarity 1.0");
+    assert!(
+        (sim_identical - 1.0).abs() < 1e-5,
+        "Identical vectors must have cosine similarity 1.0"
+    );
 
     let raw_opposite = vec![-1.0f32; EMBEDDING_DIM];
     let emb_opposite = FaceEmbedding::new(&raw_opposite).unwrap();
     let sim_opposite = emb1.cosine_similarity(&emb_opposite);
-    assert!((sim_opposite - (-1.0)).abs() < 1e-5, "Opposite vectors must have cosine similarity -1.0");
+    assert!(
+        (sim_opposite - (-1.0)).abs() < 1e-5,
+        "Opposite vectors must have cosine similarity -1.0"
+    );
 }
 
 #[test]

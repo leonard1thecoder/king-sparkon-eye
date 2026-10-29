@@ -16,9 +16,9 @@
 //!
 //! Secrets, authorization codes, state, nonce and raw ID tokens are never placed in errors or logs.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use ring::digest::{digest, SHA256};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use ring::digest::{SHA256, digest};
 use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{self, UnparsedPublicKey};
 use serde::Deserialize;

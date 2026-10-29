@@ -1,8 +1,6 @@
 //! Identity storage and password authentication tests (issue #43).
 
-use king_sparkon_eye::auth::{
-    hash_password, AuthError, AuthService, MemoryIdentityStore, UserRole, MIN_PASSWORD_LEN,
-};
+use king_sparkon_eye::auth::{AuthError, AuthService, MemoryIdentityStore, UserRole};
 
 #[test]
 fn registering_valid_user_creates_profile_without_exposing_secrets() {

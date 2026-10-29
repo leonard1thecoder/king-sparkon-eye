@@ -9,11 +9,11 @@
 //! - Replay of an already-used refresh token revokes the entire session family.
 //! - Secret keys, signatures, and raw refresh tokens are never logged.
 
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::auth::UserRole;
@@ -103,10 +103,10 @@ pub fn sign_access_token(
         kid: kid.to_string(),
     };
 
-    let header_json = serde_json::to_vec(&header)
-        .map_err(|e| TokenError::Serialization(e.to_string()))?;
-    let claims_json = serde_json::to_vec(claims)
-        .map_err(|e| TokenError::Serialization(e.to_string()))?;
+    let header_json =
+        serde_json::to_vec(&header).map_err(|e| TokenError::Serialization(e.to_string()))?;
+    let claims_json =
+        serde_json::to_vec(claims).map_err(|e| TokenError::Serialization(e.to_string()))?;
 
     let header_b64 = URL_SAFE_NO_PAD.encode(&header_json);
     let claims_b64 = URL_SAFE_NO_PAD.encode(&claims_json);
@@ -139,8 +139,8 @@ pub fn verify_access_token(
     let header_bytes = URL_SAFE_NO_PAD
         .decode(header_b64)
         .map_err(|_| TokenError::InvalidSignature)?;
-    let header: JwtHeader = serde_json::from_slice(&header_bytes)
-        .map_err(|_| TokenError::InvalidSignature)?;
+    let header: JwtHeader =
+        serde_json::from_slice(&header_bytes).map_err(|_| TokenError::InvalidSignature)?;
 
     if header.kid != expected_kid {
         return Err(TokenError::InvalidSignature);
@@ -149,8 +149,8 @@ pub fn verify_access_token(
     let claims_bytes = URL_SAFE_NO_PAD
         .decode(claims_b64)
         .map_err(|_| TokenError::InvalidSignature)?;
-    let claims: AccessTokenClaims = serde_json::from_slice(&claims_bytes)
-        .map_err(|_| TokenError::InvalidSignature)?;
+    let claims: AccessTokenClaims =
+        serde_json::from_slice(&claims_bytes).map_err(|_| TokenError::InvalidSignature)?;
 
     if claims.iss != EYE_TOKEN_ISSUER || claims.aud != EYE_TOKEN_AUDIENCE {
         return Err(TokenError::InvalidClaims);
@@ -280,15 +280,23 @@ impl TokenManager {
         now_secs: u64,
     ) -> Result<TokenPair, TokenError> {
         let token_hash = Self::hash_token(raw_refresh_token);
-        let mut tokens = self.tokens.lock().map_err(|_| TokenError::RefreshTokenNotFound)?;
+        let mut tokens = self
+            .tokens
+            .lock()
+            .map_err(|_| TokenError::RefreshTokenNotFound)?;
 
-        let entry = tokens.get_mut(&token_hash).ok_or(TokenError::RefreshTokenNotFound)?;
+        let entry = tokens
+            .get_mut(&token_hash)
+            .ok_or(TokenError::RefreshTokenNotFound)?;
 
         // Check if session family was already revoked
-        if let Ok(family_revoked) = self.family_revoked.lock() {
-            if family_revoked.get(&entry.family_id).copied().unwrap_or(false) {
-                return Err(TokenError::ReplayDetected);
-            }
+        if let Ok(family_revoked) = self.family_revoked.lock()
+            && family_revoked
+                .get(&entry.family_id)
+                .copied()
+                .unwrap_or(false)
+        {
+            return Err(TokenError::ReplayDetected);
         }
 
         // Replay detection: token was already used! Revoke entire family.
@@ -318,7 +326,11 @@ impl TokenManager {
     }
 
     /// Verifies an access token.
-    pub fn verify_access(&self, token_str: &str, now_secs: u64) -> Result<AccessTokenClaims, TokenError> {
+    pub fn verify_access(
+        &self,
+        token_str: &str,
+        now_secs: u64,
+    ) -> Result<AccessTokenClaims, TokenError> {
         verify_access_token(token_str, &self.kid, &self.secret, now_secs)
     }
 }
