@@ -11,6 +11,7 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use ring::hmac;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -88,14 +89,30 @@ pub enum TokenError {
 }
 
 /// Computes HMAC-SHA256 signature representation.
+/// HMAC-SHA256 over `header.claims` (RFC 2104), base64url without padding (issue #100).
 fn compute_signature(header_b64: &str, claims_b64: &str, secret: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(secret);
-    hasher.update(b":");
-    hasher.update(header_b64.as_bytes());
-    hasher.update(b".");
-    hasher.update(claims_b64.as_bytes());
-    URL_SAFE_NO_PAD.encode(hasher.finalize())
+    let key = hmac::Key::new(hmac::HMAC_SHA256, secret);
+    let tag = hmac::sign(&key, format!("{header_b64}.{claims_b64}").as_bytes());
+    URL_SAFE_NO_PAD.encode(tag.as_ref())
+}
+
+/// Constant-time verification of a base64url HMAC-SHA256 signature over `header.claims`.
+fn verify_signature(
+    header_b64: &str,
+    claims_b64: &str,
+    signature_b64: &str,
+    secret: &[u8],
+) -> bool {
+    let Ok(sig_bytes) = URL_SAFE_NO_PAD.decode(signature_b64) else {
+        return false;
+    };
+    let key = hmac::Key::new(hmac::HMAC_SHA256, secret);
+    hmac::verify(
+        &key,
+        format!("{header_b64}.{claims_b64}").as_bytes(),
+        &sig_bytes,
+    )
+    .is_ok()
 }
 
 /// Signs an access token into compact JWT string (`header.claims.signature`).
@@ -148,8 +165,7 @@ pub fn verify_access_token(
         return Err(TokenError::UnsupportedAlgorithm);
     }
 
-    let expected_sig = compute_signature(header_b64, claims_b64, secret);
-    if signature != expected_sig {
+    if !verify_signature(header_b64, claims_b64, signature, secret) {
         return Err(TokenError::InvalidSignature);
     }
 

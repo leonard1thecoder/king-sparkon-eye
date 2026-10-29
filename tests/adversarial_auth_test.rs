@@ -46,7 +46,7 @@ fn with_payload(token: &str, payload: &serde_json::Value) -> String {
     format!("{}.{}.{}", parts[0], body, parts[2])
 }
 
-/// Current signing construction (see `compute_signature` in `src/auth/jwt.rs`).
+/// Pre-#100 signing construction, kept only to prove it is rejected now.
 fn signature_for(header_b64: &str, claims_b64: &str, secret: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(secret);
@@ -475,3 +475,32 @@ fn correct_password_authenticates() {
 // - Google OAuth callback cases: no HTTP route is mounted (#93). Library-level cases are in
 //   tests/google_oidc_test.rs.
 // - Route-policy and cross-tenant HTTP tests: no authenticated routes are mounted.
+
+#[test]
+fn token_with_legacy_hash_construction_is_rejected() {
+    // Issue #100: signatures from the pre-HMAC construction must no longer verify.
+    let header = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&serde_json::json!({"alg": "HS256", "typ": "JWT", "kid": KID})).unwrap(),
+    );
+    let body = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims(NOW)).unwrap());
+    let sig = signature_for(&header, &body, SECRET);
+    let token = format!("{header}.{body}.{sig}");
+    assert_eq!(
+        verify_access_token(&token, KID, SECRET, NOW + 1),
+        Err(TokenError::InvalidSignature)
+    );
+}
+
+#[test]
+fn token_with_standard_hmac_sha256_signature_is_accepted() {
+    // Independent check of the signing scheme: RFC 2104 HMAC-SHA256 computed with ring directly.
+    use ring::hmac;
+    let header = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&serde_json::json!({"alg": "HS256", "typ": "JWT", "kid": KID})).unwrap(),
+    );
+    let body = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims(NOW)).unwrap());
+    let key = hmac::Key::new(hmac::HMAC_SHA256, SECRET);
+    let tag = hmac::sign(&key, format!("{header}.{body}").as_bytes());
+    let token = format!("{header}.{body}.{}", URL_SAFE_NO_PAD.encode(tag.as_ref()));
+    assert!(verify_access_token(&token, KID, SECRET, NOW + 1).is_ok());
+}
