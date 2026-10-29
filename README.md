@@ -4,7 +4,7 @@
 
 King Sparkon Eye is designed to let an authorized gate worker find an enrolled attendee through a live face-recognition check, review the matched ticket information, and explicitly approve entry. Ticket validity and the final admission decision remain under the existing Spring Boot ticket-management backend.
 
-> **Project status (2026-10-30):** This repository now contains a working Rust codebase, mounted OAuth routes, Eye-owned PostgreSQL auth storage, and enrollment/outbox runtime code. These integrations are still being verified and are **not production-ready**. Check the live issue/PR status and CI before deployment; code presence or a merged PR is not proof of a passing build or a complete cross-repository contract.
+> **Project status (2026-10-30):** This repository now contains a Rust codebase, mounted OAuth routes and Eye-owned PostgreSQL auth storage. Enrollment/outbox migration and dispatcher source is present as **draft-only code**: it is not exported, compiled or wired into startup because the Kafka dependency/lockfile and private backend consent contract are not ready. OAuth and all cross-service integrations remain subject to CI and end-to-end verification. Check the live issue/PR status and CI before deployment; code presence or a merged PR is not proof of a passing build or a complete cross-repository contract.
 
 ## Agent source-of-truth repositories — required before planning
 
@@ -142,7 +142,7 @@ The enrollment event identity below is the current Rust contract confirmed by de
 
 ### Enrollment/photo event
 
-**photo.enrolled.v1**\n\nCurrent Rust constants use topic `eye.enrollments.v1`, event type `photo.enrolled.v1`, and schema version `1.0.0`. This is a metadata-only partial implementation: the scoped #28 branch adds an active-record guard, but authoritative consent verification, durable outbox delivery, a production TLS producer and the Spring Boot consumer contract are not yet complete.
+**photo.enrolled.v1**\n\nCurrent Rust constants use topic `eye.enrollments.v1`, event type `photo.enrolled.v1`, and schema version `1.0.0`. PR #116 added the outbox migration and draft dispatcher/producer source, but the source is not exported or wired: `rdkafka` is absent from `Cargo.toml`/`Cargo.lock`, the merged config has no enrollment-runtime parser/field, and `main.rs` does not start a dispatcher. The repair keeps that draft out of the compiled service. Authoritative consent verification and the Spring Boot consumer contract also remain unconfirmed.
 
 Include only the fields Spring Boot needs, such as event ID, schema version, enrollment/assessment/photo IDs, authenticated subject ID, event/ticket association when applicable, private storageKey, content hash, file metadata, assessment state, consent reference, model/policy version, timestamp and correlation ID.
 
@@ -397,4 +397,4 @@ cargo audit --deny warnings   # needs: cargo install cargo-audit --locked
 
 **Continuous integration** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`, in three jobs: formatting and clippy, tests, and a RustSec dependency audit of `Cargo.lock`. CI needs no provider keys and downloads no inference binaries, because the ONNX Runtime and YuNet model are vendored under `artifacts/` and verified by `tests/artifacts_test.rs`. Actions are pinned to major versions, not commit SHAs. Pin them to SHAs before enabling branch protection.
 
-**Current CI repair:** PRs #116 (Kafka/outbox) and #117 (OAuth runtime) were merged with failing CI runs. Issue [#13](https://github.com/leonard1thecoder/king-sparkon-eye/issues/13) has been reopened; branch `issue/13-restore-main-ci` fixes the recorded compiler/module and dependency-feature failures. Do not treat the merged OAuth/Kafka runtime as verified until the new PR's formatting, clippy, tests and container build all pass.
+**Current CI repair:** PRs #116 (Kafka/outbox) and #117 (OAuth runtime) were merged with failing CI runs. Issue [#13](https://github.com/leonard1thecoder/king-sparkon-eye/issues/13) has been reopened; branch `issue/13-restore-main-ci` repairs the crate module and reqwest feature errors and keeps the incomplete Kafka draft out of the compiled runtime until its dependency, startup wiring and backend contract are ready. Do not treat OAuth as verified until the PR's formatting, clippy, tests and container build pass; do not treat Kafka publishing as implemented.
