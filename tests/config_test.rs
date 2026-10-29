@@ -128,3 +128,53 @@ fn zero_or_non_numeric_image_limit_is_rejected_by_name() {
         assert!(!err.to_string().contains(value));
     }
 }
+
+#[test]
+fn oauth_is_disabled_when_no_oauth_settings_are_supplied() {
+    let config = Config::from_lookup(lookup(HashMap::new())).expect("default config");
+    assert!(config.oauth.is_none());
+}
+
+#[test]
+fn partial_oauth_configuration_fails_closed_without_echoing_secrets() {
+    let map = HashMap::from([
+        (ENV_OAUTH_GOOGLE_CLIENT_ID, "client-id"),
+        (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "private-secret"),
+    ]);
+    let error = Config::from_lookup(lookup(map)).unwrap_err();
+    assert!(matches!(error, ConfigError::Invalid { .. }));
+    assert!(!error.to_string().contains("private-secret"));
+}
+
+#[test]
+fn oauth_requires_strong_bff_and_jwt_secrets_and_exact_callback_urls() {
+    let map = HashMap::from([
+        (ENV_OAUTH_GOOGLE_CLIENT_ID, "client-id"),
+        (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "provider-secret"),
+        (ENV_OAUTH_DATABASE_REST_URL, "https://db.example/rest/v1"),
+        (ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, "service-key"),
+        (ENV_OAUTH_CALLBACK_URLS, "https://tracker.example/auth/callback"),
+        (ENV_OAUTH_EXCHANGE_SECRET, "short"),
+        (ENV_JWT_SIGNING_SECRET, "also-short"),
+    ]);
+    let error = Config::from_lookup(lookup(map)).unwrap_err();
+    assert!(matches!(
+        error,
+        ConfigError::Invalid { name: ENV_OAUTH_EXCHANGE_SECRET, .. }
+    ));
+    assert!(!error.to_string().contains("provider-secret"));
+}
+
+#[test]
+fn production_oauth_rejects_http_callbacks_and_non_loopback_http_database() {
+    let map = HashMap::from([
+        (ENV_OAUTH_GOOGLE_CLIENT_ID, "client-id"),
+        (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "provider-secret"),
+        (ENV_OAUTH_DATABASE_REST_URL, "http://db.example/rest/v1"),
+        (ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, "service-key"),
+        (ENV_OAUTH_CALLBACK_URLS, "http://tracker.example/auth/callback"),
+        (ENV_OAUTH_EXCHANGE_SECRET, "01234567890123456789012345678901"),
+        (ENV_JWT_SIGNING_SECRET, "abcdefghijklmnopqrstuvwxyz123456"),
+    ]);
+    assert!(Config::from_lookup(lookup(map)).is_err());
+}

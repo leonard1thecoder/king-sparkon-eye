@@ -89,6 +89,22 @@ pub struct Config {
     pub image_limits: ImageLimits,
     /// Frontier vision provider settings.
     pub vision: VisionConfig,
+    /// OAuth runtime is disabled unless every required server-side setting is supplied.
+    pub oauth: Option<OAuthRuntimeConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuthRuntimeConfig {
+    pub google_client_id: String,
+    pub google_client_secret: SecretString,
+    /// PostgREST URL for an Eye-owned PostgreSQL database (normally ending in /rest/v1).
+    pub database_rest_url: String,
+    pub database_service_role_key: SecretString,
+    pub callback_urls: String,
+    pub allow_localhost_http: bool,
+    pub exchange_secret: SecretString,
+    pub jwt_signing_secret: SecretString,
+    pub jwt_kid: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -112,6 +128,15 @@ pub const ENV_IMAGE_MAX_HEIGHT: &str = "EYE_IMAGE_MAX_HEIGHT";
 pub const ENV_IMAGE_MAX_PIXELS: &str = "EYE_IMAGE_MAX_PIXELS";
 pub const ENV_IMAGE_MAX_DECODE_ALLOC_BYTES: &str = "EYE_IMAGE_MAX_DECODE_ALLOC_BYTES";
 pub const ENV_IMAGE_DECODE_TIMEOUT_MS: &str = "EYE_IMAGE_DECODE_TIMEOUT_MS";
+pub const ENV_OAUTH_GOOGLE_CLIENT_ID: &str = "EYE_GOOGLE_CLIENT_ID";
+pub const ENV_OAUTH_GOOGLE_CLIENT_SECRET: &str = "EYE_GOOGLE_CLIENT_SECRET";
+pub const ENV_OAUTH_DATABASE_REST_URL: &str = "EYE_DATABASE_REST_URL";
+pub const ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY: &str = "EYE_DATABASE_SERVICE_ROLE_KEY";
+pub const ENV_OAUTH_CALLBACK_URLS: &str = "EYE_OAUTH_CALLBACK_URLS";
+pub const ENV_OAUTH_ALLOW_LOCALHOST_HTTP: &str = "EYE_OAUTH_ALLOW_LOCALHOST_HTTP";
+pub const ENV_OAUTH_EXCHANGE_SECRET: &str = "EYE_OAUTH_EXCHANGE_SECRET";
+pub const ENV_JWT_SIGNING_SECRET: &str = "EYE_JWT_SIGNING_SECRET";
+pub const ENV_JWT_KID: &str = "EYE_JWT_KID";
 
 impl Config {
     /// Loads configuration from the process environment.
@@ -198,6 +223,8 @@ impl Config {
             )?,
         };
 
+        let oauth = parse_oauth_config(&lookup)?;
+
         Ok(Self {
             bind_addr,
             log_filter,
@@ -205,8 +232,166 @@ impl Config {
             vision_provider_api_key,
             image_limits,
             vision,
+            oauth,
         })
     }
+}
+
+
+fn parse_oauth_config<F>(lookup: &F) -> Result<Option<OAuthRuntimeConfig>, ConfigError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let client_id = non_empty(lookup(ENV_OAUTH_GOOGLE_CLIENT_ID));
+    let client_secret = non_empty(lookup(ENV_OAUTH_GOOGLE_CLIENT_SECRET));
+    let database_url = non_empty(lookup(ENV_OAUTH_DATABASE_REST_URL));
+    let database_key = non_empty(lookup(ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY));
+    let callback_urls = non_empty(lookup(ENV_OAUTH_CALLBACK_URLS));
+    let exchange_secret = non_empty(lookup(ENV_OAUTH_EXCHANGE_SECRET));
+    let jwt_secret = non_empty(lookup(ENV_JWT_SIGNING_SECRET));
+    let allow_localhost_http = match non_empty(lookup(ENV_OAUTH_ALLOW_LOCALHOST_HTTP)).as_deref() {
+        None | Some("false") | Some("0") => false,
+        Some("true") | Some("1") => true,
+        Some(_) => {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_ALLOW_LOCALHOST_HTTP,
+                reason: "expected true/false or 1/0".to_owned(),
+            });
+        }
+    };
+
+    let provided = [
+        client_id.is_some(),
+        client_secret.is_some(),
+        database_url.is_some(),
+        database_key.is_some(),
+        callback_urls.is_some(),
+        exchange_secret.is_some(),
+        jwt_secret.is_some(),
+    ];
+    if provided.iter().all(|present| !present) {
+        if allow_localhost_http {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_ALLOW_LOCALHOST_HTTP,
+                reason: "cannot be enabled when OAuth is disabled".to_owned(),
+            });
+        }
+        return Ok(None);
+    }
+    if provided.iter().any(|present| !present) {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_CALLBACK_URLS,
+            reason: "OAuth requires all server-side client, database, callback, exchange and JWT settings".to_owned(),
+        });
+    }
+
+    let client_id = client_id.unwrap_or_default();
+    let client_secret = client_secret.unwrap_or_default();
+    let database_url = database_url.unwrap_or_default();
+    let database_key = database_key.unwrap_or_default();
+    let callback_urls = callback_urls.unwrap_or_default();
+    let exchange_secret = exchange_secret.unwrap_or_default();
+    let jwt_secret = jwt_secret.unwrap_or_default();
+
+    if exchange_secret.len() < 32 {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_EXCHANGE_SECRET,
+            reason: "must contain at least 32 bytes".to_owned(),
+        });
+    }
+    if jwt_secret.len() < 32 {
+        return Err(ConfigError::Invalid {
+            name: ENV_JWT_SIGNING_SECRET,
+            reason: "must contain at least 32 bytes".to_owned(),
+        });
+    }
+
+    let parsed_database_url = reqwest::Url::parse(&database_url).map_err(|_| ConfigError::Invalid {
+        name: ENV_OAUTH_DATABASE_REST_URL,
+        reason: "expected an absolute HTTPS PostgREST URL".to_owned(),
+    })?;
+    if !parsed_database_url.username().is_empty()
+        || parsed_database_url.password().is_some()
+        || parsed_database_url.query().is_some()
+        || parsed_database_url.fragment().is_some()
+    {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_DATABASE_REST_URL,
+            reason: "credentials, query strings and fragments are not allowed in the URL".to_owned(),
+        });
+    }
+    match parsed_database_url.scheme() {
+        "https" => {}
+        "http" if allow_localhost_http && is_loopback_host(parsed_database_url.host_str()) => {}
+        _ => {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_DATABASE_REST_URL,
+                reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
+            });
+        }
+    }
+
+    let mut seen_callbacks = std::collections::HashSet::new();
+    let mut callback_count = 0usize;
+    for raw in callback_urls.split(',').map(str::trim) {
+        if raw.is_empty() || raw.contains('*') {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_CALLBACK_URLS,
+                reason: "must be a comma-separated list of exact absolute callback URLs".to_owned(),
+            });
+        }
+        let url = reqwest::Url::parse(raw).map_err(|_| ConfigError::Invalid {
+            name: ENV_OAUTH_CALLBACK_URLS,
+            reason: "must be a comma-separated list of exact absolute callback URLs".to_owned(),
+        })?;
+        if url.as_str() != raw
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_CALLBACK_URLS,
+                reason: "callback URLs cannot contain credentials, query strings, fragments or non-canonical forms".to_owned(),
+            });
+        }
+        match url.scheme() {
+            "https" => {}
+            "http" if allow_localhost_http && is_loopback_host(url.host_str()) => {}
+            _ => {
+                return Err(ConfigError::Invalid {
+                    name: ENV_OAUTH_CALLBACK_URLS,
+                    reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
+                });
+            }
+        }
+        if !seen_callbacks.insert(raw.to_owned()) {
+            continue;
+        }
+        callback_count += 1;
+    }
+    if callback_count == 0 {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_CALLBACK_URLS,
+            reason: "at least one exact callback URL is required".to_owned(),
+        });
+    }
+
+    Ok(Some(OAuthRuntimeConfig {
+        google_client_id: client_id,
+        google_client_secret: SecretString::new(client_secret),
+        database_rest_url: database_url.trim_end_matches('/').to_owned(),
+        database_service_role_key: SecretString::new(database_key),
+        callback_urls,
+        allow_localhost_http,
+        exchange_secret: SecretString::new(exchange_secret),
+        jwt_signing_secret: SecretString::new(jwt_secret),
+        jwt_kid: non_empty(lookup(ENV_JWT_KID)).unwrap_or_else(|| "key-2026-v1".to_owned()),
+    }))
+}
+
+fn is_loopback_host(host: Option<&str>) -> bool {
+    matches!(host, Some("localhost" | "127.0.0.1" | "::1" | "[::1]"))
 }
 
 /// Reads a positive integer limit. Unset or blank uses the default. Zero and non-numbers are rejected.
