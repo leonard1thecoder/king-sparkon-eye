@@ -59,18 +59,6 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
 | [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on merged #27 and roadmap #18. Resolve sync/async trait, authoritative consent, persistent idempotency, access denial, retention/deletion, and #28 failure recovery before wiring persistence. |
 
-### Kafka decision follow-up (reviewed 2026-10-29, after #97 decision comment)
-
-The approved technical defaults remove the design-choice blocker but do not satisfy #28's implementation acceptance criteria.
-
-| Area | Evidence on main / branch scope | Status |
-|---|---|---|
-| Event identity | Existing constants: topic `eye.enrollments.v1`, type `photo.enrolled.v1`, schema version `1.0.0`. This PR documents them and keeps them unchanged. | Contract version selected; consumer agreement remains unverified. |
-| Eligibility guard | Main's `from_record` accepted deleted enrollment records. This PR rejects non-stored records and persistence states `FAILED` / `NOT_REQUESTED`; tests cover the regression. | Narrow code guard implemented in branch, not a substitute for all publish gates. |
-| Idempotency / partitioning | Publisher dedupe map is process-local. This PR separates the stable partition key (`enrollmentId`) from idempotency and rejects a key reused by another enrollment. | In-memory only; not restart-safe or transactional. |
-| Consent and identity | Storage accepts any syntactically valid consent reference. Backend source inspected for this run does not establish an Eye-specific consent verification API or an Eye enrollment Kafka consumer contract. | Cross-repository blockers; fail closed before production. |
-| Durable delivery | Current enrollment metadata lives in `Mutex<State>`; only `MemoryKafkaProducer` exists. There is no atomic durable metadata/outbox transaction or real TLS producer. | Not implemented; keep #28 open. |
-
 ### Status snapshot (reviewed 2026-10-29, issue #67)
 
 This snapshot was taken from GitHub issue and PR state on 2026-10-29. It replaces the 2026-10-28 snapshot as the current view. The earlier table is kept below as history. Refresh it again before any new execution.
@@ -281,3 +269,15 @@ An issue is ready to merge only when all applicable items are true:
 ---
 
 **Related references:** [Implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-eye/issues/20) · [Source-of-truth and Git workflow issue #32](https://github.com/leonard1thecoder/king-sparkon-eye/issues/32) · [Agent instructions](../AGENTS.md) · [Project README](../README.md)
+
+### Kafka decision follow-up (reviewed 2026-10-29, after #97 decision comment)
+
+The approved technical defaults remove the design-choice blocker but do not satisfy #28's implementation acceptance criteria.
+
+| Area | Evidence on main / branch scope | Status |
+|---|---|---|
+| Event identity | Existing constants: topic `eye.enrollments.v1`, type `photo.enrolled.v1`, schema version `1.0.0`. This PR documents them and keeps them unchanged. | Contract version selected; consumer agreement remains unverified. |
+| Eligibility guard | Main's `from_record` accepted deleted enrollment records. This PR rejects non-stored records and persistence states `FAILED` / `NOT_REQUESTED`; tests cover the regression. | Narrow code guard implemented in branch, not a substitute for all publish gates. |
+| Idempotency / partitioning | Publisher dedupe map is process-local. This PR separates the stable partition key (`enrollmentId`) from idempotency and rejects a key reused by another enrollment. | In-memory only; not restart-safe or transactional. |
+| Consent and identity | Storage accepts any syntactically valid consent reference. Backend source inspected for this run does not establish an Eye-specific consent verification API or an Eye enrollment Kafka consumer contract. | Cross-repository blockers; fail closed before production. |
+| Durable delivery | Current enrollment metadata lives in `Mutex<State>`; only `MemoryKafkaProducer` exists. There is no atomic durable metadata/outbox transaction or real TLS producer. | Not implemented; keep #28 open. |
