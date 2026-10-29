@@ -1,5 +1,53 @@
 # Open issue audit and recommended execution order
 
+## Current snapshot (2026-10-29)
+
+Built from GitHub issue and PR state on 2026-10-29. The 2026-10-28 audit below is historical. Refresh this section before any new execution.
+
+### Issues closed with unmet acceptance criteria
+
+These were closed manually by the repository owner. Each PR that delivered part of the work was marked "Refs" or "partial", and the closing comments do not say the criteria were met. **Reopen or re-scope before counting them as done.**
+
+| Issue | Closed | Delivered | Unmet (see the PR and linked blocker) |
+|---|---|---|---|
+| #13 CI and deployment | 2026-10-29 07:15 | PR #96 (merged): format and clippy gates pass. `cargo audit` not verified locally. | Container (non-root), deploy-time model verification, readiness distinction, rollback docs, smoke test |
+| #14 integration docs | 2026-10-29 07:17 | PR #98: `docs/INTEGRATION_QR_FREE_GATE.md` with gaps listed | Reproducible enrollment and gate flow (no routes mounted), gate-session endpoint, contract naming |
+| #15 consent design | 2026-10-29 07:19 | PR #99: proposal `docs/CONSENT_AND_TEMPLATE_DESIGN.md` | No approved design, no consent store, no tests. Open decisions in §8. |
+| #45 Google sign-in | 2026-10-29 07:05 | PR #92: OIDC core, PKCE, ID-token checks, linking rules | Start route, handoff code and exchange, cookie format, callback allowlist, provider-link storage. Blocker #93. |
+| #48 adversarial tests | 2026-10-29 07:22 | PR #103 and #104: library-level JWT, API-key and password tests; Debug redaction | OAuth cases, route-policy matrix, cross-tenant tests, log redaction, password rate limiting. |
+
+Bugs closed with their PR merged: #90 (PR #91), #100 (PR #106), #101 (PR #105), #102 (PR #104).
+
+### Open issues by playbook step
+
+| Step | Issue | Status | Blocker or next action |
+|---|---|---|---|
+| 1 | #2, #4, #5, #6, #7, #8, #9, #10 | Open, duplicates of merged work | Each duplicates a closed issue (#21, #23, #25, #24, #26, existing tests). Close or link as superseded per repository policy. |
+| 2 | #15 | Closed (see above) | Decisions in `CONSENT_AND_TEMPLATE_DESIGN.md` §8. |
+| 3 | #28 | Open. PR #81 merged an in-memory publisher. | Blocker #97 (publish gating, consent authority, durable publish, Kafka client and TLS). |
+| 4 | #31 | Closed (PR #82) | Confirm the sync/async storage and idempotency decision recorded in #71 |
+| 5 | #58, #59 | Closed (PRs #83, #84) | Recognizer accuracy unverified (#61) |
+| 6 | #12, #55, #61 | Open | Blocker #95 (consented face data and thresholds) |
+| 7 | #30 | Open, blocked | Needs #61, event-scoped auth and gate-session design |
+| 8 | #11 | Open | Threat model in `THREAT_MODEL.md` (open PR #107). Mitigations need HTTP routes (#93). |
+| 8 | #17 | Open | Threat model in `THREAT_MODEL.md`. Fallback and operator handling are undecided. |
+| 8 | #41 | Open epic | Depends on #93 |
+| 8 | #35 | Open | Legal content for public pages. Needs owners, not code. |
+| 8 | #38 | Open | Model decision. Owner needed. |
+| 8 | #64 | Open | Retrieval decision. Boundary doc merged in PR #65. |
+| 8 | #29 | Closed | CI gates exist. Run against the integrated branch. |
+| 8 | #93, #95, #97 | Open | Decision blockers, one per area above. |
+| 8 | #1, #3, #16, #18, #19, #20 | Open | Epics, contracts (#3), and cross-repo admission (#19) |
+
+### Dependency gate
+
+No playbook step can proceed without a decision on #93 (auth routes), #95 (evaluation data and thresholds), or #97 (Kafka publishing rules). The consent decisions in #15 gate retention. No unblocked, in-scope code work was identified in this review. Confirm owners for the blocker issues before the next execution.
+
+---
+
+## Historical snapshot (2026-10-28)
+
+
 **Original snapshot:** 40 open issues returned by GitHub search on 2026-10-28. This is a historical triage list, not a live or exhaustive issue list. **Follow-up review:** 2026-10-28 after PR #69 merged #27 and issue #71 was created. Recommendations are based on issue/PR descriptions and inspected repository docs; re-check current issue state, comments, linked PRs, branches and code before starting work. The playbook and audit must be refreshed when merges change the next actionable task.
 
 ## Executive recommendation
