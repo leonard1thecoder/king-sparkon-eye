@@ -1,8 +1,9 @@
-//! Durable Eye enrollment persistence/outbox integration.
+//! Draft Eye enrollment persistence/outbox runtime for issues #28 and #113.
 //!
-//! PostgreSQL atomically stores enrollment metadata and publish intent. The dispatcher rechecks
-//! authoritative Tracker consent immediately before publication and marks delivered only after
-//! Kafka acknowledges the event.
+//! This module is intentionally not exported by the crate yet: the production Kafka dependency
+//! and lockfile are not present, runtime startup is not wired, and the private Tracker consent
+//! verification request/response contract has not been confirmed. Do not enable or deploy this
+//! draft until those gates are satisfied.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
