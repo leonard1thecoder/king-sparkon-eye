@@ -12,9 +12,9 @@ use axum::http::header::{COOKIE, LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Json, routing::{get, post}};
-use reqwest::{Client, StatusCode as ReqwestStatus};
+use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use tokio::sync::RwLock;
 
 use crate::api::AppState;
@@ -22,7 +22,7 @@ use crate::auth::durable_store::{
     DurableEyeStore, DurableStoreError, DurableUser, hash_hex, new_oauth_user,
 };
 use crate::auth::google::{
-    AccountLinkDecision, ExpectedIdToken, GoogleAuthError, IdTokenClaims, Jwk, PkcePair,
+    ExpectedIdToken, GoogleAuthError, Jwk, PkcePair,
     build_authorization_url, decide_account_link, random_urlsafe, verify_id_token,
 };
 use crate::auth::jwt::{
@@ -201,7 +201,7 @@ impl OAuthRuntime {
         serde_json::from_slice(&bytes).map_err(|_| ApiError::ServiceUnavailable)
     }
 
-    async fn allowlisted_callback(&self, callback: &str) -> Result<String, ApiError> {
+    fn allowlisted_callback(&self, callback: &str) -> Result<String, ApiError> {
         self.allowlist.require(callback).map_err(|_| ApiError::Validation(
             crate::error::ValidationError {
                 field: "callbackUrl",
@@ -351,7 +351,6 @@ impl OAuthRuntime {
         // The database function applies the same identity-link rules under transaction locks.
         // This pure decision check documents and tests those rules; durable storage remains authoritative.
         let new_user = new_oauth_user(email, now_ms()).map_err(|_| ApiError::ServiceUnavailable)?;
-        let _preflight = decide_account_link(&claims, None, None);
         let user = self.store
             .resolve_google_identity(&claims.sub, email, claims.email_verified, now_ms(), &new_user)
             .await
@@ -488,7 +487,7 @@ async fn google_start(
     if let Err(err) = oauth.rate_limit(peer, "google-start", 10).await {
         return rate_limit_error(err);
     }
-    let callback_url = match oauth.allowlisted_callback(&query.callback_url).await {
+    let callback_url = match oauth.allowlisted_callback(&query.callback_url) {
         Ok(url) => url,
         Err(err) => return err.into_response(),
     };

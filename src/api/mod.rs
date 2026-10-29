@@ -1,6 +1,5 @@
 //! HTTP routes: liveness, readiness and request-ID/tracing middleware.
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::extract::State;

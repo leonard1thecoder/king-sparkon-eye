@@ -154,6 +154,7 @@ fn oauth_requires_strong_bff_and_jwt_secrets_and_exact_callback_urls() {
     let map = HashMap::from([
         (ENV_OAUTH_GOOGLE_CLIENT_ID, "client-id"),
         (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "provider-secret"),
+        (ENV_OAUTH_GOOGLE_REDIRECT_URL, "https://eye.example/v1/auth/google/callback"),
         (ENV_OAUTH_DATABASE_REST_URL, "https://db.example/rest/v1"),
         (ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, "service-key"),
         (ENV_OAUTH_CALLBACK_URLS, "https://tracker.example/auth/callback"),
@@ -173,6 +174,7 @@ fn production_oauth_rejects_http_callbacks_and_non_loopback_http_database() {
     let map = HashMap::from([
         (ENV_OAUTH_GOOGLE_CLIENT_ID, "client-id"),
         (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "provider-secret"),
+        (ENV_OAUTH_GOOGLE_REDIRECT_URL, "https://eye.example/v1/auth/google/callback"),
         (ENV_OAUTH_DATABASE_REST_URL, "http://db.example/rest/v1"),
         (ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, "service-key"),
         (ENV_OAUTH_CALLBACK_URLS, "http://tracker.example/auth/callback"),
