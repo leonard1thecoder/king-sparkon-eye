@@ -238,8 +238,6 @@ impl Config {
             )?),
         };
 
-        let enrollment_runtime = parse_enrollment_runtime(&lookup)?;
-
         let vision = VisionConfig {
             base_url: non_empty(lookup(ENV_VISION_PROVIDER_BASE_URL))
                 .unwrap_or_else(|| "https://api.meta.ai/v1".to_owned()),
