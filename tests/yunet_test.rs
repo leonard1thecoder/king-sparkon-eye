@@ -320,3 +320,66 @@ fn zero_one_and_many_are_separate_outcomes_on_synthetic_tensors() {
         DetectionOutcome::MultipleFaces { count: 2 }
     );
 }
+
+// ---- determinism ----
+
+const DETERMINISM_TOLERANCE: f32 = 1e-6;
+
+fn assert_same_detections(
+    label: &str,
+    left: &[king_sparkon_eye::inference::FaceDetection],
+    right: &[king_sparkon_eye::inference::FaceDetection],
+) {
+    assert_eq!(left.len(), right.len(), "{label}: face count differs");
+    for (a, b) in left.iter().zip(right) {
+        assert!(
+            (a.score - b.score).abs() <= DETERMINISM_TOLERANCE,
+            "{label}: score {} vs {}",
+            a.score,
+            b.score
+        );
+        for (va, vb) in [
+            (a.bbox.x0, b.bbox.x0),
+            (a.bbox.y0, b.bbox.y0),
+            (a.bbox.x1, b.bbox.x1),
+            (a.bbox.y1, b.bbox.y1),
+        ] {
+            assert!(
+                (va - vb).abs() <= DETERMINISM_TOLERANCE,
+                "{label}: bbox {va} vs {vb}"
+            );
+        }
+        assert_eq!(
+            a.landmarks.len(),
+            b.landmarks.len(),
+            "{label}: landmark count differs"
+        );
+        for (pa, pb) in a.landmarks.iter().zip(&b.landmarks) {
+            for (x, y) in pa.iter().zip(pb) {
+                assert!(
+                    (x - y).abs() <= DETERMINISM_TOLERANCE,
+                    "{label}: landmark {x} vs {y}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn same_input_gives_the_same_output_on_repeated_calls_and_fresh_instances() {
+    let detector = YunetDetector::load(&model_path(), &runtime_path()).unwrap();
+    let noise = image(200, 150, |x, y| {
+        let v = (x
+            .wrapping_mul(2654435761)
+            .wrapping_add(y.wrapping_mul(40503))) as u8;
+        [v, v.wrapping_add(50), v.wrapping_add(100)]
+    });
+
+    let first = detector.detect(&noise).expect("inference runs");
+    let second = detector.detect(&noise).expect("inference runs again");
+    assert_same_detections("repeated call", &first, &second);
+
+    let fresh = YunetDetector::load(&model_path(), &runtime_path()).unwrap();
+    let third = fresh.detect(&noise).expect("fresh instance runs");
+    assert_same_detections("fresh instance", &first, &third);
+}
