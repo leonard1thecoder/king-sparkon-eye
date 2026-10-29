@@ -337,7 +337,7 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
                         let base = self
                             .retry_policy
                             .base_delay_ms
-                            .saturating_mul(1u64.saturating_shl(attempts.saturating_sub(1)))
+                            .saturating_mul(1u64.checked_shl(attempts.saturating_sub(1)).unwrap_or(u64::MAX))
                             .min(self.retry_policy.max_delay_ms);
                         let clock_jitter = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
