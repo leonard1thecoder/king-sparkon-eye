@@ -9,7 +9,8 @@ fn sample_image() -> NormalizedImage {
     NormalizedImage {
         width: 112,
         height: 112,
-        rgba: vec![128; 112 * 112 * 4],
+        format: king_sparkon_eye::ingress::SupportedFormat::Png,
+        rgb: vec![128; 112 * 112 * 3],
     }
 }
 
@@ -64,7 +65,7 @@ fn cosine_similarity_identical_and_orthogonal() {
     let sim_identical = emb1.cosine_similarity(&emb2);
     assert!((sim_identical - 1.0).abs() < 1e-5, "Identical vectors must have cosine similarity 1.0");
 
-    let mut raw_opposite = vec![-1.0f32; EMBEDDING_DIM];
+    let raw_opposite = vec![-1.0f32; EMBEDDING_DIM];
     let emb_opposite = FaceEmbedding::new(&raw_opposite).unwrap();
     let sim_opposite = emb1.cosine_similarity(&emb_opposite);
     assert!((sim_opposite - (-1.0)).abs() < 1e-5, "Opposite vectors must have cosine similarity -1.0");
