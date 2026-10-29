@@ -97,7 +97,7 @@ Implementation is tracked in [Issue #31](https://github.com/leonard1thecoder/kin
 4. Rust combines ONNX and deterministic image-quality checks with optional frontier-model visual guidance. The frontier model is supplementary and cannot override hard rules or verify identity by itself.
 5. Rust returns retake guidance if the photo is unsuitable. Provider outages are reported as service errors, not as bad photos.
 6. After a suitable image and the required explicit consent, Rust stores the original in private object storage when retention is required and creates a protected face template in the biometric index.
-7. Rust publishes a versioned event (for example, profile-photo.verified.v1) through Kafka. The event includes an opaque storage key, enrollment/assessment IDs, authenticated subject ID, content hash, consent reference, model/policy versions and an idempotency key.
+7. Rust publishes a versioned event (for example, photo.enrolled.v1) through Kafka. The event includes an opaque storage key, enrollment/assessment IDs, authenticated subject ID, content hash, consent reference, model/policy versions and an idempotency key.
 8. Spring Boot consumes the event idempotently, validates the association against its authoritative user/ticket records, and persists the photo/enrollment metadata and storage reference.
 
 The UI must distinguish **assessment passed**, **persistence pending**, and **persisted**. Rust must not claim Spring Boot saved the record merely because a photo passed assessment or an event was attempted.
@@ -120,7 +120,7 @@ Event names below are proposed contract names and must be confirmed/versioned du
 
 ### Enrollment/photo event
 
-**profile-photo.verified.v1**
+**photo.enrolled.v1**\n\nCurrent Rust constants use topic `eye.enrollments.v1`, event type `photo.enrolled.v1`, and schema version `1.0.0`. This is a metadata-only partial implementation: the scoped #28 branch adds an active-record guard, but authoritative consent verification, durable outbox delivery, a production TLS producer and the Spring Boot consumer contract are not yet complete.
 
 Include only the fields Spring Boot needs, such as event ID, schema version, enrollment/assessment/photo IDs, authenticated subject ID, event/ticket association when applicable, private storageKey, content hash, file metadata, assessment state, consent reference, model/policy version, timestamp and correlation ID.
 

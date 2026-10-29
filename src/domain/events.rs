@@ -17,7 +17,7 @@ use std::sync::Mutex;
 
 use crate::contract::{PersistenceStatus, validate_identifier};
 use crate::error::ValidationError;
-use crate::storage::EnrollmentRecord;
+use crate::storage::{EnrollmentRecord, EnrollmentStatus};
 
 /// Current topic for photo enrollment lifecycle events.
 pub const ENROLLMENT_EVENTS_TOPIC: &str = "eye.enrollments.v1";
@@ -61,8 +61,24 @@ pub struct PhotoEnrolledEventV1 {
 
 impl PhotoEnrolledEventV1 {
     /// Builds an event payload from an existing [`EnrollmentRecord`].
-    pub fn from_record(record: &EnrollmentRecord, event_id: String, occurred_at_ms: u64) -> Self {
-        Self {
+    pub fn from_record(
+        record: &EnrollmentRecord,
+        event_id: String,
+        occurred_at_ms: u64,
+    ) -> Result<Self, KafkaPublishError> {
+        // EnrollmentService creates records only after assessment passes, but its records are
+        // process-local and consent is only syntax-checked. This layer can at least prevent
+        // deleted/failed records from becoming events; it cannot stand in for authoritative
+        // consent, caller authorization, or a durable outbox.
+        if record.status != EnrollmentStatus::Stored
+            || matches!(
+                record.persistence,
+                PersistenceStatus::Failed | PersistenceStatus::NotRequested
+            )
+        {
+            return Err(KafkaPublishError::IneligibleEnrollment);
+        }
+        Ok(Self {
             event_id,
             event_type: ENROLLMENT_EVENT_TYPE.to_string(),
             event_version: ENROLLMENT_EVENT_VERSION.to_string(),
@@ -80,7 +96,7 @@ impl PhotoEnrolledEventV1 {
             idempotency_key: record.idempotency_key.clone(),
             persistence: record.persistence,
             occurred_at_ms,
-        }
+        })
     }
 
     /// Validates event structural integrity before publishing.
@@ -97,7 +113,8 @@ impl PhotoEnrolledEventV1 {
                 rule: "must not be empty",
             });
         }
-        if self.content_sha256.len() != 64 {
+        if self.content_sha256.len() != 64
+            || !self.content_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(ValidationError {
                 field: "contentSha256",
                 rule: "must be a valid 64-character hex SHA-256 digest",
@@ -128,6 +145,10 @@ pub enum KafkaPublishError {
     Timeout,
     #[error("maximum retry attempts exceeded")]
     RetriesExceeded,
+    #[error("enrollment is not eligible for an enrollment event")]
+    IneligibleEnrollment,
+    #[error("idempotency key was already used for a different enrollment")]
+    IdempotencyConflict,
 }
 
 /// Trait defining a Kafka producer interface.
@@ -208,7 +229,7 @@ pub struct EnrollmentEventPublisher<P: KafkaProducer> {
     producer: P,
     retry_policy: RetryPolicy,
     topic: String,
-    published_idempotency: Mutex<HashMap<String, String>>,
+    published_idempotency: Mutex<HashMap<String, (String, String)>>,
 }
 
 impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
@@ -249,19 +270,20 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
                 .published_idempotency
                 .lock()
                 .map_err(|_| KafkaPublishError::Unavailable)?;
-            if let Some(existing_event_id) = map.get(idem) {
-                return Ok(existing_event_id.clone());
+            if let Some((existing_event_id, existing_enrollment_id)) = map.get(idem) {
+                if existing_enrollment_id == &event.enrollment_id {
+                    return Ok(existing_event_id.clone());
+                }
+                return Err(KafkaPublishError::IdempotencyConflict);
             }
         }
 
         let payload_json = serde_json::to_string(event)
             .map_err(|e| KafkaPublishError::SerializationError(e.to_string()))?;
 
-        // Partition key: prioritize idempotency_key if set, else enrollment_id.
-        let partition_key = event
-            .idempotency_key
-            .as_deref()
-            .unwrap_or(&event.enrollment_id);
+        // Stable per-enrollment partitioning preserves ordering for this enrollment.
+        // Idempotency is a separate concern and must not change the partition key.
+        let partition_key = &event.enrollment_id;
 
         let mut attempts = 0;
         let mut last_err = KafkaPublishError::Unavailable;
@@ -276,7 +298,10 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
                     if let Some(ref idem) = event.idempotency_key
                         && let Ok(mut map) = self.published_idempotency.lock()
                     {
-                        map.insert(idem.clone(), event.event_id.clone());
+                        map.insert(
+                            idem.clone(),
+                            (event.event_id.clone(), event.enrollment_id.clone()),
+                        );
                     }
                     return Ok(event.event_id.clone());
                 }
