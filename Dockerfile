@@ -7,6 +7,7 @@ FROM rust:1-slim-bookworm AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+COPY migrations ./migrations
 RUN cargo build --release --locked --bin king_sparkon_eye
 
 # ---- runtime ----
