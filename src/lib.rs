@@ -15,6 +15,7 @@ pub mod error;
 pub mod inference;
 pub mod ingress;
 pub mod observability;
+pub mod persistence;
 pub mod provider;
 pub mod quality;
 pub mod storage;
