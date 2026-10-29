@@ -1,4 +1,7 @@
-//! Production Kafka producer using TLS-enabled librdkafka.
+//! Draft Kafka producer adapter using TLS-enabled librdkafka.
+//!
+//! This module is intentionally not exported by the crate until the rdkafka dependency and lockfile
+//! are committed and the #28 runtime acceptance checks pass.
 
 use std::future::Future;
 use std::pin::Pin;
