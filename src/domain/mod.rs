@@ -21,7 +21,6 @@
 //! is configured. In that case a pass also needs a validated advisory.
 
 pub mod events;
-pub mod kafka_producer;
 pub use events::*;
 
 use crate::advisory::{self, Advisory, AdvisoryOutcomeError, FinalAssessment};
