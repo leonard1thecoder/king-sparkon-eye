@@ -46,6 +46,17 @@ jobs:
       - name: Run tests
         run: cargo test --all-features --locked
 
+  container-build:
+    name: Container image builds (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build --tag king-sparkon-eye:ci .
+      - name: Run as non-root user
+        run: test "$(docker run --rm --entrypoint id king-sparkon-eye:ci -u)" = "10001"
+
   dependency-audit:
     name: Dependency audit
     runs-on: ubuntu-latest

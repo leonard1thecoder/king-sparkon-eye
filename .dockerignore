@@ -1,0 +1,9 @@
+# Keep the build context small and free of secrets and test data.
+target
+.git
+.github
+.env
+**/.env
+docs
+tests
+**/*.p8.der
