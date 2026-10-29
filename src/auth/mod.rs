@@ -27,6 +27,7 @@ pub mod durable_store;
 pub mod guard;
 pub mod jwt;
 pub mod oauth_flow;
+pub mod oauth_runtime;
 
 pub use apikey::*;
 pub use guard::*;
