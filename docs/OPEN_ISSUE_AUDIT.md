@@ -1,6 +1,18 @@
 # Open issue audit and recommended execution order
 
-## Current snapshot (2026-10-29)
+## Current snapshot (2026-10-30)
+
+### Verified CI regression and reopened work
+
+- **#13 is open again** as `[P1][BUG] Restore main CI after OAuth and Kafka runtime merges`. GitHub Actions runs for merged PR #116 (run 40969493707) and PR #117 (run 40969755290) both failed. The logs establish compilation/module errors, an invalid reqwest feature, formatting failures and a failed container build. Repair branch: `issue/13-restore-main-ci`.
+- **#45 and #112 remain open.** PR #117 merged OAuth route/runtime and durable-store code, but its CI run failed; end-to-end OAuth acceptance is not verified.
+- **#28 and #113 remain open.** PR #116 merged PostgreSQL enrollment/outbox and Kafka dispatcher code, but its CI run failed; backend consent and consumer interoperability are still unagreed.
+- **#31 remains closed.** Its production S3 lifecycle and orphan-reconciliation claims need a source/test audit before deployment; do not assume the issue's closed state proves every operational requirement is live.
+- **Issue-number caution:** #66 in this Eye repository is the completed deterministic assessment issue. It is not the private backend's consent/consumer contract issue.
+
+The 2026-10-29 snapshot below is retained as historical context and must not be used as the current status.
+
+## Historical snapshot (2026-10-29)
 
 Built from GitHub issue and PR state on 2026-10-29. The 2026-10-28 audit below is historical. Refresh this section before any new execution.
 
