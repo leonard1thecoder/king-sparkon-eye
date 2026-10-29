@@ -591,6 +591,7 @@ dependencies = [
  "image",
  "ort",
  "reqwest",
+ "ring",
  "serde",
  "serde_json",
  "sha2",
