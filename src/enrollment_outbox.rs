@@ -1,8 +1,9 @@
-//! Durable Eye enrollment persistence/outbox integration.
+//! Draft Eye enrollment persistence/outbox runtime for issues #28 and #113.
 //!
-//! PostgreSQL atomically stores enrollment metadata and publish intent. The dispatcher rechecks
-//! authoritative Tracker consent immediately before publication and marks delivered only after
-//! Kafka acknowledges the event.
+//! This module is intentionally not exported by the crate: the production Kafka dependency and
+//! lockfile are not present, runtime startup is not wired, and the private Tracker consent
+//! verification request/response contract has not been confirmed. Do not enable or deploy this
+//! draft until those gates are satisfied.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -100,7 +101,8 @@ impl ConsentVerifier {
     }
 
     pub async fn verify(&self, consent_reference: &str, policy_version: &str) -> ConsentDecision {
-        let response = self.client
+        let response = self
+            .client
             .post(&self.url)
             .header("X-Eye-Service-Key", &self.service_key)
             .json(&json!({
@@ -114,7 +116,9 @@ impl ConsentVerifier {
             return ConsentDecision::Unavailable;
         };
         if response.status() != StatusCode::OK
-            || response.content_length().is_some_and(|length| length > 8192)
+            || response
+                .content_length()
+                .is_some_and(|length| length > 8192)
         {
             return ConsentDecision::Unavailable;
         }
@@ -158,7 +162,8 @@ impl DurableEyeOutbox {
         body: Value,
         max_bytes: usize,
     ) -> Result<Vec<T>, OutboxError> {
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/rpc/{function}", self.base_url))
             .header("apikey", &self.service_key)
             .bearer_auth(&self.service_key)
@@ -167,15 +172,22 @@ impl DurableEyeOutbox {
             .send()
             .await
             .map_err(|_| OutboxError::Unavailable)?;
-        if response.status() == StatusCode::UNAUTHORIZED || response.status() == StatusCode::FORBIDDEN {
+        if response.status() == StatusCode::UNAUTHORIZED
+            || response.status() == StatusCode::FORBIDDEN
+        {
             return Err(OutboxError::Rejected);
         }
         if !response.status().is_success()
-            || response.content_length().is_some_and(|length| length > max_bytes as u64)
+            || response
+                .content_length()
+                .is_some_and(|length| length > max_bytes as u64)
         {
             return Err(OutboxError::Unavailable);
         }
-        let bytes = response.bytes().await.map_err(|_| OutboxError::Unavailable)?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| OutboxError::Unavailable)?;
         if bytes.len() > max_bytes {
             return Err(OutboxError::InvalidEvent);
         }
@@ -190,28 +202,30 @@ impl DurableEyeOutbox {
     ) -> Result<String, OutboxError> {
         event.validate().map_err(|_| OutboxError::InvalidEvent)?;
         let payload = serde_json::to_value(event).map_err(|_| OutboxError::InvalidEvent)?;
-        let rows: Vec<EnqueueResponse> = self.rpc(
-            "eye_commit_enrollment_and_outbox",
-            json!({
-                "p_enrollment_id": record.enrollment_id,
-                "p_event_id": event.event_id,
-                "p_consent_reference": record.consent_reference,
-                "p_object_key": record.object_key,
-                "p_content_sha256": record.content_sha256,
-                "p_byte_len": record.byte_len as u64,
-                "p_image_width": record.width,
-                "p_image_height": record.height,
-                "p_policy_version": record.policy_version,
-                "p_model_version": record.model_version,
-                "p_idempotency_key": record.idempotency_key,
-                "p_status": "STORED",
-                "p_persistence": "PENDING",
-                "p_occurred_at_ms": event.occurred_at_ms,
-                "p_payload": payload,
-                "p_now_ms": now_ms
-            }),
-            8192,
-        ).await?;
+        let rows: Vec<EnqueueResponse> = self
+            .rpc(
+                "eye_commit_enrollment_and_outbox",
+                json!({
+                    "p_enrollment_id": record.enrollment_id,
+                    "p_event_id": event.event_id,
+                    "p_consent_reference": record.consent_reference,
+                    "p_object_key": record.object_key,
+                    "p_content_sha256": record.content_sha256,
+                    "p_byte_len": record.byte_len as u64,
+                    "p_image_width": record.width,
+                    "p_image_height": record.height,
+                    "p_policy_version": record.policy_version,
+                    "p_model_version": record.model_version,
+                    "p_idempotency_key": record.idempotency_key,
+                    "p_status": "STORED",
+                    "p_persistence": "PENDING",
+                    "p_occurred_at_ms": event.occurred_at_ms,
+                    "p_payload": payload,
+                    "p_now_ms": now_ms
+                }),
+                8192,
+            )
+            .await?;
         let result = rows.into_iter().next().ok_or(OutboxError::Unavailable)?;
         match result.outcome.as_str() {
             "created" | "existing" => result.event_id.ok_or(OutboxError::Unavailable),
@@ -234,16 +248,23 @@ impl DurableEyeOutbox {
                 "p_batch_size": batch_size
             }),
             4 * 1024 * 1024,
-        ).await
+        )
+        .await
     }
 
     pub async fn mark_delivered(&self, event_id: &str, now_ms: u64) -> Result<(), OutboxError> {
-        let rows: Vec<BooleanResponse> = self.rpc(
-            "eye_mark_outbox_delivered",
-            json!({"p_event_id": event_id, "p_now_ms": now_ms}),
-            8192,
-        ).await?;
-        if rows.first().is_some_and(|row| row.ok) { Ok(()) } else { Err(OutboxError::Unavailable) }
+        let rows: Vec<BooleanResponse> = self
+            .rpc(
+                "eye_mark_outbox_delivered",
+                json!({"p_event_id": event_id, "p_now_ms": now_ms}),
+                8192,
+            )
+            .await?;
+        if rows.first().is_some_and(|row| row.ok) {
+            Ok(())
+        } else {
+            Err(OutboxError::Unavailable)
+        }
     }
 
     pub async fn reschedule(
@@ -254,20 +275,26 @@ impl DurableEyeOutbox {
         now_ms: u64,
     ) -> Result<(), OutboxError> {
         let exponent = attempts.saturating_sub(1).min(6);
-        let backoff = (1_000u64.saturating_mul(1u64.checked_shl(exponent).unwrap_or(64))).min(60_000);
+        let backoff =
+            (1_000u64.saturating_mul(1u64.checked_shl(exponent).unwrap_or(64))).min(60_000);
         let jitter = now_ms.wrapping_add(u64::from(attempts).wrapping_mul(7919)) % 701;
-        let rows: Vec<OutboxStateResponse> = self.rpc(
-            "eye_reschedule_outbox",
-            json!({
-                "p_event_id": event_id,
-                "p_error_category": error_category,
-                "p_now_ms": now_ms,
-                "p_delay_ms": backoff + jitter,
-                "p_max_attempts": MAX_PUBLISH_ATTEMPTS
-            }),
-            8192,
-        ).await?;
-        if rows.first().is_some_and(|row| matches!(row.outcome.as_str(), "pending" | "dead_letter")) {
+        let rows: Vec<OutboxStateResponse> = self
+            .rpc(
+                "eye_reschedule_outbox",
+                json!({
+                    "p_event_id": event_id,
+                    "p_error_category": error_category,
+                    "p_now_ms": now_ms,
+                    "p_delay_ms": backoff + jitter,
+                    "p_max_attempts": MAX_PUBLISH_ATTEMPTS
+                }),
+                8192,
+            )
+            .await?;
+        if rows
+            .first()
+            .is_some_and(|row| matches!(row.outcome.as_str(), "pending" | "dead_letter"))
+        {
             Ok(())
         } else {
             Err(OutboxError::Unavailable)
@@ -280,16 +307,22 @@ impl DurableEyeOutbox {
         error_category: &'static str,
         now_ms: u64,
     ) -> Result<(), OutboxError> {
-        let rows: Vec<BooleanResponse> = self.rpc(
-            "eye_dead_letter_outbox",
-            json!({
-                "p_event_id": event_id,
-                "p_error_category": error_category,
-                "p_now_ms": now_ms
-            }),
-            8192,
-        ).await?;
-        if rows.first().is_some_and(|row| row.ok) { Ok(()) } else { Err(OutboxError::Unavailable) }
+        let rows: Vec<BooleanResponse> = self
+            .rpc(
+                "eye_dead_letter_outbox",
+                json!({
+                    "p_event_id": event_id,
+                    "p_error_category": error_category,
+                    "p_now_ms": now_ms
+                }),
+                8192,
+            )
+            .await?;
+        if rows.first().is_some_and(|row| row.ok) {
+            Ok(())
+        } else {
+            Err(OutboxError::Unavailable)
+        }
     }
 
     /// Intended only for a separately authenticated operations tool using the service-role key.
@@ -299,17 +332,24 @@ impl DurableEyeOutbox {
         operator_reference: &str,
         now_ms: u64,
     ) -> Result<(), OutboxError> {
-        validate_identifier("operatorReference", operator_reference).map_err(|_| OutboxError::Rejected)?;
-        let rows: Vec<BooleanResponse> = self.rpc(
-            "eye_replay_dead_letter",
-            json!({
-                "p_event_id": event_id,
-                "p_operator_reference": operator_reference,
-                "p_now_ms": now_ms
-            }),
-            8192,
-        ).await?;
-        if rows.first().is_some_and(|row| row.ok) { Ok(()) } else { Err(OutboxError::Rejected) }
+        validate_identifier("operatorReference", operator_reference)
+            .map_err(|_| OutboxError::Rejected)?;
+        let rows: Vec<BooleanResponse> = self
+            .rpc(
+                "eye_replay_dead_letter",
+                json!({
+                    "p_event_id": event_id,
+                    "p_operator_reference": operator_reference,
+                    "p_now_ms": now_ms
+                }),
+                8192,
+            )
+            .await?;
+        if rows.first().is_some_and(|row| row.ok) {
+            Ok(())
+        } else {
+            Err(OutboxError::Rejected)
+        }
     }
 }
 
@@ -331,11 +371,17 @@ impl DurableEnrollmentCoordinator {
         record: &EnrollmentRecord,
         event_id: &str,
     ) -> Result<String, OutboxError> {
-        if record.status != EnrollmentStatus::Stored || record.persistence != PersistenceStatus::Pending {
+        if record.status != EnrollmentStatus::Stored
+            || record.persistence != PersistenceStatus::Pending
+        {
             return Err(OutboxError::IneligibleEnrollment);
         }
         validate_identifier("eventId", event_id).map_err(|_| OutboxError::InvalidEvent)?;
-        match self.consent.verify(&record.consent_reference, &record.policy_version).await {
+        match self
+            .consent
+            .verify(&record.consent_reference, &record.policy_version)
+            .await
+        {
             ConsentDecision::Verified => {}
             ConsentDecision::Denied => return Err(OutboxError::ConsentDenied),
             ConsentDecision::Unavailable => return Err(OutboxError::ConsentUnavailable),
@@ -378,7 +424,10 @@ impl OutboxRuntime {
                     }
                 }
                 Err(_) => {
-                    tracing::warn!(error_category = "OUTBOX_STORE_UNAVAILABLE", "Eye outbox claim failed");
+                    tracing::warn!(
+                        error_category = "OUTBOX_STORE_UNAVAILABLE",
+                        "Eye outbox claim failed"
+                    );
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 }
             }
@@ -387,24 +436,46 @@ impl OutboxRuntime {
 
     async fn process_row(&self, row: ClaimedOutboxRow) {
         let event: PhotoEnrolledEventV1 = match serde_json::from_value(row.payload.clone()) {
-            Ok(event) if event.validate().is_ok()
-                && event.event_id == row.event_id
-                && event.enrollment_id == row.enrollment_id
-                && event.consent_reference == row.consent_reference
-                && event.policy_version == row.policy_version => event,
+            Ok(event)
+                if event.validate().is_ok()
+                    && event.event_id == row.event_id
+                    && event.enrollment_id == row.enrollment_id
+                    && event.consent_reference == row.consent_reference
+                    && event.policy_version == row.policy_version =>
+            {
+                event
+            }
             _ => {
-                let _ = self.store.dead_letter(&row.event_id, "EVENT_CONTRACT_INVALID", now_ms()).await;
+                let _ = self
+                    .store
+                    .dead_letter(&row.event_id, "EVENT_CONTRACT_INVALID", now_ms())
+                    .await;
                 return;
             }
         };
 
-        match self.consent.verify(&row.consent_reference, &row.policy_version).await {
+        match self
+            .consent
+            .verify(&row.consent_reference, &row.policy_version)
+            .await
+        {
             ConsentDecision::Denied => {
-                let _ = self.store.dead_letter(&row.event_id, "CONSENT_NOT_ACTIVE", now_ms()).await;
+                let _ = self
+                    .store
+                    .dead_letter(&row.event_id, "CONSENT_NOT_ACTIVE", now_ms())
+                    .await;
                 return;
             }
             ConsentDecision::Unavailable => {
-                let _ = self.store.reschedule(&row.event_id, row.attempts, "CONSENT_AUTHORITY_UNAVAILABLE", now_ms()).await;
+                let _ = self
+                    .store
+                    .reschedule(
+                        &row.event_id,
+                        row.attempts,
+                        "CONSENT_AUTHORITY_UNAVAILABLE",
+                        now_ms(),
+                    )
+                    .await;
                 return;
             }
             ConsentDecision::Verified => {}
@@ -412,24 +483,50 @@ impl OutboxRuntime {
 
         match self.publisher.publish_enrollment_event(&event).await {
             Ok(acknowledged_event_id) if acknowledged_event_id == row.event_id => {
-                if self.store.mark_delivered(&row.event_id, now_ms()).await.is_err() {
-                    tracing::warn!(error_category = "OUTBOX_ACK_PERSIST_FAILED", "Kafka acknowledged an Eye event but durable delivery status could not be updated");
+                if self
+                    .store
+                    .mark_delivered(&row.event_id, now_ms())
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!(
+                        error_category = "OUTBOX_ACK_PERSIST_FAILED",
+                        "Kafka acknowledged an Eye event but durable delivery status could not be updated"
+                    );
                 }
             }
             Ok(_) => {
-                let _ = self.store.dead_letter(&row.event_id, "EVENT_ID_MISMATCH", now_ms()).await;
+                let _ = self
+                    .store
+                    .dead_letter(&row.event_id, "EVENT_ID_MISMATCH", now_ms())
+                    .await;
             }
-            Err(KafkaPublishError::ValidationError(_)) | Err(KafkaPublishError::IneligibleEnrollment) => {
-                let _ = self.store.dead_letter(&row.event_id, "EVENT_CONTRACT_INVALID", now_ms()).await;
+            Err(KafkaPublishError::ValidationError(_))
+            | Err(KafkaPublishError::IneligibleEnrollment) => {
+                let _ = self
+                    .store
+                    .dead_letter(&row.event_id, "EVENT_CONTRACT_INVALID", now_ms())
+                    .await;
             }
             Err(_) => {
-                let _ = self.store.reschedule(&row.event_id, row.attempts, "KAFKA_DELIVERY_FAILED", now_ms()).await;
+                let _ = self
+                    .store
+                    .reschedule(
+                        &row.event_id,
+                        row.attempts,
+                        "KAFKA_DELIVERY_FAILED",
+                        now_ms(),
+                    )
+                    .await;
             }
         }
     }
 }
 
 pub fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default()
-        .as_millis().min(u64::MAX as u128) as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u64::MAX as u128) as u64
 }

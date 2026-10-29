@@ -11,9 +11,9 @@ use serde::Serialize;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
+use crate::auth::oauth_runtime::OAuthRuntime;
 use crate::config::Config;
 use crate::error::ApiError;
-use crate::auth::oauth_runtime::OAuthRuntime;
 
 pub const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -131,13 +131,15 @@ pub fn router(config: Config) -> Router {
         .fallback(not_found)
         .with_state(state)
         // Never log query strings: Google's callback query contains the provider code and state.
-        .layer(TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
-            tracing::info_span!(
-                "http_request",
-                method = %request.method(),
-                path = %request.uri().path()
-            )
-        }))
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
+                tracing::info_span!(
+                    "http_request",
+                    method = %request.method(),
+                    path = %request.uri().path()
+                )
+            }),
+        )
         .layer(PropagateRequestIdLayer::new(REQUEST_ID_HEADER))
         .layer(SetRequestIdLayer::new(REQUEST_ID_HEADER, MakeRequestUuid))
 }
