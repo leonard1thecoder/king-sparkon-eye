@@ -59,6 +59,20 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
 | [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on merged #27 and roadmap #18. Resolve sync/async trait, authoritative consent, persistent idempotency, access denial, retention/deletion, and #28 failure recovery before wiring persistence. |
 
+### Status snapshot (reviewed 2026-10-29 after contract decision comments on #93 and #97)
+
+This newer snapshot supersedes the same-day pre-decision view below; that earlier snapshot is retained as history. Decision comments on [#93](https://github.com/leonard1thecoder/king-sparkon-eye/issues/93) and [#97](https://github.com/leonard1thecoder/king-sparkon-eye/issues/97) record approved technical defaults. Approval removes the missing-decision blocker, not the implementation or verification gate.
+
+| Workstream | Current evidence | Next safe action / blocker |
+|---|---|---|
+| OAuth #45 | Reopened because PR #92 only implemented OIDC core. Branch `issue/45-google-oauth-routes` adds reusable exact callback-allowlist and hashed, 60-second, single-use handoff primitives plus tests; it does not yet mount the routes, make the handoff durable, implement discovery/token HTTP calls, issue the HTTP session, or persist Google provider links. | Review the #45 PR and track durable identity/provider-link/session transaction storage as a separate dependency. Do not close #45 until the full route/hand-off/session criteria are tested. |
+| OAuth contract #93 | Start/callback/exchange paths, cookie defaults, allowlist key and handoff semantics are recorded in its decision comment and the auth-boundary contract. | Keep #93 open until the HTTP routes and end-to-end tests verify the contract; do not treat the decision comment as implementation evidence. |
+| Kafka #28 | Current `PhotoEnrolledEventV1` is metadata-only but constructs events from any record, including deleted records. Publisher and idempotency are memory-only; there is no production Kafka client, TLS setup or durable outbox in current code. | Branch `issue/28-kafka-outbox-publisher` adds an active-record guard, correct enrollment partition key, regression tests and a versioned contract doc. Durable metadata/outbox, authoritative consent verification, production broker adapter and backend consumer agreement remain blockers. |
+| Kafka contract #97 | Technical defaults are recorded in its decision comment; this does not create a consent endpoint or consumer contract. | Keep #97 and #28 open until the backend/provider contract, durable storage/outbox, production producer and integration tests exist. |
+| Consent | The Eye storage service validates only the shape of `consent_reference`; the accessible Tracker backend sources inspected do not establish an Eye-specific authoritative consent verification API. | Create/complete a backend-owned contract issue and separate backend PR; fail closed until it is verified. Legal consent wording and retention remain a human/legal decision. |
+
+**Documentation sync for this execution:** #45 will update `src/auth/mod.rs`, new `src/auth/oauth_flow.rs`, new `tests/oauth_flow_test.rs`, `docs/AUTH_BOUNDARY_CONTRACTS.md` and this playbook. `AGENTS.md` was reviewed; its required issue-scoped branch and documentation rules already cover this work and are unchanged. README reviewed; OAuth runtime claims are not revised there because no OAuth routes are shipped by this partial PR.
+
 ### Status snapshot (reviewed 2026-10-29, issue #67)
 
 This snapshot was taken from GitHub issue and PR state on 2026-10-29. It replaces the 2026-10-28 snapshot as the current view. The earlier table is kept below as history. Refresh it again before any new execution.

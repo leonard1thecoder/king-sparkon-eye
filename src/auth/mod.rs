@@ -25,6 +25,7 @@ pub mod apikey;
 pub mod google;
 pub mod guard;
 pub mod jwt;
+pub mod oauth_flow;
 
 pub use apikey::*;
 pub use guard::*;
