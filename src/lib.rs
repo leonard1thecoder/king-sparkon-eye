@@ -11,7 +11,6 @@ pub mod auth;
 pub mod config;
 pub mod contract;
 pub mod domain;
-pub mod enrollment_outbox;
 pub mod error;
 pub mod inference;
 pub mod ingress;
