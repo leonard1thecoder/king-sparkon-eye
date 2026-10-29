@@ -59,7 +59,29 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
 | [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on merged #27 and roadmap #18. Resolve sync/async trait, authoritative consent, persistent idempotency, access denial, retention/deletion, and #28 failure recovery before wiring persistence. |
 
-### Status snapshot (reviewed 2026-10-28 after PR #69)
+### Status snapshot (reviewed 2026-10-29, issue #67)
+
+This snapshot was taken from GitHub issue and PR state on 2026-10-29. It replaces the 2026-10-28 snapshot as the current view. The earlier table is kept below as history. Refresh it again before any new execution.
+
+| State | Issues | Evidence and notes |
+|---|---|---|
+| Done (closed, merged) | #21, #22, #23, #24, #25, #26, #27, #29, #31, #42, #43, #44, #46, #47, #58, #59 | Merged PRs: #69 (#27), #82 (#31), #83 (#58), #84 (#59), #88 (#46), #89 (#47). Closed, though their merged PRs were not individually checked in this refresh (branches `issue/21-…` through `issue/29-…` exist). |
+| Merged, issue still open | #28 | Merged in PR #81 (versioned Kafka enrollment events). The issue remains open. Confirm its acceptance criteria before closing. |
+| Closed, partial | #45 | PR #92 (Google OIDC core: PKCE, state/nonce, ID-token verification, account-linking rules) was merged and #45 was closed manually. It does **not** meet #45's acceptance criteria. The start route, handoff code, cookie format, callback allowlist and provider-link storage are undefined. See blocker #93. Reopen or relink #45 when that decision lands. |
+| Closed, with caveats | #24, #29 | #24: real-face fixtures (#55) and runtime wiring remain outstanding. #29: CI gates exist; run them against the integrated branch. |
+| Bug closed | #90 | `embedding_test` did not compile. Fixed in PR #91 so `cargo test --all-targets` runs again. |
+| Open decision blocker | #93 | Auth contract gap for #45: start route, handoff, cookie, callback allowlist, provider-link storage, discovery/JWKS failure behaviour. |
+| Blocked recognition path | #30 | Do not start until #58/#59 are verified (done), #55 supplies consented real-face fixtures, #61 evaluates thresholds, and event-scoped authorization is defined. |
+| Open prerequisites | #15, #38, #55, #60, #61, #64, #11, #12, #13, #14, #35, #48 | Consent record and policy (#15); model decision (#38); real-face fixtures (#55); Muse context (#60); threshold evaluation (#61); retrieval decision (#64, boundary doc merged in PR #65 but issue still open); privacy hardening (#11); evaluation (#12); CI and deployment (#13); integration docs (#14); public pages (#35); auth adversarial tests (#48). |
+| Open P0 issues that overlap merged work | #2, #4, #5, #6, #7, #8, #9, #10 | Each overlaps a closed issue: #2 with #21, #4 with #23, #5/#6 with #25, #7/#8 with #24, #9 with #26, #10 with the existing test suite. Close or link as superseded according to repository policy. Do not re-implement. |
+| Epics (tracking only) | #1, #20, #41 | #41 remains open: auth routes (#45), #48 tests and #93 decision are still outstanding. |
+| Open, not in map | #3, #16, #17, #18, #19 | #3 contract partly covered by #22 and #28; #16 depends on #30; #17 threat model; #18 umbrella, split through #27/#28/#31; #19 cross-repo admission. |
+| Documentation | #67 | This refresh. |
+| Closed docs | #71, #64 (boundary PR #65) | #71 closed. #64 boundary merged, decision record still open. |
+
+**Sequencing note (2026-10-29):** the auth path is now blocked on #93, not on code. Work that does not depend on the auth routes can proceed: #13 CI (the #90 fix means `cargo test --all-targets` must pass), and #14 integration docs. Recognition (#30) remains behind #55/#61.
+
+### Status snapshot (historical, reviewed 2026-10-28 after PR #69)
 
 This is a dated snapshot, not live issue state. Refresh GitHub issue/PR states and comments before every new execution; a merge can make the recommended next task stale.
 
