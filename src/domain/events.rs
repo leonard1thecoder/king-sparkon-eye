@@ -14,7 +14,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::contract::{PersistenceStatus, validate_identifier};
 use crate::error::ValidationError;
@@ -156,10 +159,14 @@ pub enum KafkaPublishError {
     IdempotencyConflict,
 }
 
-/// Trait defining a Kafka producer interface.
+/// Trait defining a Kafka producer interface. The future resolves only after broker acknowledgement.
 pub trait KafkaProducer: Send + Sync {
-    /// Publishes a message with key to a specific topic.
-    fn publish(&self, topic: &str, key: &str, payload_json: &str) -> Result<(), KafkaPublishError>;
+    fn publish<'a>(
+        &'a self,
+        topic: &'a str,
+        key: &'a str,
+        payload_json: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), KafkaPublishError>> + Send + 'a>>;
 }
 
 /// Thread-safe in-memory Kafka producer for tests and verification without network brokers.
@@ -192,28 +199,35 @@ impl MemoryKafkaProducer {
 }
 
 impl KafkaProducer for MemoryKafkaProducer {
-    fn publish(&self, topic: &str, key: &str, payload_json: &str) -> Result<(), KafkaPublishError> {
-        {
-            let mut fails = self
-                .fail_next_publishes
+    fn publish<'a>(
+        &'a self,
+        topic: &'a str,
+        key: &'a str,
+        payload_json: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), KafkaPublishError>> + Send + 'a>> {
+        Box::pin(async move {
+            {
+                let mut fails = self
+                    .fail_next_publishes
+                    .lock()
+                    .map_err(|_| KafkaPublishError::Unavailable)?;
+                if *fails > 0 {
+                    *fails -= 1;
+                    return Err(KafkaPublishError::Unavailable);
+                }
+            }
+
+            let mut list = self
+                .messages
                 .lock()
                 .map_err(|_| KafkaPublishError::Unavailable)?;
-            if *fails > 0 {
-                *fails -= 1;
-                return Err(KafkaPublishError::Unavailable);
-            }
-        }
-
-        let mut list = self
-            .messages
-            .lock()
-            .map_err(|_| KafkaPublishError::Unavailable)?;
-        list.push(PublishedMessage {
-            topic: topic.to_string(),
-            key: key.to_string(),
-            payload_json: payload_json.to_string(),
-        });
-        Ok(())
+            list.push(PublishedMessage {
+                topic: topic.to_string(),
+                key: key.to_string(),
+                payload_json: payload_json.to_string(),
+            });
+            Ok(())
+        })
     }
 }
 
@@ -221,11 +235,17 @@ impl KafkaProducer for MemoryKafkaProducer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
     pub max_attempts: u32,
+    pub base_delay_ms: u64,
+    pub max_delay_ms: u64,
 }
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self { max_attempts: 3 }
+        Self {
+            max_attempts: 3,
+            base_delay_ms: 25,
+            max_delay_ms: 500,
+        }
     }
 }
 
@@ -262,7 +282,7 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
     }
 
     /// Publishes a [`PhotoEnrolledEventV1`] with retry and idempotency tracking.
-    pub fn publish_enrollment_event(
+    pub async fn publish_enrollment_event(
         &self,
         event: &PhotoEnrolledEventV1,
     ) -> Result<String, KafkaPublishError> {
@@ -298,6 +318,7 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
             match self
                 .producer
                 .publish(&self.topic, partition_key, &payload_json)
+                .await
             {
                 Ok(()) => {
                     if let Some(ref idem) = event.idempotency_key
@@ -312,6 +333,17 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
                 }
                 Err(err) => {
                     last_err = err;
+                    if attempts < self.retry_policy.max_attempts {
+                        let base = self.retry_policy.base_delay_ms
+                            .saturating_mul(1u64.saturating_shl(attempts.saturating_sub(1)))
+                            .min(self.retry_policy.max_delay_ms);
+                        let clock_jitter = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map(|duration| duration.subsec_nanos() as u64 % 31)
+                            .unwrap_or(0);
+                        let delay_ms = base.saturating_add(clock_jitter).min(self.retry_policy.max_delay_ms);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    }
                 }
             }
         }

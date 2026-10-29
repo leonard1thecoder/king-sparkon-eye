@@ -62,8 +62,8 @@ fn event_payload_never_contains_raw_photo_or_embedding() {
     assert!(!json.contains("template"));
 }
 
-#[test]
-fn successful_publish_records_message_in_memory_producer() {
+#[tokio::test]
+async fn successful_publish_records_message_in_memory_producer() {
     let memory_producer = MemoryKafkaProducer::new();
     let publisher = EnrollmentEventPublisher::new(memory_producer);
 
@@ -72,7 +72,7 @@ fn successful_publish_records_message_in_memory_producer() {
         PhotoEnrolledEventV1::from_record(&record, "evt-001".to_string(), 1_700_000_000_000)
             .unwrap();
 
-    let res = publisher.publish_enrollment_event(&event);
+    let res = publisher.publish_enrollment_event(&event).await;
     assert_eq!(res.unwrap(), "evt-001");
 
     let messages = publisher.producer().published_messages();
@@ -87,8 +87,8 @@ fn successful_publish_records_message_in_memory_producer() {
     );
 }
 
-#[test]
-fn idempotent_republish_returns_previous_event_id_without_duplicate_message() {
+#[tokio::test]
+async fn idempotent_republish_returns_previous_event_id_without_duplicate_message() {
     let memory_producer = MemoryKafkaProducer::new();
     let publisher = EnrollmentEventPublisher::new(memory_producer);
 
@@ -100,8 +100,8 @@ fn idempotent_republish_returns_previous_event_id_without_duplicate_message() {
         PhotoEnrolledEventV1::from_record(&record, "evt-002".to_string(), 1_700_000_000_500)
             .unwrap();
 
-    let res1 = publisher.publish_enrollment_event(&event1).unwrap();
-    let res2 = publisher.publish_enrollment_event(&event2).unwrap();
+    let res1 = publisher.publish_enrollment_event(&event1).await.unwrap();
+    let res2 = publisher.publish_enrollment_event(&event2).await.unwrap();
 
     assert_eq!(res1, "evt-001");
     assert_eq!(res2, "evt-001"); // Returns existing event_id
@@ -111,8 +111,8 @@ fn idempotent_republish_returns_previous_event_id_without_duplicate_message() {
     assert_eq!(messages.len(), 1);
 }
 
-#[test]
-fn publisher_retries_and_recovers_if_initial_attempt_fails() {
+#[tokio::test]
+async fn publisher_retries_and_recovers_if_initial_attempt_fails() {
     let memory_producer = MemoryKafkaProducer::new();
     memory_producer.fail_next_publishes(2); // Fail first 2 attempts, 3rd succeeds
 
@@ -129,8 +129,8 @@ fn publisher_retries_and_recovers_if_initial_attempt_fails() {
     assert_eq!(messages.len(), 1);
 }
 
-#[test]
-fn publisher_fails_if_retries_exhausted_and_does_not_corrupt_state() {
+#[tokio::test]
+async fn publisher_fails_if_retries_exhausted_and_does_not_corrupt_state() {
     let memory_producer = MemoryKafkaProducer::new();
     memory_producer.fail_next_publishes(5); // More than max 3 attempts
 
@@ -177,8 +177,8 @@ fn deleted_or_failed_enrollments_cannot_become_events() {
     ));
 }
 
-#[test]
-fn idempotency_key_cannot_alias_two_different_enrollments() {
+#[tokio::test]
+async fn idempotency_key_cannot_alias_two_different_enrollments() {
     let memory_producer = MemoryKafkaProducer::new();
     let publisher = EnrollmentEventPublisher::new(memory_producer);
     let record = sample_record();
@@ -193,14 +193,14 @@ fn idempotency_key_cannot_alias_two_different_enrollments() {
 
     assert_eq!(publisher.publish_enrollment_event(&first).unwrap(), "evt-1");
     assert_eq!(
-        publisher.publish_enrollment_event(&second),
+        publisher.publish_enrollment_event(&second).await,
         Err(KafkaPublishError::IdempotencyConflict)
     );
     assert_eq!(publisher.producer().published_messages().len(), 1);
 }
 
-#[test]
-fn invalid_sha256_is_rejected_before_publish() {
+#[tokio::test]
+async fn invalid_sha256_is_rejected_before_publish() {
     let memory_producer = MemoryKafkaProducer::new();
     let publisher = EnrollmentEventPublisher::new(memory_producer);
     let mut record = sample_record();
@@ -210,14 +210,14 @@ fn invalid_sha256_is_rejected_before_publish() {
             .unwrap();
 
     assert!(matches!(
-        publisher.publish_enrollment_event(&event),
+        publisher.publish_enrollment_event(&event).await,
         Err(KafkaPublishError::ValidationError(_))
     ));
     assert!(publisher.producer().published_messages().is_empty());
 }
 
-#[test]
-fn invalid_identifiers_in_event_are_rejected_before_publish() {
+#[tokio::test]
+async fn invalid_identifiers_in_event_are_rejected_before_publish() {
     let memory_producer = MemoryKafkaProducer::new();
     let publisher = EnrollmentEventPublisher::new(memory_producer);
 

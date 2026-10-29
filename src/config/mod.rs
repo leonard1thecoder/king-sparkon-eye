@@ -76,6 +76,25 @@ pub struct VisionConfig {
     pub max_retries: u32,
 }
 
+/// Runtime configuration for durable enrollment persistence and Kafka delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnrollmentRuntimeConfig {
+    pub database_rest_url: String,
+    pub database_service_role_key: SecretString,
+    pub consent_verify_url: String,
+    pub consent_service_key: SecretString,
+    pub bootstrap_servers: String,
+    pub security_protocol: String,
+    pub sasl_mechanism: Option<String>,
+    pub sasl_username: Option<SecretString>,
+    pub sasl_password: Option<SecretString>,
+    pub ssl_ca_location: Option<String>,
+    pub ssl_certificate_location: Option<String>,
+    pub ssl_key_location: Option<String>,
+    pub ssl_key_password: Option<SecretString>,
+    pub allow_localhost_http: bool,
+}
+
 /// Runtime configuration for the service.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -89,6 +108,8 @@ pub struct Config {
     pub image_limits: ImageLimits,
     /// Frontier vision provider settings.
     pub vision: VisionConfig,
+    /// Present only when the durable enrollment/outbox Kafka runtime is enabled.
+    pub enrollment_runtime: Option<EnrollmentRuntimeConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -112,6 +133,22 @@ pub const ENV_IMAGE_MAX_HEIGHT: &str = "EYE_IMAGE_MAX_HEIGHT";
 pub const ENV_IMAGE_MAX_PIXELS: &str = "EYE_IMAGE_MAX_PIXELS";
 pub const ENV_IMAGE_MAX_DECODE_ALLOC_BYTES: &str = "EYE_IMAGE_MAX_DECODE_ALLOC_BYTES";
 pub const ENV_IMAGE_DECODE_TIMEOUT_MS: &str = "EYE_IMAGE_DECODE_TIMEOUT_MS";
+
+pub const ENV_KAFKA_ENABLED: &str = "EYE_KAFKA_ENABLED";
+pub const ENV_KAFKA_DATABASE_REST_URL: &str = "EYE_DATABASE_REST_URL";
+pub const ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY: &str = "EYE_DATABASE_SERVICE_ROLE_KEY";
+pub const ENV_CONSENT_VERIFY_URL: &str = "EYE_CONSENT_VERIFY_URL";
+pub const ENV_CONSENT_SERVICE_KEY: &str = "EYE_CONSENT_SERVICE_KEY";
+pub const ENV_KAFKA_BOOTSTRAP_SERVERS: &str = "EYE_KAFKA_BOOTSTRAP_SERVERS";
+pub const ENV_KAFKA_SECURITY_PROTOCOL: &str = "EYE_KAFKA_SECURITY_PROTOCOL";
+pub const ENV_KAFKA_SASL_MECHANISM: &str = "EYE_KAFKA_SASL_MECHANISM";
+pub const ENV_KAFKA_SASL_USERNAME: &str = "EYE_KAFKA_SASL_USERNAME";
+pub const ENV_KAFKA_SASL_PASSWORD: &str = "EYE_KAFKA_SASL_PASSWORD";
+pub const ENV_KAFKA_SSL_CA_LOCATION: &str = "EYE_KAFKA_SSL_CA_LOCATION";
+pub const ENV_KAFKA_SSL_CERT_LOCATION: &str = "EYE_KAFKA_SSL_CERT_LOCATION";
+pub const ENV_KAFKA_SSL_KEY_LOCATION: &str = "EYE_KAFKA_SSL_KEY_LOCATION";
+pub const ENV_KAFKA_SSL_KEY_PASSWORD: &str = "EYE_KAFKA_SSL_KEY_PASSWORD";
+pub const ENV_KAFKA_ALLOW_LOCALHOST_HTTP: &str = "EYE_KAFKA_ALLOW_LOCALHOST_HTTP";
 
 impl Config {
     /// Loads configuration from the process environment.
@@ -176,6 +213,8 @@ impl Config {
             )?),
         };
 
+        let enrollment_runtime = parse_enrollment_runtime(&lookup)?;
+
         let vision = VisionConfig {
             base_url: non_empty(lookup(ENV_VISION_PROVIDER_BASE_URL))
                 .unwrap_or_else(|| "https://api.meta.ai/v1".to_owned()),
@@ -205,8 +244,146 @@ impl Config {
             vision_provider_api_key,
             image_limits,
             vision,
+            enrollment_runtime,
         })
     }
+}
+
+
+fn parse_enrollment_runtime<F>(lookup: &F) -> Result<Option<EnrollmentRuntimeConfig>, ConfigError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let enabled = match non_empty(lookup(ENV_KAFKA_ENABLED)).as_deref() {
+        None | Some("false") | Some("0") => false,
+        Some("true") | Some("1") => true,
+        Some(_) => return Err(ConfigError::Invalid {
+            name: ENV_KAFKA_ENABLED,
+            reason: "expected true/false or 1/0".to_owned(),
+        }),
+    };
+    if !enabled {
+        return Ok(None);
+    }
+
+    let database_url = non_empty(lookup(ENV_KAFKA_DATABASE_REST_URL));
+    let database_key = non_empty(lookup(ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY));
+    let consent_url = non_empty(lookup(ENV_CONSENT_VERIFY_URL));
+    let consent_key = non_empty(lookup(ENV_CONSENT_SERVICE_KEY));
+    let bootstrap = non_empty(lookup(ENV_KAFKA_BOOTSTRAP_SERVERS));
+    let protocol = non_empty(lookup(ENV_KAFKA_SECURITY_PROTOCOL))
+        .unwrap_or_else(|| "SSL".to_owned())
+        .to_ascii_uppercase();
+    let allow_localhost_http = match non_empty(lookup(ENV_KAFKA_ALLOW_LOCALHOST_HTTP)).as_deref() {
+        None | Some("false") | Some("0") => false,
+        Some("true") | Some("1") => true,
+        Some(_) => return Err(ConfigError::Invalid {
+            name: ENV_KAFKA_ALLOW_LOCALHOST_HTTP,
+            reason: "expected true/false or 1/0".to_owned(),
+        }),
+    };
+
+    if database_url.is_none() {
+        return Err(ConfigError::Invalid { name: ENV_KAFKA_DATABASE_REST_URL, reason: "required when Kafka is enabled".to_owned() });
+    }
+    if database_key.as_deref().is_none_or(|secret| secret.len() < 32) {
+        return Err(ConfigError::Invalid { name: ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, reason: "required and must contain at least 32 bytes".to_owned() });
+    }
+    if consent_url.is_none() {
+        return Err(ConfigError::Invalid { name: ENV_CONSENT_VERIFY_URL, reason: "required when Kafka is enabled".to_owned() });
+    }
+    if consent_key.as_deref().is_none_or(|secret| secret.len() < 32) {
+        return Err(ConfigError::Invalid { name: ENV_CONSENT_SERVICE_KEY, reason: "required and must contain at least 32 bytes".to_owned() });
+    }
+    if bootstrap.as_deref().is_none_or(|servers| servers.trim().is_empty() || servers.contains(' ') || servers.contains("://")) {
+        return Err(ConfigError::Invalid { name: ENV_KAFKA_BOOTSTRAP_SERVERS, reason: "expected a comma-separated host:port list, not a URL".to_owned() });
+    }
+    if !matches!(protocol.as_str(), "SSL" | "SASL_SSL") {
+        return Err(ConfigError::Invalid { name: ENV_KAFKA_SECURITY_PROTOCOL, reason: "TLS is required; use SSL or SASL_SSL".to_owned() });
+    }
+
+    let parsed_database = reqwest::Url::parse(database_url.as_deref().unwrap_or_default()).map_err(|_| ConfigError::Invalid {
+        name: ENV_KAFKA_DATABASE_REST_URL, reason: "expected an absolute PostgREST /rest/v1 URL".to_owned()
+    })?;
+    if parsed_database.path().trim_end_matches('/') != "/rest/v1"
+        || !parsed_database.username().is_empty()
+        || parsed_database.password().is_some()
+        || parsed_database.query().is_some()
+        || parsed_database.fragment().is_some()
+    {
+        return Err(ConfigError::Invalid { name: ENV_KAFKA_DATABASE_REST_URL, reason: "must end in /rest/v1 and contain no credentials, query or fragment".to_owned() });
+    }
+    validate_runtime_url(
+        consent_url.as_deref().unwrap_or_default(),
+        "/api/internal/eye/consent/verify",
+        ENV_CONSENT_VERIFY_URL,
+        allow_localhost_http,
+    )?;
+    match parsed_database.scheme() {
+        "https" => {}
+        "http" if allow_localhost_http && is_loopback_host(parsed_database.host_str()) => {}
+        _ => return Err(ConfigError::Invalid { name: ENV_KAFKA_DATABASE_REST_URL, reason: "HTTPS required except explicit loopback development".to_owned() }),
+    }
+
+    let sasl_mechanism = non_empty(lookup(ENV_KAFKA_SASL_MECHANISM));
+    let sasl_username = non_empty(lookup(ENV_KAFKA_SASL_USERNAME));
+    let sasl_password = non_empty(lookup(ENV_KAFKA_SASL_PASSWORD));
+    if protocol == "SASL_SSL" && (sasl_mechanism.is_none() || sasl_username.is_none() || sasl_password.is_none()) {
+        return Err(ConfigError::Invalid { name: ENV_KAFKA_SASL_USERNAME, reason: "SASL_SSL requires SASL mechanism, username and password".to_owned() });
+    }
+    if protocol == "SSL" && (sasl_mechanism.is_some() || sasl_username.is_some() || sasl_password.is_some()) {
+        return Err(ConfigError::Invalid { name: ENV_KAFKA_SECURITY_PROTOCOL, reason: "SASL settings require SASL_SSL".to_owned() });
+    }
+
+    let ca = non_empty(lookup(ENV_KAFKA_SSL_CA_LOCATION));
+    let cert = non_empty(lookup(ENV_KAFKA_SSL_CERT_LOCATION));
+    let key = non_empty(lookup(ENV_KAFKA_SSL_KEY_LOCATION));
+    let key_password = non_empty(lookup(ENV_KAFKA_SSL_KEY_PASSWORD));
+    if cert.is_some() != key.is_some() {
+        return Err(ConfigError::Invalid { name: ENV_KAFKA_SSL_CERT_LOCATION, reason: "client certificate and private key must be configured together".to_owned() });
+    }
+
+    Ok(Some(EnrollmentRuntimeConfig {
+        database_rest_url: database_url.unwrap_or_default().trim_end_matches('/').to_owned(),
+        database_service_role_key: SecretString::new(database_key.unwrap_or_default()),
+        consent_verify_url: consent_url.unwrap_or_default(),
+        consent_service_key: SecretString::new(consent_key.unwrap_or_default()),
+        bootstrap_servers: bootstrap.unwrap_or_default(),
+        security_protocol: protocol,
+        sasl_mechanism,
+        sasl_username: sasl_username.map(SecretString::new),
+        sasl_password: sasl_password.map(SecretString::new),
+        ssl_ca_location: ca,
+        ssl_certificate_location: cert,
+        ssl_key_location: key,
+        ssl_key_password: key_password.map(SecretString::new),
+        allow_localhost_http,
+    }))
+}
+
+fn validate_runtime_url(
+    raw: &str,
+    expected_path: &str,
+    name: &'static str,
+    allow_localhost_http: bool,
+) -> Result<(), ConfigError> {
+    let url = reqwest::Url::parse(raw).map_err(|_| ConfigError::Invalid {
+        name, reason: "expected an absolute HTTPS URL".to_owned()
+    })?;
+    if !url.username().is_empty() || url.password().is_some() || url.query().is_some()
+        || url.fragment().is_some() || url.path() != expected_path || url.as_str() != raw
+    {
+        return Err(ConfigError::Invalid { name, reason: "URL must have the exact configured path without credentials/query/fragment".to_owned() });
+    }
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" if allow_localhost_http && is_loopback_host(url.host_str()) => Ok(()),
+        _ => Err(ConfigError::Invalid { name, reason: "HTTPS required except explicit loopback development".to_owned() })
+    }
+}
+
+fn is_loopback_host(host: Option<&str>) -> bool {
+    matches!(host, Some("localhost" | "127.0.0.1" | "::1" | "[::1]"))
 }
 
 /// Reads a positive integer limit. Unset or blank uses the default. Zero and non-numbers are rejected.
