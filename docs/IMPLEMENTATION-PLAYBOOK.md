@@ -65,7 +65,7 @@ This is a dated snapshot, not live issue state. Refresh GitHub issue/PR states a
 
 | State | Issues | Notes |
 |---|---|---|
-| Done (closed, merged) | #21, #22, #23, #25, #26, #27 | #26 merged in PR #66. #27 storage boundary merged in PR #69; it is an in-memory abstraction, not production S3 persistence. |
+| Done (closed, merged) | #21, #22, #23, #25, #26, #27, #28, #31, #58 | #26 merged in PR #66. #27 in PR #69. #28 merged in PR #81. #31 merged in PR #82. #58 documented in `docs/ONNX_MODEL_CONTRACT_INVENTORY.md` on branch `issue/58-onnx-model-contract-inventory`. |
 | Implemented in branch | #28, #31 | #28 in `issue/28-kafka-enrollment-events`. #31 private AWS S3 adapter in `issue/31-s3-private-storage`. |
 | Closed, with caveats | #24, #29 | #24: real-face fixtures (#55) and runtime wiring remain outstanding. #29: CI gates exist; run them against the integrated branch. |
 | Blocked recognition path | #30 | Do not start until #58/#59 establish and verify the embedding contract, #55 supplies licensed/consented real-face fixtures, #61 evaluates thresholds, and event-scoped authorization is defined. |
