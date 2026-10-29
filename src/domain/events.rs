@@ -7,17 +7,21 @@
 //! - Under no circumstance are raw photo bytes, embeddings, or biometric templates placed in Kafka event payloads.
 //! - Event schema is typed, versioned (`v1`), and self-contained.
 //! - Idempotency key and enrollment ID enable deduplication on downstream consumers (Spring Boot).
-//! - At-least-once delivery with bounded retries and exponential/jitter backoff policy.
+//! - The current synchronous publisher uses a bounded attempt count only. Backoff/jitter, durable retries,
+//!   dead-lettering and a real broker adapter are specified in docs/KAFKA_ENROLLMENT_CONTRACT.md but not implemented.
 //! - Clear separation of storage success and event publication failure: publishing failures
 //!   never mark persistence as Confirmed and never corrupt or silently discard stored metadata.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::contract::{PersistenceStatus, validate_identifier};
 use crate::error::ValidationError;
-use crate::storage::EnrollmentRecord;
+use crate::storage::{EnrollmentRecord, EnrollmentStatus};
 
 /// Current topic for photo enrollment lifecycle events.
 pub const ENROLLMENT_EVENTS_TOPIC: &str = "eye.enrollments.v1";
@@ -61,8 +65,24 @@ pub struct PhotoEnrolledEventV1 {
 
 impl PhotoEnrolledEventV1 {
     /// Builds an event payload from an existing [`EnrollmentRecord`].
-    pub fn from_record(record: &EnrollmentRecord, event_id: String, occurred_at_ms: u64) -> Self {
-        Self {
+    pub fn from_record(
+        record: &EnrollmentRecord,
+        event_id: String,
+        occurred_at_ms: u64,
+    ) -> Result<Self, KafkaPublishError> {
+        // EnrollmentService creates records only after assessment passes, but its records are
+        // process-local and consent is only syntax-checked. This layer can at least prevent
+        // deleted/failed records from becoming events; it cannot stand in for authoritative
+        // consent, caller authorization, or a durable outbox.
+        if record.status != EnrollmentStatus::Stored
+            || matches!(
+                record.persistence,
+                PersistenceStatus::Failed | PersistenceStatus::NotRequested
+            )
+        {
+            return Err(KafkaPublishError::IneligibleEnrollment);
+        }
+        Ok(Self {
             event_id,
             event_type: ENROLLMENT_EVENT_TYPE.to_string(),
             event_version: ENROLLMENT_EVENT_VERSION.to_string(),
@@ -80,7 +100,7 @@ impl PhotoEnrolledEventV1 {
             idempotency_key: record.idempotency_key.clone(),
             persistence: record.persistence,
             occurred_at_ms,
-        }
+        })
     }
 
     /// Validates event structural integrity before publishing.
@@ -97,7 +117,12 @@ impl PhotoEnrolledEventV1 {
                 rule: "must not be empty",
             });
         }
-        if self.content_sha256.len() != 64 {
+        if self.content_sha256.len() != 64
+            || !self
+                .content_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
             return Err(ValidationError {
                 field: "contentSha256",
                 rule: "must be a valid 64-character hex SHA-256 digest",
@@ -128,12 +153,20 @@ pub enum KafkaPublishError {
     Timeout,
     #[error("maximum retry attempts exceeded")]
     RetriesExceeded,
+    #[error("enrollment is not eligible for an enrollment event")]
+    IneligibleEnrollment,
+    #[error("idempotency key was already used for a different enrollment")]
+    IdempotencyConflict,
 }
 
-/// Trait defining a Kafka producer interface.
+/// Trait defining a Kafka producer interface. The future resolves only after broker acknowledgement.
 pub trait KafkaProducer: Send + Sync {
-    /// Publishes a message with key to a specific topic.
-    fn publish(&self, topic: &str, key: &str, payload_json: &str) -> Result<(), KafkaPublishError>;
+    fn publish<'a>(
+        &'a self,
+        topic: &'a str,
+        key: &'a str,
+        payload_json: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), KafkaPublishError>> + Send + 'a>>;
 }
 
 /// Thread-safe in-memory Kafka producer for tests and verification without network brokers.
@@ -166,28 +199,35 @@ impl MemoryKafkaProducer {
 }
 
 impl KafkaProducer for MemoryKafkaProducer {
-    fn publish(&self, topic: &str, key: &str, payload_json: &str) -> Result<(), KafkaPublishError> {
-        {
-            let mut fails = self
-                .fail_next_publishes
+    fn publish<'a>(
+        &'a self,
+        topic: &'a str,
+        key: &'a str,
+        payload_json: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), KafkaPublishError>> + Send + 'a>> {
+        Box::pin(async move {
+            {
+                let mut fails = self
+                    .fail_next_publishes
+                    .lock()
+                    .map_err(|_| KafkaPublishError::Unavailable)?;
+                if *fails > 0 {
+                    *fails -= 1;
+                    return Err(KafkaPublishError::Unavailable);
+                }
+            }
+
+            let mut list = self
+                .messages
                 .lock()
                 .map_err(|_| KafkaPublishError::Unavailable)?;
-            if *fails > 0 {
-                *fails -= 1;
-                return Err(KafkaPublishError::Unavailable);
-            }
-        }
-
-        let mut list = self
-            .messages
-            .lock()
-            .map_err(|_| KafkaPublishError::Unavailable)?;
-        list.push(PublishedMessage {
-            topic: topic.to_string(),
-            key: key.to_string(),
-            payload_json: payload_json.to_string(),
-        });
-        Ok(())
+            list.push(PublishedMessage {
+                topic: topic.to_string(),
+                key: key.to_string(),
+                payload_json: payload_json.to_string(),
+            });
+            Ok(())
+        })
     }
 }
 
@@ -195,11 +235,17 @@ impl KafkaProducer for MemoryKafkaProducer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
     pub max_attempts: u32,
+    pub base_delay_ms: u64,
+    pub max_delay_ms: u64,
 }
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self { max_attempts: 3 }
+        Self {
+            max_attempts: 3,
+            base_delay_ms: 25,
+            max_delay_ms: 500,
+        }
     }
 }
 
@@ -208,7 +254,7 @@ pub struct EnrollmentEventPublisher<P: KafkaProducer> {
     producer: P,
     retry_policy: RetryPolicy,
     topic: String,
-    published_idempotency: Mutex<HashMap<String, String>>,
+    published_idempotency: Mutex<HashMap<String, (String, String)>>,
 }
 
 impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
@@ -236,7 +282,7 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
     }
 
     /// Publishes a [`PhotoEnrolledEventV1`] with retry and idempotency tracking.
-    pub fn publish_enrollment_event(
+    pub async fn publish_enrollment_event(
         &self,
         event: &PhotoEnrolledEventV1,
     ) -> Result<String, KafkaPublishError> {
@@ -249,19 +295,20 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
                 .published_idempotency
                 .lock()
                 .map_err(|_| KafkaPublishError::Unavailable)?;
-            if let Some(existing_event_id) = map.get(idem) {
-                return Ok(existing_event_id.clone());
+            if let Some((existing_event_id, existing_enrollment_id)) = map.get(idem) {
+                if existing_enrollment_id == &event.enrollment_id {
+                    return Ok(existing_event_id.clone());
+                }
+                return Err(KafkaPublishError::IdempotencyConflict);
             }
         }
 
         let payload_json = serde_json::to_string(event)
             .map_err(|e| KafkaPublishError::SerializationError(e.to_string()))?;
 
-        // Partition key: prioritize idempotency_key if set, else enrollment_id.
-        let partition_key = event
-            .idempotency_key
-            .as_deref()
-            .unwrap_or(&event.enrollment_id);
+        // Stable per-enrollment partitioning preserves ordering for this enrollment.
+        // Idempotency is a separate concern and must not change the partition key.
+        let partition_key = &event.enrollment_id;
 
         let mut attempts = 0;
         let mut last_err = KafkaPublishError::Unavailable;
@@ -271,17 +318,32 @@ impl<P: KafkaProducer> EnrollmentEventPublisher<P> {
             match self
                 .producer
                 .publish(&self.topic, partition_key, &payload_json)
+                .await
             {
                 Ok(()) => {
                     if let Some(ref idem) = event.idempotency_key
                         && let Ok(mut map) = self.published_idempotency.lock()
                     {
-                        map.insert(idem.clone(), event.event_id.clone());
+                        map.insert(
+                            idem.clone(),
+                            (event.event_id.clone(), event.enrollment_id.clone()),
+                        );
                     }
                     return Ok(event.event_id.clone());
                 }
                 Err(err) => {
                     last_err = err;
+                    if attempts < self.retry_policy.max_attempts {
+                        let base = self.retry_policy.base_delay_ms
+                            .saturating_mul(1u64.saturating_shl(attempts.saturating_sub(1)))
+                            .min(self.retry_policy.max_delay_ms);
+                        let clock_jitter = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map(|duration| duration.subsec_nanos() as u64 % 31)
+                            .unwrap_or(0);
+                        let delay_ms = base.saturating_add(clock_jitter).min(self.retry_policy.max_delay_ms);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    }
                 }
             }
         }

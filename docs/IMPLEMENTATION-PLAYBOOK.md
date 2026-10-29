@@ -54,7 +54,7 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 | [#25](https://github.com/leonard1thecoder/king-sparkon-eye/issues/25) | Frontier-vision adapter and validated quality feedback | Depends on #21–#23. Selected model: **Meta Muse Spark 1.3**, model ID `muse-spark-1.3`, for supplementary visual-quality guidance. |
 | [#26](https://github.com/leonard1thecoder/king-sparkon-eye/issues/26) | Deterministic assessment orchestration and reason codes | Depends on #22, #24 and #25. It must make hard-rule precedence explicit and keep provider failure distinct from poor image quality. |
 | [#27](https://github.com/leonard1thecoder/king-sparkon-eye/issues/27) | Private storage abstraction and enrollment metadata boundary | **Merged in PR #69.** In-memory only; consent reference is shape-checked, idempotency is process-local, and the trait is synchronous. Not production S3 or HTTP persistence. |
-| [#28](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28) | Versioned Kafka enrollment events | Depends on #22, #26 and the #27 boundary. Confirm event schema, idempotency, consent lifecycle, and storage-success/event-failure recovery before coding. |
+| [#28](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28) | Versioned Kafka enrollment events | Technical defaults approved in #97: keep `eye.enrollments.v1` / `photo.enrolled.v1` / schema `1.0.0`; key by enrollment ID; use a durable transactional outbox. Current code remains process-local; consent verification, durable metadata/outbox, production TLS producer and consumer agreement are still gates. |
 | [#29](https://github.com/leonard1thecoder/king-sparkon-eye/issues/29) | Fixtures, integration/contract tests and CI | Depends progressively on #21–#28; tests must be added alongside each task, not postponed until the end. |
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
 | [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on merged #27 and roadmap #18. Resolve sync/async trait, authoritative consent, persistent idempotency, access denial, retention/deletion, and #28 failure recovery before wiring persistence. |
@@ -117,7 +117,7 @@ Related product/roadmap issues include [#1](https://github.com/leonard1thecoder/
 
 1. **Refresh evidence first:** read current GitHub states/comments for the selected issue, its dependencies, related closed issues and PRs. The snapshot above is not a substitute for this check.
 2. **Resolve consent and persistence design:** review #15 and the explicit open questions from PR #69. If the consent-record contract or storage async decision is still unresolved, create/finish the decision issue before retaining real photos or implementing S3.
-3. **Event publication (#28):** proceed only after the event schema, consent reference, idempotency key, and storage-success/Kafka-failure recovery are agreed. Keep event payloads free of raw photos, embeddings and secrets.
+3. **Event publication (#28):** technical defaults are recorded on #97 and in `docs/KAFKA_ENROLLMENT_CONTRACT.md`. The current implementation can enforce active-record/event integrity only; do not enable production publishing until authoritative consent verification, durable metadata plus transactional outbox, a TLS producer, and backend consumer compatibility are implemented and tested. Keep event payloads free of raw photos, embeddings and secrets.
 4. **S3 adapter (#31):** coordinate with #28 and #27; agree sync/async storage behavior first. Implement private access, encryption, deletion/retention, persistent idempotency, access-denial tests and retry/orphan recovery. Do not claim production persistence before tests and deployment configuration exist.
 5. **Recognition contract (#58 → #59):** inventory the actual recognizer artifact and verify its model contract before implementing embeddings. Never infer dimensions, normalization, alignment, metric or threshold.
 6. **Evaluation gate (#55, #61, #12):** obtain licensed/consented real-face fixtures and run subject-disjoint evaluation before threshold claims or recognition rollout.
@@ -283,3 +283,15 @@ An issue is ready to merge only when all applicable items are true:
 ---
 
 **Related references:** [Implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-eye/issues/20) · [Source-of-truth and Git workflow issue #32](https://github.com/leonard1thecoder/king-sparkon-eye/issues/32) · [Agent instructions](../AGENTS.md) · [Project README](../README.md)
+
+### Kafka decision follow-up (reviewed 2026-10-29, after #97 decision comment)
+
+The approved technical defaults remove the design-choice blocker but do not satisfy #28's implementation acceptance criteria.
+
+| Area | Evidence on main / branch scope | Status |
+|---|---|---|
+| Event identity | Existing constants: topic `eye.enrollments.v1`, type `photo.enrolled.v1`, schema version `1.0.0`. This PR documents them and keeps them unchanged. | Contract version selected; consumer agreement remains unverified. |
+| Eligibility guard | Main's `from_record` accepted deleted enrollment records. This PR rejects non-stored records and persistence states `FAILED` / `NOT_REQUESTED`; tests cover the regression. | Narrow code guard implemented in branch, not a substitute for all publish gates. |
+| Idempotency / partitioning | Publisher dedupe map is process-local. This PR separates the stable partition key (`enrollmentId`) from idempotency and rejects a key reused by another enrollment. | In-memory only; not restart-safe or transactional. |
+| Consent and identity | Storage accepts any syntactically valid consent reference. Backend source inspected for this run does not establish an Eye-specific consent verification API or an Eye enrollment Kafka consumer contract. | Cross-repository blockers; fail closed before production. |
+| Durable delivery | Current enrollment metadata lives in `Mutex<State>`; only `MemoryKafkaProducer` exists. There is no atomic durable metadata/outbox transaction or real TLS producer. | Not implemented; keep #28 open. |

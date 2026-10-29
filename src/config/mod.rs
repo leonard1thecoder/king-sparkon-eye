@@ -76,6 +76,25 @@ pub struct VisionConfig {
     pub max_retries: u32,
 }
 
+/// Runtime configuration for durable enrollment persistence and Kafka delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnrollmentRuntimeConfig {
+    pub database_rest_url: String,
+    pub database_service_role_key: SecretString,
+    pub consent_verify_url: String,
+    pub consent_service_key: SecretString,
+    pub bootstrap_servers: String,
+    pub security_protocol: String,
+    pub sasl_mechanism: Option<String>,
+    pub sasl_username: Option<SecretString>,
+    pub sasl_password: Option<SecretString>,
+    pub ssl_ca_location: Option<String>,
+    pub ssl_certificate_location: Option<String>,
+    pub ssl_key_location: Option<String>,
+    pub ssl_key_password: Option<SecretString>,
+    pub allow_localhost_http: bool,
+}
+
 /// Runtime configuration for the service.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -140,6 +159,22 @@ pub const ENV_OAUTH_EXCHANGE_SECRET: &str = "EYE_OAUTH_EXCHANGE_SECRET";
 pub const ENV_JWT_SIGNING_SECRET: &str = "EYE_JWT_SIGNING_SECRET";
 pub const ENV_JWT_KID: &str = "EYE_JWT_KID";
 
+pub const ENV_KAFKA_ENABLED: &str = "EYE_KAFKA_ENABLED";
+pub const ENV_KAFKA_DATABASE_REST_URL: &str = "EYE_DATABASE_REST_URL";
+pub const ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY: &str = "EYE_DATABASE_SERVICE_ROLE_KEY";
+pub const ENV_CONSENT_VERIFY_URL: &str = "EYE_CONSENT_VERIFY_URL";
+pub const ENV_CONSENT_SERVICE_KEY: &str = "EYE_CONSENT_SERVICE_KEY";
+pub const ENV_KAFKA_BOOTSTRAP_SERVERS: &str = "EYE_KAFKA_BOOTSTRAP_SERVERS";
+pub const ENV_KAFKA_SECURITY_PROTOCOL: &str = "EYE_KAFKA_SECURITY_PROTOCOL";
+pub const ENV_KAFKA_SASL_MECHANISM: &str = "EYE_KAFKA_SASL_MECHANISM";
+pub const ENV_KAFKA_SASL_USERNAME: &str = "EYE_KAFKA_SASL_USERNAME";
+pub const ENV_KAFKA_SASL_PASSWORD: &str = "EYE_KAFKA_SASL_PASSWORD";
+pub const ENV_KAFKA_SSL_CA_LOCATION: &str = "EYE_KAFKA_SSL_CA_LOCATION";
+pub const ENV_KAFKA_SSL_CERT_LOCATION: &str = "EYE_KAFKA_SSL_CERT_LOCATION";
+pub const ENV_KAFKA_SSL_KEY_LOCATION: &str = "EYE_KAFKA_SSL_KEY_LOCATION";
+pub const ENV_KAFKA_SSL_KEY_PASSWORD: &str = "EYE_KAFKA_SSL_KEY_PASSWORD";
+pub const ENV_KAFKA_ALLOW_LOCALHOST_HTTP: &str = "EYE_KAFKA_ALLOW_LOCALHOST_HTTP";
+
 impl Config {
     /// Loads configuration from the process environment.
     pub fn from_env() -> Result<Self, ConfigError> {
@@ -202,6 +237,8 @@ impl Config {
                 DEFAULT_IMAGE_DECODE_TIMEOUT_MS,
             )?),
         };
+
+        let enrollment_runtime = parse_enrollment_runtime(&lookup)?;
 
         let vision = VisionConfig {
             base_url: non_empty(lookup(ENV_VISION_PROVIDER_BASE_URL))

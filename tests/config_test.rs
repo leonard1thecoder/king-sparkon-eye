@@ -133,53 +133,87 @@ fn zero_or_non_numeric_image_limit_is_rejected_by_name() {
 }
 
 #[test]
-fn oauth_is_disabled_when_no_oauth_settings_are_supplied() {
-    let config = Config::from_lookup(lookup(HashMap::new())).expect("default config");
-    assert!(config.oauth.is_none());
+fn kafka_disabled_by_default_and_enabled_requires_durable_storage_and_consent_authority() {
+    use king_sparkon_eye::config::{ENV_KAFKA_ENABLED, ENV_KAFKA_BOOTSTRAP_SERVERS};
+    assert!(Config::from_lookup(lookup(HashMap::new())).unwrap().enrollment_runtime.is_none());
+
+    let map = HashMap::from([(ENV_KAFKA_ENABLED, "true")]);
+    let error = Config::from_lookup(lookup(map)).unwrap_err();
+    assert!(matches!(error, ConfigError::Invalid { name: ENV_KAFKA_DATABASE_REST_URL, .. }));
+
+    let map = HashMap::from([
+        (ENV_KAFKA_ENABLED, "true"),
+        (ENV_KAFKA_DATABASE_REST_URL, "https://eye-db.example/rest/v1"),
+        (ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, "database-service-role-key-at-least-32"),
+        (ENV_CONSENT_VERIFY_URL, "https://tracker.example/api/internal/eye/consent/verify"),
+        (ENV_CONSENT_SERVICE_KEY, "consent-service-key-at-least-32-bytes"),
+        (ENV_KAFKA_BOOTSTRAP_SERVERS, "broker.example:9093"),
+    ]);
+    let config = Config::from_lookup(lookup(map)).unwrap();
+    let runtime = config.enrollment_runtime.unwrap();
+    assert_eq!(runtime.security_protocol, "SSL");
+    assert_eq!(runtime.bootstrap_servers, "broker.example:9093");
+    let _ = ENV_KAFKA_ENABLED;
 }
 
 #[test]
-fn partial_oauth_configuration_fails_closed_without_echoing_secrets() {
-    let map = HashMap::from([
-        (ENV_OAUTH_GOOGLE_CLIENT_ID, "client-id"),
-        (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "private-secret"),
-    ]);
-    let error = Config::from_lookup(lookup(map)).unwrap_err();
-    assert!(matches!(error, ConfigError::Invalid { .. }));
-    assert!(!error.to_string().contains("private-secret"));
-}
-
-#[test]
-fn oauth_requires_strong_bff_and_jwt_secrets_and_exact_callback_urls() {
-    let map = HashMap::from([
-        (ENV_OAUTH_GOOGLE_CLIENT_ID, "client-id"),
-        (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "provider-secret"),
-        (ENV_OAUTH_GOOGLE_REDIRECT_URL, "https://eye.example/v1/auth/google/callback"),
-        (ENV_OAUTH_DATABASE_REST_URL, "https://db.example/rest/v1"),
-        (ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, "service-key"),
-        (ENV_OAUTH_CALLBACK_URLS, "https://tracker.example/auth/callback"),
-        (ENV_OAUTH_EXCHANGE_SECRET, "short"),
-        (ENV_JWT_SIGNING_SECRET, "also-short"),
-    ]);
-    let error = Config::from_lookup(lookup(map)).unwrap_err();
+fn kafka_runtime_requires_tls_and_exact_consent_path() {
+    use king_sparkon_eye::config::{
+        ENV_KAFKA_ENABLED, ENV_KAFKA_DATABASE_REST_URL, ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY,
+        ENV_CONSENT_VERIFY_URL, ENV_CONSENT_SERVICE_KEY, ENV_KAFKA_BOOTSTRAP_SERVERS,
+        ENV_KAFKA_SECURITY_PROTOCOL,
+    };
+    let base = [
+        (ENV_KAFKA_ENABLED, "true"),
+        (ENV_KAFKA_DATABASE_REST_URL, "https://eye-db.example/rest/v1"),
+        (ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, "database-service-role-key-at-least-32"),
+        (ENV_CONSENT_VERIFY_URL, "https://tracker.example/api/internal/eye/consent/verify"),
+        (ENV_CONSENT_SERVICE_KEY, "consent-service-key-at-least-32-bytes"),
+        (ENV_KAFKA_BOOTSTRAP_SERVERS, "broker.example:9093"),
+    ];
+    let mut map = HashMap::from(base);
+    map.insert(ENV_KAFKA_SECURITY_PROTOCOL, "PLAINTEXT");
     assert!(matches!(
-        error,
-        ConfigError::Invalid { name: ENV_OAUTH_EXCHANGE_SECRET, .. }
+        Config::from_lookup(lookup(map)),
+        Err(ConfigError::Invalid { name: ENV_KAFKA_SECURITY_PROTOCOL, .. })
     ));
-    assert!(!error.to_string().contains("provider-secret"));
+
+    let mut map = HashMap::from(base);
+    map.insert(ENV_CONSENT_VERIFY_URL, "https://tracker.example/api/consent/guess");
+    assert!(matches!(
+        Config::from_lookup(lookup(map)),
+        Err(ConfigError::Invalid { name: ENV_CONSENT_VERIFY_URL, .. })
+    ));
 }
 
 #[test]
-fn production_oauth_rejects_http_callbacks_and_non_loopback_http_database() {
+fn kafka_secrets_are_redacted_and_local_http_requires_explicit_loopback() {
+    use king_sparkon_eye::config::{
+        ENV_KAFKA_ENABLED, ENV_KAFKA_DATABASE_REST_URL, ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY,
+        ENV_CONSENT_VERIFY_URL, ENV_CONSENT_SERVICE_KEY, ENV_KAFKA_BOOTSTRAP_SERVERS,
+        ENV_KAFKA_ALLOW_LOCALHOST_HTTP,
+    };
     let map = HashMap::from([
-        (ENV_OAUTH_GOOGLE_CLIENT_ID, "client-id"),
-        (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "provider-secret"),
-        (ENV_OAUTH_GOOGLE_REDIRECT_URL, "https://eye.example/v1/auth/google/callback"),
-        (ENV_OAUTH_DATABASE_REST_URL, "http://db.example/rest/v1"),
-        (ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, "service-key"),
-        (ENV_OAUTH_CALLBACK_URLS, "http://tracker.example/auth/callback"),
-        (ENV_OAUTH_EXCHANGE_SECRET, "01234567890123456789012345678901"),
-        (ENV_JWT_SIGNING_SECRET, "abcdefghijklmnopqrstuvwxyz123456"),
+        (ENV_KAFKA_ENABLED, "true"),
+        (ENV_KAFKA_DATABASE_REST_URL, "https://eye-db.example/rest/v1"),
+        (ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, "private-database-key-123456789012345"),
+        (ENV_CONSENT_VERIFY_URL, "https://tracker.example/api/internal/eye/consent/verify"),
+        (ENV_CONSENT_SERVICE_KEY, "private-consent-key-123456789012345678"),
+        (ENV_KAFKA_BOOTSTRAP_SERVERS, "broker.example:9093"),
     ]);
-    assert!(Config::from_lookup(lookup(map)).is_err());
+    let config = Config::from_lookup(lookup(map)).unwrap();
+    let debug = format!("{config:?}");
+    assert!(!debug.contains("private-database-key-123456789012345"));
+    assert!(!debug.contains("private-consent-key-123456789012345678"));
+
+    let map = HashMap::from([
+        (ENV_KAFKA_ENABLED, "true"),
+        (ENV_KAFKA_ALLOW_LOCALHOST_HTTP, "true"),
+        (ENV_KAFKA_DATABASE_REST_URL, "http://localhost:54321/rest/v1"),
+        (ENV_KAFKA_DATABASE_SERVICE_ROLE_KEY, "database-service-role-key-at-least-32"),
+        (ENV_CONSENT_VERIFY_URL, "http://127.0.0.1:8080/api/internal/eye/consent/verify"),
+        (ENV_CONSENT_SERVICE_KEY, "consent-service-key-at-least-32-bytes"),
+        (ENV_KAFKA_BOOTSTRAP_SERVERS, "broker.example:9093"),
+    ]);
+    assert!(Config::from_lookup(lookup(map)).unwrap().enrollment_runtime.is_some());
 }
