@@ -11,7 +11,10 @@ use axum::extract::{ConnectInfo, Query, State};
 use axum::http::header::{COOKIE, LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::{Json, routing::{get, post}};
+use axum::{
+    Json,
+    routing::{get, post},
+};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
@@ -22,12 +25,12 @@ use crate::auth::durable_store::{
     DurableEyeStore, DurableStoreError, DurableUser, hash_hex, new_oauth_user,
 };
 use crate::auth::google::{
-    ExpectedIdToken, GoogleAuthError, Jwk, PkcePair,
-    build_authorization_url, decide_account_link, random_urlsafe, verify_id_token,
+    ExpectedIdToken, GoogleAuthError, Jwk, PkcePair, build_authorization_url, decide_account_link,
+    random_urlsafe, verify_id_token,
 };
 use crate::auth::jwt::{
-    ACCESS_TOKEN_TTL_SECS, EYE_TOKEN_AUDIENCE, EYE_TOKEN_ISSUER, REFRESH_TOKEN_TTL_SECS,
-    AccessTokenClaims, TokenPair, sign_access_token,
+    ACCESS_TOKEN_TTL_SECS, AccessTokenClaims, EYE_TOKEN_AUDIENCE, EYE_TOKEN_ISSUER,
+    REFRESH_TOKEN_TTL_SECS, TokenPair, sign_access_token,
 };
 use crate::auth::oauth_flow::CallbackAllowlist;
 use crate::config::OAuthRuntimeConfig;
@@ -91,11 +94,9 @@ pub struct OAuthRuntime {
 
 impl OAuthRuntime {
     pub fn new(config: OAuthRuntimeConfig) -> Result<Self, ApiError> {
-        let allowlist = CallbackAllowlist::parse(
-            &config.callback_urls,
-            config.allow_localhost_http,
-        )
-        .map_err(|_| ApiError::ServiceUnavailable)?;
+        let allowlist =
+            CallbackAllowlist::parse(&config.callback_urls, config.allow_localhost_http)
+                .map_err(|_| ApiError::ServiceUnavailable)?;
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
             .connect_timeout(Duration::from_secs(3))
@@ -188,13 +189,23 @@ impl OAuthRuntime {
         url: &str,
         maximum: usize,
     ) -> Result<T, ApiError> {
-        let response = self.client.get(url).send().await.map_err(|_| ApiError::ServiceUnavailable)?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| ApiError::ServiceUnavailable)?;
         if !response.status().is_success()
-            || response.content_length().is_some_and(|len| len > maximum as u64)
+            || response
+                .content_length()
+                .is_some_and(|len| len > maximum as u64)
         {
             return Err(ApiError::ServiceUnavailable);
         }
-        let bytes = response.bytes().await.map_err(|_| ApiError::ServiceUnavailable)?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| ApiError::ServiceUnavailable)?;
         if bytes.len() > maximum {
             return Err(ApiError::ServiceUnavailable);
         }
@@ -202,12 +213,12 @@ impl OAuthRuntime {
     }
 
     fn allowlisted_callback(&self, callback: &str) -> Result<String, ApiError> {
-        self.allowlist.require(callback).map_err(|_| ApiError::Validation(
-            crate::error::ValidationError {
+        self.allowlist.require(callback).map_err(|_| {
+            ApiError::Validation(crate::error::ValidationError {
                 field: "callbackUrl",
                 rule: "must exactly match an approved callback URL",
-            },
-        ))
+            })
+        })
     }
 
     async fn token_pair(
@@ -226,7 +237,10 @@ impl OAuthRuntime {
             aud: EYE_TOKEN_AUDIENCE.to_owned(),
             exp: now_seconds.saturating_add(ACCESS_TOKEN_TTL_SECS),
             iat: now_seconds,
-            jti: format!("tok_{}", random_urlsafe(24).map_err(|_| ApiError::ServiceUnavailable)?),
+            jti: format!(
+                "tok_{}",
+                random_urlsafe(24).map_err(|_| ApiError::ServiceUnavailable)?
+            ),
             role: user.role,
             scopes: user.scopes.clone(),
             event_id: event_id.clone(),
@@ -294,14 +308,19 @@ impl OAuthRuntime {
             .await
             .map_err(|_| ApiError::ServiceUnavailable)?;
         if !response.status().is_success()
-            || response.content_length().is_some_and(|len| len > TOKEN_MAX_BYTES as u64)
+            || response
+                .content_length()
+                .is_some_and(|len| len > TOKEN_MAX_BYTES as u64)
         {
             return Err(ApiError::Validation(crate::error::ValidationError {
                 field: "authorizationResponse",
                 rule: "could not be validated",
             }));
         }
-        let bytes = response.bytes().await.map_err(|_| ApiError::ServiceUnavailable)?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| ApiError::ServiceUnavailable)?;
         if bytes.len() > TOKEN_MAX_BYTES {
             return Err(ApiError::ServiceUnavailable);
         }
@@ -321,11 +340,14 @@ impl OAuthRuntime {
             Ok(claims) => claims,
             Err(GoogleAuthError::UnknownKey) => {
                 let fresh_keys = self.jwks(true).await?;
-                verify_id_token(&tokens.id_token, &fresh_keys, expected, now_seconds())
-                    .map_err(|_| ApiError::Validation(crate::error::ValidationError {
-                        field: "identityToken",
-                        rule: "could not be validated",
-                    }))?
+                verify_id_token(&tokens.id_token, &fresh_keys, expected, now_seconds()).map_err(
+                    |_| {
+                        ApiError::Validation(crate::error::ValidationError {
+                            field: "identityToken",
+                            rule: "could not be validated",
+                        })
+                    },
+                )?
             }
             Err(_) => {
                 return Err(ApiError::Validation(crate::error::ValidationError {
@@ -335,12 +357,14 @@ impl OAuthRuntime {
             }
         };
 
-        let email = claims.email.as_deref().filter(|email| !email.trim().is_empty()).ok_or(
-            ApiError::Validation(crate::error::ValidationError {
+        let email = claims
+            .email
+            .as_deref()
+            .filter(|email| !email.trim().is_empty())
+            .ok_or(ApiError::Validation(crate::error::ValidationError {
                 field: "email",
                 rule: "is required for account linking",
-            }),
-        )?;
+            }))?;
         if !claims.email_verified {
             return Err(ApiError::Validation(crate::error::ValidationError {
                 field: "email",
@@ -351,8 +375,15 @@ impl OAuthRuntime {
         // The database function applies the same identity-link rules under transaction locks.
         // This pure decision check documents and tests those rules; durable storage remains authoritative.
         let new_user = new_oauth_user(email, now_ms()).map_err(|_| ApiError::ServiceUnavailable)?;
-        let user = self.store
-            .resolve_google_identity(&claims.sub, email, claims.email_verified, now_ms(), &new_user)
+        let user = self
+            .store
+            .resolve_google_identity(
+                &claims.sub,
+                email,
+                claims.email_verified,
+                now_ms(),
+                &new_user,
+            )
             .await
             .map_err(map_store_error)?;
         if !user.is_active {
@@ -363,16 +394,18 @@ impl OAuthRuntime {
         }
 
         let raw_handoff = random_urlsafe(32).map_err(|_| ApiError::ServiceUnavailable)?;
-        self.store.issue_handoff(
-            &hash_hex(&raw_handoff),
-            &user.user_id,
-            &transaction.callback_url,
-            now_ms(),
-        )
-        .await
-        .map_err(|_| ApiError::ServiceUnavailable)?;
+        self.store
+            .issue_handoff(
+                &hash_hex(&raw_handoff),
+                &user.user_id,
+                &transaction.callback_url,
+                now_ms(),
+            )
+            .await
+            .map_err(|_| ApiError::ServiceUnavailable)?;
 
-        let mut callback = reqwest::Url::parse(&transaction.callback_url).map_err(|_| ApiError::ServiceUnavailable)?;
+        let mut callback = reqwest::Url::parse(&transaction.callback_url)
+            .map_err(|_| ApiError::ServiceUnavailable)?;
         callback.query_pairs_mut().append_pair("code", &raw_handoff);
         Ok(callback.to_string())
     }
@@ -414,10 +447,15 @@ fn trusted_google_endpoint(raw: &str, expected_host: &str) -> bool {
 }
 
 fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
-    headers.get(COOKIE)?.to_str().ok()?.split(';').find_map(|part| {
-        let (key, value) = part.trim().split_once('=')?;
-        (key == name && !value.is_empty()).then(|| value.to_owned())
-    })
+    headers
+        .get(COOKIE)?
+        .to_str()
+        .ok()?
+        .split(';')
+        .find_map(|part| {
+            let (key, value) = part.trim().split_once('=')?;
+            (key == name && !value.is_empty()).then(|| value.to_owned())
+        })
 }
 
 fn append_cookie(response: &mut Response, value: String) {
@@ -439,15 +477,21 @@ fn redirect_error(callback_url: &str, secure_cookie: bool) -> Response {
     let mut target = match reqwest::Url::parse(callback_url) {
         Ok(url) => url,
         Err(_) => {
-            let mut response = (StatusCode::BAD_REQUEST, Json(OAuthErrorBody {
-                code: "OAUTH_FAILED",
-                message: "Sign-in could not be completed",
-            })).into_response();
+            let mut response = (
+                StatusCode::BAD_REQUEST,
+                Json(OAuthErrorBody {
+                    code: "OAUTH_FAILED",
+                    message: "Sign-in could not be completed",
+                }),
+            )
+                .into_response();
             append_cookie(&mut response, clear_cookie(secure_cookie));
             return response;
         }
     };
-    target.query_pairs_mut().append_pair("error", "oauth_failed");
+    target
+        .query_pairs_mut()
+        .append_pair("error", "oauth_failed");
     let mut response = Redirect::temporary(target.as_str()).into_response();
     append_cookie(&mut response, clear_cookie(secure_cookie));
     response
@@ -463,12 +507,15 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
     }
     left.iter()
         .zip(right.iter())
-        .fold(0u8, |diff, (a, b)| diff | (a ^ b)) == 0
+        .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+        == 0
 }
 
 fn map_store_error(err: DurableStoreError) -> ApiError {
     match err {
-        DurableStoreError::Unavailable | DurableStoreError::InvalidRecord => ApiError::ServiceUnavailable,
+        DurableStoreError::Unavailable | DurableStoreError::InvalidRecord => {
+            ApiError::ServiceUnavailable
+        }
         DurableStoreError::Rejected => ApiError::Validation(crate::error::ValidationError {
             field: "identity",
             rule: "could not be resolved",
@@ -508,10 +555,19 @@ async fn google_start(
         Err(_) => return ApiError::ServiceUnavailable.into_response(),
     };
 
-    if oauth.store.create_oauth_transaction(
-        &hash_hex(&cookie), &hash_hex(&state_value), &nonce, pkce.verifier(),
-        &callback_url, now_ms(),
-    ).await.is_err() {
+    if oauth
+        .store
+        .create_oauth_transaction(
+            &hash_hex(&cookie),
+            &hash_hex(&state_value),
+            &nonce,
+            pkce.verifier(),
+            &callback_url,
+            now_ms(),
+        )
+        .await
+        .is_err()
+    {
         return ApiError::ServiceUnavailable.into_response();
     }
 
@@ -529,9 +585,12 @@ async fn google_start(
     );
     let mut response = Redirect::temporary(&authorization_url).into_response();
     let secure_attr = if cookie_secure(oauth) { "; Secure" } else { "" };
-    append_cookie(&mut response, format!(
-        "{OAUTH_COOKIE}={cookie}; Max-Age=600; HttpOnly; SameSite=Lax; Path=/v1/auth/google{secure_attr}"
-    ));
+    append_cookie(
+        &mut response,
+        format!(
+            "{OAUTH_COOKIE}={cookie}; Max-Age=600; HttpOnly; SameSite=Lax; Path=/v1/auth/google{secure_attr}"
+        ),
+    );
     response
 }
 
@@ -554,20 +613,24 @@ async fn google_callback(
         let mut response = ApiError::Validation(crate::error::ValidationError {
             field: "oauthTransaction",
             rule: "is missing or expired",
-        }).into_response();
+        })
+        .into_response();
         append_cookie(&mut response, clear_cookie(secure));
         return response;
     };
     let state_value = query.state.as_deref().unwrap_or_default();
-    let transaction = match oauth.store.consume_oauth_transaction(
-        &hash_hex(&raw_cookie), &hash_hex(state_value), now_ms(),
-    ).await {
+    let transaction = match oauth
+        .store
+        .consume_oauth_transaction(&hash_hex(&raw_cookie), &hash_hex(state_value), now_ms())
+        .await
+    {
         Ok(Some(transaction)) => transaction,
         _ => {
             let mut response = ApiError::Validation(crate::error::ValidationError {
                 field: "oauthTransaction",
                 rule: "is invalid or expired",
-            }).into_response();
+            })
+            .into_response();
             append_cookie(&mut response, clear_cookie(secure));
             return response;
         }
@@ -598,44 +661,68 @@ async fn oauth_exchange(
     if let Err(err) = oauth.rate_limit(peer, "oauth-exchange", 30).await {
         return err.into_response();
     }
-    let supplied = headers.get("x-eye-oauth-exchange-secret").and_then(|v| v.to_str().ok()).unwrap_or_default();
-    if !constant_time_eq(supplied.as_bytes(), oauth.config.exchange_secret.expose().as_bytes()) {
-        return (StatusCode::UNAUTHORIZED, Json(OAuthErrorBody {
-            code: "UNAUTHORIZED",
-            message: "The request could not be authenticated",
-        })).into_response();
+    let supplied = headers
+        .get("x-eye-oauth-exchange-secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    if !constant_time_eq(
+        supplied.as_bytes(),
+        oauth.config.exchange_secret.expose().as_bytes(),
+    ) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(OAuthErrorBody {
+                code: "UNAUTHORIZED",
+                message: "The request could not be authenticated",
+            }),
+        )
+            .into_response();
     }
     if request.code.is_empty() || request.code.len() > 256 || request.callback_url.len() > 2048 {
         return ApiError::Validation(crate::error::ValidationError {
             field: "handoff",
             rule: "is invalid",
-        }).into_response();
+        })
+        .into_response();
     }
 
     // The database consumes before callback validation, so a wrong/unapproved callback burns the code.
-    let handoff = match oauth.store.consume_handoff(
-        &hash_hex(&request.code), &request.callback_url, now_ms(),
-    ).await {
+    let handoff = match oauth
+        .store
+        .consume_handoff(&hash_hex(&request.code), &request.callback_url, now_ms())
+        .await
+    {
         Ok(Some(value)) => value,
         _ => {
-            return (StatusCode::UNAUTHORIZED, Json(OAuthErrorBody {
-                code: "INVALID_HANDOFF",
-                message: "The sign-in handoff is invalid or expired",
-            })).into_response();
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(OAuthErrorBody {
+                    code: "INVALID_HANDOFF",
+                    message: "The sign-in handoff is invalid or expired",
+                }),
+            )
+                .into_response();
         }
     };
     if oauth.allowlist.require(&request.callback_url).is_err() {
         return ApiError::Validation(crate::error::ValidationError {
             field: "callbackUrl",
             rule: "is not approved",
-        }).into_response();
+        })
+        .into_response();
     }
     let user = match oauth.store.user_by_id(&handoff.user_id).await {
         Ok(Some(user)) if user.is_active => user,
-        _ => return (StatusCode::UNAUTHORIZED, Json(OAuthErrorBody {
-            code: "INVALID_HANDOFF",
-            message: "The sign-in handoff is invalid or expired",
-        })).into_response(),
+        _ => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(OAuthErrorBody {
+                    code: "INVALID_HANDOFF",
+                    message: "The sign-in handoff is invalid or expired",
+                }),
+            )
+                .into_response();
+        }
     };
     let now = now_seconds();
     let raw_refresh = match random_urlsafe(32) {
@@ -647,7 +734,10 @@ async fn oauth_exchange(
         Ok(value) => format!("fam_{value}"),
         Err(_) => return ApiError::ServiceUnavailable.into_response(),
     };
-    match oauth.token_pair(&user, None, family, now, raw_refresh, token_hash, false).await {
+    match oauth
+        .token_pair(&user, None, family, now, raw_refresh, token_hash, false)
+        .await
+    {
         Ok(pair) => Json(pair).into_response(),
         Err(err) => err.into_response(),
     }
@@ -665,10 +755,14 @@ async fn refresh_session(
         return err.into_response();
     }
     if request.refresh_token.is_empty() || request.refresh_token.len() > 512 {
-        return (StatusCode::UNAUTHORIZED, Json(OAuthErrorBody {
-            code: "INVALID_REFRESH_TOKEN",
-            message: "The refresh token is invalid or expired",
-        })).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(OAuthErrorBody {
+                code: "INVALID_REFRESH_TOKEN",
+                message: "The refresh token is invalid or expired",
+            }),
+        )
+            .into_response();
     }
 
     let raw_new = match random_urlsafe(32) {
@@ -677,35 +771,79 @@ async fn refresh_session(
     };
     let now_ms_value = now_ms();
     let new_hash = hash_hex(&raw_new);
-    let rotation = match oauth.store.rotate_refresh_token(
-        &hash_hex(&request.refresh_token), &new_hash, now_ms_value,
-        now_ms_value.saturating_add(REFRESH_TOKEN_TTL_SECS * 1000),
-    ).await {
+    let rotation = match oauth
+        .store
+        .rotate_refresh_token(
+            &hash_hex(&request.refresh_token),
+            &new_hash,
+            now_ms_value,
+            now_ms_value.saturating_add(REFRESH_TOKEN_TTL_SECS * 1000),
+        )
+        .await
+    {
         Ok(value) => value,
         Err(_) => return ApiError::ServiceUnavailable.into_response(),
     };
     if rotation.outcome != "ok" {
-        return (StatusCode::UNAUTHORIZED, Json(OAuthErrorBody {
-            code: "INVALID_REFRESH_TOKEN",
-            message: "The refresh token is invalid or expired",
-        })).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(OAuthErrorBody {
+                code: "INVALID_REFRESH_TOKEN",
+                message: "The refresh token is invalid or expired",
+            }),
+        )
+            .into_response();
     }
-    let (Some(user_id), Some(email), Some(role), Some(scopes), Some(is_active), Some(created_at_ms), Some(family_id)) = (
-        rotation.user_id, rotation.email, rotation.role, rotation.scopes,
-        rotation.is_active, rotation.created_at_ms, rotation.family_id,
-    ) else {
+    let (
+        Some(user_id),
+        Some(email),
+        Some(role),
+        Some(scopes),
+        Some(is_active),
+        Some(created_at_ms),
+        Some(family_id),
+    ) = (
+        rotation.user_id,
+        rotation.email,
+        rotation.role,
+        rotation.scopes,
+        rotation.is_active,
+        rotation.created_at_ms,
+        rotation.family_id,
+    )
+    else {
         return ApiError::ServiceUnavailable.into_response();
     };
     if !is_active {
-        return (StatusCode::UNAUTHORIZED, Json(OAuthErrorBody {
-            code: "INVALID_REFRESH_TOKEN",
-            message: "The refresh token is invalid or expired",
-        })).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(OAuthErrorBody {
+                code: "INVALID_REFRESH_TOKEN",
+                message: "The refresh token is invalid or expired",
+            }),
+        )
+            .into_response();
     }
-    let user = DurableUser { user_id, email, role, scopes, is_active, created_at_ms };
-    match oauth.token_pair(
-        &user, rotation.event_id, family_id, now_seconds(), raw_new, new_hash, true,
-    ).await {
+    let user = DurableUser {
+        user_id,
+        email,
+        role,
+        scopes,
+        is_active,
+        created_at_ms,
+    };
+    match oauth
+        .token_pair(
+            &user,
+            rotation.event_id,
+            family_id,
+            now_seconds(),
+            raw_new,
+            new_hash,
+            true,
+        )
+        .await
+    {
         Ok(pair) => Json(pair).into_response(),
         Err(err) => err.into_response(),
     }
