@@ -30,7 +30,8 @@ fn sample_record() -> EnrollmentRecord {
 fn event_is_constructed_correctly_from_enrollment_record() {
     let record = sample_record();
     let event =
-        PhotoEnrolledEventV1::from_record(&record, "evt-999".to_string(), 1_700_000_001_000).unwrap();
+        PhotoEnrolledEventV1::from_record(&record, "evt-999".to_string(), 1_700_000_001_000)
+            .unwrap();
 
     assert_eq!(event.event_id, "evt-999");
     assert_eq!(event.event_type, ENROLLMENT_EVENT_TYPE);
@@ -67,7 +68,8 @@ fn successful_publish_records_message_in_memory_producer() {
 
     let record = sample_record();
     let event =
-        PhotoEnrolledEventV1::from_record(&record, "evt-001".to_string(), 1_700_000_000_000).unwrap();
+        PhotoEnrolledEventV1::from_record(&record, "evt-001".to_string(), 1_700_000_000_000)
+            .unwrap();
 
     let res = publisher.publish_enrollment_event(&event);
     assert_eq!(res.unwrap(), "evt-001");
@@ -91,9 +93,11 @@ fn idempotent_republish_returns_previous_event_id_without_duplicate_message() {
 
     let record = sample_record();
     let event1 =
-        PhotoEnrolledEventV1::from_record(&record, "evt-001".to_string(), 1_700_000_000_000).unwrap();
+        PhotoEnrolledEventV1::from_record(&record, "evt-001".to_string(), 1_700_000_000_000)
+            .unwrap();
     let event2 =
-        PhotoEnrolledEventV1::from_record(&record, "evt-002".to_string(), 1_700_000_000_500).unwrap();
+        PhotoEnrolledEventV1::from_record(&record, "evt-002".to_string(), 1_700_000_000_500)
+            .unwrap();
 
     let res1 = publisher.publish_enrollment_event(&event1).unwrap();
     let res2 = publisher.publish_enrollment_event(&event2).unwrap();
@@ -114,7 +118,8 @@ fn publisher_retries_and_recovers_if_initial_attempt_fails() {
     let publisher = EnrollmentEventPublisher::new(memory_producer);
     let record = sample_record();
     let event =
-        PhotoEnrolledEventV1::from_record(&record, "evt-retry".to_string(), 1_700_000_000_000).unwrap();
+        PhotoEnrolledEventV1::from_record(&record, "evt-retry".to_string(), 1_700_000_000_000)
+            .unwrap();
 
     let res = publisher.publish_enrollment_event(&event);
     assert!(res.is_ok());
@@ -131,7 +136,8 @@ fn publisher_fails_if_retries_exhausted_and_does_not_corrupt_state() {
     let publisher = EnrollmentEventPublisher::new(memory_producer);
     let record = sample_record();
     let event =
-        PhotoEnrolledEventV1::from_record(&record, "evt-fail".to_string(), 1_700_000_000_000).unwrap();
+        PhotoEnrolledEventV1::from_record(&record, "evt-fail".to_string(), 1_700_000_000_000)
+            .unwrap();
 
     let res = publisher.publish_enrollment_event(&event);
     assert_eq!(res, Err(KafkaPublishError::Unavailable));
@@ -161,7 +167,11 @@ fn deleted_or_failed_enrollments_cannot_become_events() {
         ..sample_record()
     };
     assert!(matches!(
-        PhotoEnrolledEventV1::from_record(&not_requested, "evt-not-requested".into(), 1_700_000_000_000),
+        PhotoEnrolledEventV1::from_record(
+            &not_requested,
+            "evt-not-requested".into(),
+            1_700_000_000_000
+        ),
         Err(KafkaPublishError::IneligibleEnrollment)
     ));
 }
@@ -171,11 +181,14 @@ fn idempotency_key_cannot_alias_two_different_enrollments() {
     let memory_producer = MemoryKafkaProducer::new();
     let publisher = EnrollmentEventPublisher::new(memory_producer);
     let record = sample_record();
-    let first = PhotoEnrolledEventV1::from_record(&record, "evt-1".into(), 1_700_000_000_000).unwrap();
+    let first =
+        PhotoEnrolledEventV1::from_record(&record, "evt-1".into(), 1_700_000_000_000).unwrap();
 
     let mut other_record = sample_record();
     other_record.enrollment_id = "enr-002".into();
-    let second = PhotoEnrolledEventV1::from_record(&other_record, "evt-2".into(), 1_700_000_001_000).unwrap();
+    let second =
+        PhotoEnrolledEventV1::from_record(&other_record, "evt-2".into(), 1_700_000_001_000)
+            .unwrap();
 
     assert_eq!(publisher.publish_enrollment_event(&first).unwrap(), "evt-1");
     assert_eq!(
@@ -191,7 +204,9 @@ fn invalid_sha256_is_rejected_before_publish() {
     let publisher = EnrollmentEventPublisher::new(memory_producer);
     let mut record = sample_record();
     record.content_sha256 = "g".repeat(64);
-    let event = PhotoEnrolledEventV1::from_record(&record, "evt-bad-hash".into(), 1_700_000_000_000).unwrap();
+    let event =
+        PhotoEnrolledEventV1::from_record(&record, "evt-bad-hash".into(), 1_700_000_000_000)
+            .unwrap();
 
     assert!(matches!(
         publisher.publish_enrollment_event(&event),

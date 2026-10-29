@@ -7,7 +7,8 @@
 //! - Under no circumstance are raw photo bytes, embeddings, or biometric templates placed in Kafka event payloads.
 //! - Event schema is typed, versioned (`v1`), and self-contained.
 //! - Idempotency key and enrollment ID enable deduplication on downstream consumers (Spring Boot).
-//! - At-least-once delivery with bounded retries and exponential/jitter backoff policy.
+//! - The current synchronous publisher uses a bounded attempt count only. Backoff/jitter, durable retries,
+//!   dead-lettering and a real broker adapter are specified in docs/KAFKA_ENROLLMENT_CONTRACT.md but not implemented.
 //! - Clear separation of storage success and event publication failure: publishing failures
 //!   never mark persistence as Confirmed and never corrupt or silently discard stored metadata.
 
@@ -114,7 +115,11 @@ impl PhotoEnrolledEventV1 {
             });
         }
         if self.content_sha256.len() != 64
-            || !self.content_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            || !self
+                .content_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
             return Err(ValidationError {
                 field: "contentSha256",
                 rule: "must be a valid 64-character hex SHA-256 digest",

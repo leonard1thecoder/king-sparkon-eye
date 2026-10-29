@@ -116,7 +116,7 @@ If no candidate is found, several candidates are ambiguous, the match is uncerta
 
 ## Event contracts
 
-Event names below are proposed contract names and must be confirmed/versioned during implementation.
+The enrollment event identity below is the current Rust contract confirmed by decision #97. Other proposed event names must be confirmed/versioned with their consumers before implementation.
 
 ### Enrollment/photo event
 
