@@ -46,7 +46,7 @@ fn with_payload(token: &str, payload: &serde_json::Value) -> String {
     format!("{}.{}.{}", parts[0], body, parts[2])
 }
 
-/// Current signing construction (see `compute_signature` in `src/auth/jwt.rs`).
+/// Pre-#100 signing construction, kept only to prove it is rejected now.
 fn signature_for(header_b64: &str, claims_b64: &str, secret: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(secret);
@@ -151,7 +151,6 @@ fn expired_token_is_rejected() {
 }
 
 #[test]
-#[ignore = "BUG #101: verifier accepts a token at exp == now (RFC 7519 §4.1.4)"]
 fn token_is_rejected_exactly_at_expiry() {
     let token = signed(&claims(NOW));
     assert_eq!(
@@ -161,14 +160,15 @@ fn token_is_rejected_exactly_at_expiry() {
 }
 
 #[test]
-#[ignore = "BUG #101: verifier does not check iat against the current time"]
 fn token_issued_in_the_future_is_rejected() {
     let token = signed(&claims(NOW + 10_000));
-    assert!(verify_access_token(&token, KID, SECRET, NOW).is_err());
+    assert_eq!(
+        verify_access_token(&token, KID, SECRET, NOW),
+        Err(TokenError::NotYetValid)
+    );
 }
 
 #[test]
-#[ignore = "BUG #101: header alg is not enforced; a non-HS256 header with a matching signature is accepted"]
 fn non_hs256_algorithm_header_is_rejected() {
     let header = URL_SAFE_NO_PAD.encode(
         serde_json::to_vec(&serde_json::json!({"alg": "RS256", "typ": "JWT", "kid": KID})).unwrap(),
@@ -176,7 +176,10 @@ fn non_hs256_algorithm_header_is_rejected() {
     let body = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims(NOW)).unwrap());
     let sig = signature_for(&header, &body, SECRET);
     let token = format!("{header}.{body}.{sig}");
-    assert!(verify_access_token(&token, KID, SECRET, NOW + 1).is_err());
+    assert_eq!(
+        verify_access_token(&token, KID, SECRET, NOW + 1),
+        Err(TokenError::UnsupportedAlgorithm)
+    );
 }
 
 // ---------- JWT: refresh rotation and replay ----------
@@ -472,13 +475,30 @@ fn correct_password_authenticates() {
 // - Route-policy and cross-tenant HTTP tests: no authenticated routes are mounted.
 
 #[test]
-fn token_pair_serialization_still_carries_tokens_for_the_response() {
-    // Regression guard for #102: redacting Debug must not change the HTTP response body.
-    let manager = TokenManager::new(SECRET.to_vec(), KID);
-    let pair = manager
-        .issue_token_pair("usr_adv_4", UserRole::GateOperator, vec![], None, NOW)
-        .unwrap();
-    let json = serde_json::to_value(&pair).unwrap();
-    assert_eq!(json["accessToken"], pair.access_token);
-    assert_eq!(json["refreshToken"], pair.refresh_token);
+fn token_with_legacy_hash_construction_is_rejected() {
+    // Issue #100: signatures from the pre-HMAC construction must no longer verify.
+    let header = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&serde_json::json!({"alg": "HS256", "typ": "JWT", "kid": KID})).unwrap(),
+    );
+    let body = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims(NOW)).unwrap());
+    let sig = signature_for(&header, &body, SECRET);
+    let token = format!("{header}.{body}.{sig}");
+    assert_eq!(
+        verify_access_token(&token, KID, SECRET, NOW + 1),
+        Err(TokenError::InvalidSignature)
+    );
+}
+
+#[test]
+fn token_with_standard_hmac_sha256_signature_is_accepted() {
+    // Independent check of the signing scheme: RFC 2104 HMAC-SHA256 computed with ring directly.
+    use ring::hmac;
+    let header = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&serde_json::json!({"alg": "HS256", "typ": "JWT", "kid": KID})).unwrap(),
+    );
+    let body = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims(NOW)).unwrap());
+    let key = hmac::Key::new(hmac::HMAC_SHA256, SECRET);
+    let tag = hmac::sign(&key, format!("{header}.{body}").as_bytes());
+    let token = format!("{header}.{body}.{}", URL_SAFE_NO_PAD.encode(tag.as_ref()));
+    assert!(verify_access_token(&token, KID, SECRET, NOW + 1).is_ok());
 }

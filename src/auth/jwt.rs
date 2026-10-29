@@ -11,6 +11,7 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use ring::hmac;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -23,6 +24,9 @@ pub const EYE_TOKEN_ISSUER: &str = "https://eye.kingsparkon.internal";
 
 /// Standard audience for Eye access tokens.
 pub const EYE_TOKEN_AUDIENCE: &str = "king-sparkon-eye";
+
+/// Maximum clock skew tolerated for `iat` in the future (seconds).
+pub const MAX_IAT_SKEW_SECS: u64 = 60;
 
 /// Default access token validity duration in seconds (15 minutes).
 pub const ACCESS_TOKEN_TTL_SECS: u64 = 900;
@@ -76,19 +80,39 @@ pub enum TokenError {
     ReplayDetected,
     #[error("refresh token not found or revoked")]
     RefreshTokenNotFound,
+    #[error("unsupported token signing algorithm")]
+    UnsupportedAlgorithm,
+    #[error("token is not yet valid")]
+    NotYetValid,
     #[error("serialization error: {0}")]
     Serialization(String),
 }
 
 /// Computes HMAC-SHA256 signature representation.
+/// HMAC-SHA256 over `header.claims` (RFC 2104), base64url without padding (issue #100).
 fn compute_signature(header_b64: &str, claims_b64: &str, secret: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(secret);
-    hasher.update(b":");
-    hasher.update(header_b64.as_bytes());
-    hasher.update(b".");
-    hasher.update(claims_b64.as_bytes());
-    URL_SAFE_NO_PAD.encode(hasher.finalize())
+    let key = hmac::Key::new(hmac::HMAC_SHA256, secret);
+    let tag = hmac::sign(&key, format!("{header_b64}.{claims_b64}").as_bytes());
+    URL_SAFE_NO_PAD.encode(tag.as_ref())
+}
+
+/// Constant-time verification of a base64url HMAC-SHA256 signature over `header.claims`.
+fn verify_signature(
+    header_b64: &str,
+    claims_b64: &str,
+    signature_b64: &str,
+    secret: &[u8],
+) -> bool {
+    let Ok(sig_bytes) = URL_SAFE_NO_PAD.decode(signature_b64) else {
+        return false;
+    };
+    let key = hmac::Key::new(hmac::HMAC_SHA256, secret);
+    hmac::verify(
+        &key,
+        format!("{header_b64}.{claims_b64}").as_bytes(),
+        &sig_bytes,
+    )
+    .is_ok()
 }
 
 /// Signs an access token into compact JWT string (`header.claims.signature`).
@@ -131,16 +155,19 @@ pub fn verify_access_token(
     let claims_b64 = parts[1];
     let signature = parts[2];
 
-    let expected_sig = compute_signature(header_b64, claims_b64, secret);
-    if signature != expected_sig {
-        return Err(TokenError::InvalidSignature);
-    }
-
+    // Check the header before trusting the signature. Only HS256 is accepted (issue #101).
     let header_bytes = URL_SAFE_NO_PAD
         .decode(header_b64)
         .map_err(|_| TokenError::InvalidSignature)?;
     let header: JwtHeader =
         serde_json::from_slice(&header_bytes).map_err(|_| TokenError::InvalidSignature)?;
+    if header.alg != "HS256" {
+        return Err(TokenError::UnsupportedAlgorithm);
+    }
+
+    if !verify_signature(header_b64, claims_b64, signature, secret) {
+        return Err(TokenError::InvalidSignature);
+    }
 
     if header.kid != expected_kid {
         return Err(TokenError::InvalidSignature);
@@ -156,8 +183,14 @@ pub fn verify_access_token(
         return Err(TokenError::InvalidClaims);
     }
 
-    if claims.exp < now_secs {
+    // RFC 7519 §4.1.4: the token is not accepted on or after exp.
+    if now_secs >= claims.exp {
         return Err(TokenError::Expired);
+    }
+
+    // Issued-at must not be meaningfully in the future (issue #101).
+    if claims.iat > now_secs + MAX_IAT_SKEW_SECS {
+        return Err(TokenError::NotYetValid);
     }
 
     Ok(claims)
