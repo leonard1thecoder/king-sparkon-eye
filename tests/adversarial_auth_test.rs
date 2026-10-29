@@ -223,7 +223,6 @@ fn unknown_refresh_token_is_rejected() {
 // ---------- JWT: secret exposure ----------
 
 #[test]
-#[ignore = "BUG #102: TokenPair derives Debug and exposes access and refresh tokens"]
 fn token_pair_debug_output_contains_no_token() {
     let manager = TokenManager::new(SECRET.to_vec(), KID);
     let pair = manager
@@ -412,7 +411,6 @@ fn stored_record_serialization_contains_no_raw_key() {
 }
 
 #[test]
-#[ignore = "BUG #102: CreatedApiKey derives Debug and exposes the raw key"]
 fn created_key_debug_output_contains_no_raw_key() {
     let svc = service();
     let created = svc
@@ -472,3 +470,15 @@ fn correct_password_authenticates() {
 // - Google OAuth callback cases: no HTTP route is mounted (#93). Library-level cases are in
 //   tests/google_oidc_test.rs.
 // - Route-policy and cross-tenant HTTP tests: no authenticated routes are mounted.
+
+#[test]
+fn token_pair_serialization_still_carries_tokens_for_the_response() {
+    // Regression guard for #102: redacting Debug must not change the HTTP response body.
+    let manager = TokenManager::new(SECRET.to_vec(), KID);
+    let pair = manager
+        .issue_token_pair("usr_adv_4", UserRole::GateOperator, vec![], None, NOW)
+        .unwrap();
+    let json = serde_json::to_value(&pair).unwrap();
+    assert_eq!(json["accessToken"], pair.access_token);
+    assert_eq!(json["refreshToken"], pair.refresh_token);
+}
