@@ -96,6 +96,7 @@ pub struct Config {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthRuntimeConfig {
     pub google_client_id: String,
+    pub google_redirect_url: String,
     pub google_client_secret: SecretString,
     /// PostgREST URL for an Eye-owned PostgreSQL database (normally ending in /rest/v1).
     pub database_rest_url: String,
@@ -130,6 +131,7 @@ pub const ENV_IMAGE_MAX_DECODE_ALLOC_BYTES: &str = "EYE_IMAGE_MAX_DECODE_ALLOC_B
 pub const ENV_IMAGE_DECODE_TIMEOUT_MS: &str = "EYE_IMAGE_DECODE_TIMEOUT_MS";
 pub const ENV_OAUTH_GOOGLE_CLIENT_ID: &str = "EYE_GOOGLE_CLIENT_ID";
 pub const ENV_OAUTH_GOOGLE_CLIENT_SECRET: &str = "EYE_GOOGLE_CLIENT_SECRET";
+pub const ENV_OAUTH_GOOGLE_REDIRECT_URL: &str = "EYE_GOOGLE_REDIRECT_URL";
 pub const ENV_OAUTH_DATABASE_REST_URL: &str = "EYE_DATABASE_REST_URL";
 pub const ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY: &str = "EYE_DATABASE_SERVICE_ROLE_KEY";
 pub const ENV_OAUTH_CALLBACK_URLS: &str = "EYE_OAUTH_CALLBACK_URLS";
@@ -244,6 +246,7 @@ where
 {
     let client_id = non_empty(lookup(ENV_OAUTH_GOOGLE_CLIENT_ID));
     let client_secret = non_empty(lookup(ENV_OAUTH_GOOGLE_CLIENT_SECRET));
+    let google_redirect_url = non_empty(lookup(ENV_OAUTH_GOOGLE_REDIRECT_URL));
     let database_url = non_empty(lookup(ENV_OAUTH_DATABASE_REST_URL));
     let database_key = non_empty(lookup(ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY));
     let callback_urls = non_empty(lookup(ENV_OAUTH_CALLBACK_URLS));
@@ -263,6 +266,7 @@ where
     let provided = [
         client_id.is_some(),
         client_secret.is_some(),
+        google_redirect_url.is_some(),
         database_url.is_some(),
         database_key.is_some(),
         callback_urls.is_some(),
@@ -287,6 +291,7 @@ where
 
     let client_id = client_id.unwrap_or_default();
     let client_secret = client_secret.unwrap_or_default();
+    let google_redirect_url = google_redirect_url.unwrap_or_default();
     let database_url = database_url.unwrap_or_default();
     let database_key = database_key.unwrap_or_default();
     let callback_urls = callback_urls.unwrap_or_default();
@@ -304,6 +309,31 @@ where
             name: ENV_JWT_SIGNING_SECRET,
             reason: "must contain at least 32 bytes".to_owned(),
         });
+    }
+
+    let parsed_google_redirect = reqwest::Url::parse(&google_redirect_url).map_err(|_| ConfigError::Invalid {
+        name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
+        reason: "expected an absolute HTTPS URL ending in /v1/auth/google/callback".to_owned(),
+    })?;
+    if parsed_google_redirect.path() != "/v1/auth/google/callback"
+        || !parsed_google_redirect.username().is_empty()
+        || parsed_google_redirect.password().is_some()
+        || parsed_google_redirect.query().is_some()
+        || parsed_google_redirect.fragment().is_some()
+        || parsed_google_redirect.as_str() != google_redirect_url
+    {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
+            reason: "must be an exact absolute URL ending in /v1/auth/google/callback".to_owned(),
+        });
+    }
+    match parsed_google_redirect.scheme() {
+        "https" => {}
+        "http" if allow_localhost_http && is_loopback_host(parsed_google_redirect.host_str()) => {}
+        _ => return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
+            reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
+        }),
     }
 
     let parsed_database_url = reqwest::Url::parse(&database_url).map_err(|_| ConfigError::Invalid {
@@ -379,6 +409,7 @@ where
 
     Ok(Some(OAuthRuntimeConfig {
         google_client_id: client_id,
+        google_redirect_url,
         google_client_secret: SecretString::new(client_secret),
         database_rest_url: database_url.trim_end_matches('/').to_owned(),
         database_service_role_key: SecretString::new(database_key),
