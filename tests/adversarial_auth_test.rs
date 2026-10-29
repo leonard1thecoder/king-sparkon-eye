@@ -226,7 +226,6 @@ fn unknown_refresh_token_is_rejected() {
 // ---------- JWT: secret exposure ----------
 
 #[test]
-#[ignore = "BUG #102: TokenPair derives Debug and exposes access and refresh tokens"]
 fn token_pair_debug_output_contains_no_token() {
     let manager = TokenManager::new(SECRET.to_vec(), KID);
     let pair = manager
@@ -415,7 +414,6 @@ fn stored_record_serialization_contains_no_raw_key() {
 }
 
 #[test]
-#[ignore = "BUG #102: CreatedApiKey derives Debug and exposes the raw key"]
 fn created_key_debug_output_contains_no_raw_key() {
     let svc = service();
     let created = svc

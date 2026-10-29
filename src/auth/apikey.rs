@@ -56,10 +56,20 @@ pub struct ApiKeyRecord {
 }
 
 /// Newly created API key bundle. This is the **only** time the raw key secret is accessible.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct CreatedApiKey {
     pub raw_key: String,
     pub record: ApiKeyRecord,
+}
+
+// Never print the raw key (issue #102). The record holds only the hash and salt.
+impl std::fmt::Debug for CreatedApiKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CreatedApiKey")
+            .field("raw_key", &"[REDACTED]")
+            .field("record", &self.record)
+            .finish()
+    }
 }
 
 /// Computes salted SHA-256 hash of an API key secret.

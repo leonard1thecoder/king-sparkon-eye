@@ -210,13 +210,25 @@ struct RefreshEntry {
 }
 
 /// Token response returned on authentication or refresh rotation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPair {
     pub access_token: String,
     pub refresh_token: String,
     pub token_type: String,
     pub expires_in_secs: u64,
+}
+
+// Never print the bearer or refresh secrets (issue #102). Serialization for HTTP responses is unchanged.
+impl std::fmt::Debug for TokenPair {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenPair")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &"[REDACTED]")
+            .field("token_type", &self.token_type)
+            .field("expires_in_secs", &self.expires_in_secs)
+            .finish()
+    }
 }
 
 /// Manages access tokens and single-use refresh token families.
