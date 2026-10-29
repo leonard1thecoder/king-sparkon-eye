@@ -66,9 +66,8 @@ This is a dated snapshot, not live issue state. Refresh GitHub issue/PR states a
 | State | Issues | Notes |
 |---|---|---|
 | Done (closed, merged) | #21, #22, #23, #25, #26, #27 | #26 merged in PR #66. #27 storage boundary merged in PR #69; it is an in-memory abstraction, not production S3 persistence. |
+| Implemented in branch | #28, #31 | #28 in `issue/28-kafka-enrollment-events`. #31 private AWS S3 adapter in `issue/31-s3-private-storage`. |
 | Closed, with caveats | #24, #29 | #24: real-face fixtures (#55) and runtime wiring remain outstanding. #29: CI gates exist; run them against the integrated branch. |
-| Next candidate, not unblocked | #28 | Kafka enrollment events. Confirm the event contract, storage-success/Kafka-failure recovery, idempotency, and consent lifecycle before implementation. |
-| Coordinated follow-up | #31 | S3 adapter. Align with #27 and #28; resolve the synchronous-versus-async storage interface before wiring S3. Require private access, deletion/retention, persistent idempotency and failure recovery. |
 | Blocked recognition path | #30 | Do not start until #58/#59 establish and verify the embedding contract, #55 supplies licensed/consented real-face fixtures, #61 evaluates thresholds, and event-scoped authorization is defined. |
 | Open blockers outside the map | #15, #58, #59, #60, #61, #38, #41–#48, #55, #11, #13, #8, #35, #64, #71 | Consent record/policy; ONNX inventory and recognizer; Muse context; threshold evaluation; model decision; auth work; real-face fixtures; privacy hardening; deployment; threshold calibration; public pages; retrieval decision; playbook refresh. |
 | Decision pending | #64 | Open. PR #65 documents a boundary but does not provide the decision record required by #64. |
