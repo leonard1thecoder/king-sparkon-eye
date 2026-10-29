@@ -109,6 +109,22 @@ fn mismatch_consumes_code_and_never_allows_replay() {
 }
 
 #[test]
+fn unapproved_callback_also_consumes_handoff() {
+    let allowlist = allowlist();
+    let store = OneTimeHandoffStore::new();
+    let code = store.issue(USER_ID, CALLBACK, &allowlist, 100).unwrap();
+
+    assert_eq!(
+        store.consume(&code, "https://evil.example/callback", &allowlist, 101),
+        Err(OAuthFlowError::CallbackNotAllowed)
+    );
+    assert_eq!(
+        store.consume(&code, CALLBACK, &allowlist, 101),
+        Err(OAuthFlowError::InvalidHandoff)
+    );
+}
+
+#[test]
 fn invalid_user_and_unapproved_callback_cannot_issue_codes() {
     let allowlist = allowlist();
     let store = OneTimeHandoffStore::new();

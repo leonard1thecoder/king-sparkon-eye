@@ -179,7 +179,6 @@ impl OneTimeHandoffStore {
         allowlist: &CallbackAllowlist,
         now_secs: u64,
     ) -> Result<String, OAuthFlowError> {
-        let callback_url = allowlist.require(callback_url)?;
         if raw_code.is_empty() {
             return Err(OAuthFlowError::InvalidHandoff);
         }
@@ -194,6 +193,9 @@ impl OneTimeHandoffStore {
         if now_secs >= entry.expires_at_secs {
             return Err(OAuthFlowError::HandoffExpired);
         }
+        // Consume before validating the supplied callback so even an unapproved/mismatched URL
+        // cannot be used to probe the code and then retry the same code with the right URL.
+        let callback_url = allowlist.require(callback_url)?;
         if callback_url != entry.callback_url {
             return Err(OAuthFlowError::CallbackMismatch);
         }
