@@ -23,9 +23,11 @@ use crate::error::ValidationError;
 pub const MIN_PASSWORD_LEN: usize = 10;
 
 pub mod apikey;
+pub mod guard;
 pub mod jwt;
 
 pub use apikey::*;
+pub use guard::*;
 pub use jwt::*;
 
 /// Operator roles in Eye.
