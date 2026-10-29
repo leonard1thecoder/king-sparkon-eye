@@ -395,4 +395,6 @@ cargo test --all-features --locked
 cargo audit --deny warnings   # needs: cargo install cargo-audit --locked
 ```
 
+The PostgreSQL persistence tests (`tests/persistence_test.rs`, issue #112) need a disposable PostgreSQL 16 database. Set `EYE_TEST_DATABASE_URL` to run them. If it is unset, each test prints `SKIPPED` and passes, so CI must set it for those checks to count. Migrations are in `migrations/` and are applied by `persistence::migrate`. They are not applied automatically at request time.
+
 **Continuous integration** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`, in three jobs: formatting and clippy, tests, and a RustSec dependency audit of `Cargo.lock`. CI needs no provider keys and downloads no inference binaries, because the ONNX Runtime and YuNet model are vendored under `artifacts/` and verified by `tests/artifacts_test.rs`. Actions are pinned to major versions, not commit SHAs. Pin them to SHAs before enabling branch protection.
