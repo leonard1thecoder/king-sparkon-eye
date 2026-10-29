@@ -276,7 +276,6 @@ impl Config {
     }
 }
 
-
 fn parse_oauth_config<F>(lookup: &F) -> Result<Option<OAuthRuntimeConfig>, ConfigError>
 where
     F: Fn(&str) -> Option<String>,
@@ -348,10 +347,11 @@ where
         });
     }
 
-    let parsed_google_redirect = reqwest::Url::parse(&google_redirect_url).map_err(|_| ConfigError::Invalid {
-        name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
-        reason: "expected an absolute HTTPS URL ending in /v1/auth/google/callback".to_owned(),
-    })?;
+    let parsed_google_redirect =
+        reqwest::Url::parse(&google_redirect_url).map_err(|_| ConfigError::Invalid {
+            name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
+            reason: "expected an absolute HTTPS URL ending in /v1/auth/google/callback".to_owned(),
+        })?;
     if parsed_google_redirect.path() != "/v1/auth/google/callback"
         || !parsed_google_redirect.username().is_empty()
         || parsed_google_redirect.password().is_some()
@@ -367,16 +367,20 @@ where
     match parsed_google_redirect.scheme() {
         "https" => {}
         "http" if allow_localhost_http && is_loopback_host(parsed_google_redirect.host_str()) => {}
-        _ => return Err(ConfigError::Invalid {
-            name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
-            reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
-        }),
+        _ => {
+            return Err(ConfigError::Invalid {
+                name: ENV_OAUTH_GOOGLE_REDIRECT_URL,
+                reason: "HTTPS is required except for explicitly enabled localhost development"
+                    .to_owned(),
+            });
+        }
     }
 
-    let parsed_database_url = reqwest::Url::parse(&database_url).map_err(|_| ConfigError::Invalid {
-        name: ENV_OAUTH_DATABASE_REST_URL,
-        reason: "expected an absolute HTTPS PostgREST URL".to_owned(),
-    })?;
+    let parsed_database_url =
+        reqwest::Url::parse(&database_url).map_err(|_| ConfigError::Invalid {
+            name: ENV_OAUTH_DATABASE_REST_URL,
+            reason: "expected an absolute HTTPS PostgREST URL".to_owned(),
+        })?;
     if !parsed_database_url.username().is_empty()
         || parsed_database_url.password().is_some()
         || parsed_database_url.query().is_some()
@@ -384,7 +388,8 @@ where
     {
         return Err(ConfigError::Invalid {
             name: ENV_OAUTH_DATABASE_REST_URL,
-            reason: "credentials, query strings and fragments are not allowed in the URL".to_owned(),
+            reason: "credentials, query strings and fragments are not allowed in the URL"
+                .to_owned(),
         });
     }
     match parsed_database_url.scheme() {
@@ -393,7 +398,8 @@ where
         _ => {
             return Err(ConfigError::Invalid {
                 name: ENV_OAUTH_DATABASE_REST_URL,
-                reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
+                reason: "HTTPS is required except for explicitly enabled localhost development"
+                    .to_owned(),
             });
         }
     }
@@ -428,7 +434,8 @@ where
             _ => {
                 return Err(ConfigError::Invalid {
                     name: ENV_OAUTH_CALLBACK_URLS,
-                    reason: "HTTPS is required except for explicitly enabled localhost development".to_owned(),
+                    reason: "HTTPS is required except for explicitly enabled localhost development"
+                        .to_owned(),
                 });
             }
         }
