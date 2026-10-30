@@ -320,8 +320,8 @@ Issue [#23](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23) was 
 - The `image` part has its own exact `EYE_UPLOAD_MAX_BYTES` cap. Filename and part MIME claims are ignored; file signatures decide whether bytes are supported.
 - Only JPEG and static PNG are supported by the current decoder. The OpenAPI description was corrected from JPEG/PNG/WebP to JPEG/static PNG.
 - Existing dimension, pixel, decode-allocation and decode-time limits remain enforced by `src/ingress/`.
-- Valid decoded images return `501 ASSESSMENT_NOT_IMPLEMENTED`. The route does not fabricate an assessment while the detector/provider/policy orchestrator is not wired.
-- HTTP tests cover valid-but-not-assessed, malformed, unsupported, misleading filename/MIME, per-file oversize, total request oversize, malformed multipart and unsupported request media type.
+- Valid decoded images enter the YuNet-backed assessment pipeline. A nominal pass is converted to `ASSESSMENT_UNAVAILABLE` until the quality thresholds are calibrated against a consented dataset; detector errors remain unavailable and explicit retake outcomes remain retake outcomes.
+- HTTP tests cover a real no-face detector outcome, malformed/unsupported images, misleading filename/MIME, per-file oversize, total request oversize, malformed multipart and unsupported request media type. Domain tests cover the conservative calibration gate.
 - README and OpenAPI status/format claims were synchronized. `AGENTS.md` and bootstrap lifecycle/configuration were reviewed; no reusable agent rule or bootstrap change was required for this route-level issue.
 
 CI and the full Rust test suite remain deferred until the MVP implementation batch is ready, per the owner-directed execution order. Do not close #23 until the branch has been built/tested and merged.
@@ -333,9 +333,9 @@ Branch: `issue/23-http-upload-boundary`.
 
 - The bounded multipart route validates and normalizes the image before model/provider work.
 - The route initializes the vendored YuNet ONNX Runtime/model once per process and calls the existing domain `assess()` pipeline.
-- Optional Muse Spark guidance uses the configured provider adapter; when disabled or unavailable, its status remains distinct from photo quality.
+- The endpoint does not call Muse Spark: the current response contract has no field for its guidance, so sending biometric images to the provider would produce unused output. Provider integration remains a separate contract-backed step.
 - The conservative calibration gate converts every nominal `ASSESSMENT_PASSED` into `ASSESSMENT_UNAVAILABLE` until thresholds are evaluated against a consented dataset. Retake and detector failure outcomes retain their typed statuses.
 - Response reports `persistence: NOT_REQUESTED`; this route does not store/enroll the image, publish an event, perform identity matching, or make admission decisions.
 - Docker runtime explicitly configures the vendored model path and ONNX Runtime library path.
 - HTTP regression coverage now expects a real detector outcome for a valid upload; domain unit tests cover the calibration gate.
-- Verification status: not yet run in this environment; Rust toolchain availability and CI remain to be checked. CI stays deferred until the MVP implementation batch is ready.
+- Verification status: Rust tests, formatting and Clippy have not run because this environment has no Rust toolchain. CI stays deferred until the MVP implementation batch is ready.

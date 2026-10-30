@@ -140,7 +140,7 @@ fn multipart(boundary: &str, image: &[u8], filename: &str, part_type: &str) -> V
 
 fn png_fixture() -> Vec<u8> {
     use image::{DynamicImage, ImageFormat, RgbImage};
-    let image = DynamicImage::ImageRgb8(RgbImage::from_pixel(4, 4, image::Rgb([20, 40, 60])));
+    let image = DynamicImage::ImageRgb8(RgbImage::from_pixel(320, 240, image::Rgb([128, 128, 128])));
     let mut cursor = std::io::Cursor::new(Vec::new());
     image.write_to(&mut cursor, ImageFormat::Png).unwrap();
     cursor.into_inner()

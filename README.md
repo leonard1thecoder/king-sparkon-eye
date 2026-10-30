@@ -96,8 +96,8 @@ Implementation is tracked in [Issue #31](https://github.com/leonard1thecoder/kin
 1. The buyer clicks **Use Face Recognition** and chooses/captures a photo.
 2. Next.js uploads the image directly to Rust over an authenticated request.
 3. Rust enforces byte/type/dimension limits and safely decodes the image before any model inference.
-4. Rust runs YuNet face detection and deterministic image-quality checks, with optional Muse Spark visual guidance. The frontier model is supplementary and cannot override hard rules or verify identity by itself. Current threshold-based passes are downgraded to `ASSESSMENT_UNAVAILABLE` pending consented calibration.
-5. Rust returns retake guidance if the photo is unsuitable. Provider outages are reported as service errors, not as bad photos.
+4. Rust runs YuNet face detection and deterministic image-quality checks. Nominal passes are downgraded to `ASSESSMENT_UNAVAILABLE` pending consented calibration. The Muse Spark adapter exists but is not called by this endpoint because the current response contract has no guidance field; no image is sent to that provider from this route.
+5. Rust returns structured retake or unavailable outcomes. The endpoint does not return model guidance or call the optional vision provider until the API contract exposes that guidance.
 6. After a suitable image and the required explicit consent, Rust stores the original in private object storage when retention is required and creates a protected face template in the biometric index.
 7. Rust publishes a versioned event (for example, photo.enrolled.v1) through Kafka. The event includes an opaque storage key, enrollment/assessment IDs, authenticated subject ID, content hash, consent reference, model/policy versions and an idempotency key.
 8. Spring Boot consumes the event idempotently, validates the association against its authoritative user/ticket records, and persists the photo/enrollment metadata and storage reference.

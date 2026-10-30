@@ -87,7 +87,7 @@
     "/v1/enrollment/photo-assessments": {
       "post": {
         "summary": "Assess a buyer enrollment photo",
-        "description": "Validates and normalizes an uploaded JPEG or static PNG, runs the YuNet-backed assessment pipeline, and returns structured suitability. Until quality thresholds are calibrated against a consented evaluation dataset, a nominal pass is downgraded to ASSESSMENT_UNAVAILABLE. Persistence is NOT_REQUESTED; this endpoint does not enroll or admit a person.",
+        "description": "Validates and normalizes an uploaded JPEG or static PNG, runs the YuNet-backed assessment pipeline, and returns structured suitability. Until quality thresholds are calibrated against a consented evaluation dataset, a nominal pass is downgraded to ASSESSMENT_UNAVAILABLE. Persistence is NOT_REQUESTED; this endpoint does not enroll or admit a person. Muse Spark guidance is not requested by this endpoint because the current response contract does not expose guidance.",
         "operationId": "createPhotoAssessment",
         "requestBody": {
           "required": true,
@@ -129,8 +129,8 @@
                     "FACE_NOT_FRONTAL"
                   ],
                   "persistence": "NOT_REQUESTED",
-                  "modelVersion": "muse-spark-1.3",
-                  "policyVersion": "photo-policy-0.1.0"
+                  "modelVersion": null,
+                  "policyVersion": "photo-quality-uncalibrated-v1"
                 }
               }
             }

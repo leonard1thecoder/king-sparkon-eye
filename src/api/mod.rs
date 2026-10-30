@@ -1,6 +1,5 @@
 //! HTTP routes: health probes, bounded photo ingress, OAuth, and request-ID/tracing middleware.
 
-use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
@@ -14,14 +13,12 @@ use serde::Serialize;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::advisory::AdvisoryStatus;
 use crate::auth::oauth_runtime::OAuthRuntime;
 use crate::config::Config;
 use crate::contract::{PersistenceStatus, PhotoAssessmentResponse};
 use crate::domain::{AssessmentConfig, assess, conservative_result};
 use crate::inference::yunet::YunetDetector;
-use crate::provider::muse::{MuseSettings, MuseSparkProvider};
-use crate::provider::{ProviderError, VisionProvider};
+use crate::provider::{MockProvider, ProviderError};
 use crate::error::{ApiError, ValidationError};
 use crate::ingress::ingest_with_timeout;
 
@@ -31,28 +28,11 @@ pub const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id"
 pub struct AppState {
     pub config: Arc<Config>,
     pub oauth: Option<Arc<OAuthRuntime>>,
-    pub assessment: Option<Arc<AssessmentRuntime>>,
+    assessment: Option<Arc<AssessmentRuntime>>,
 }
 
 struct AssessmentRuntime {
     detector: Arc<YunetDetector>,
-    provider: RuntimeProvider,
-}
-
-enum RuntimeProvider {
-    Disabled,
-    Muse(MuseSparkProvider),
-}
-
-impl VisionProvider for RuntimeProvider {
-    fn advise(&self, png: Vec<u8>) -> impl Future<Output = Result<String, ProviderError>> + Send {
-        async move {
-            match self {
-                Self::Disabled => Err(ProviderError::Disabled),
-                Self::Muse(provider) => provider.advise(png).await,
-            }
-        }
-    }
 }
 
 static YUNET_DETECTOR: OnceLock<Result<Arc<YunetDetector>, crate::inference::InferenceError>> = OnceLock::new();
@@ -70,36 +50,14 @@ fn load_detector() -> Result<Arc<YunetDetector>, crate::inference::InferenceErro
     }).clone()
 }
 
-fn assessment_runtime(config: &Config) -> Option<Arc<AssessmentRuntime>> {
-    let detector = match load_detector() {
-        Ok(detector) => detector,
+fn assessment_runtime() -> Option<Arc<AssessmentRuntime>> {
+    match load_detector() {
+        Ok(detector) => Some(Arc::new(AssessmentRuntime { detector })),
         Err(error) => {
             tracing::error!(?error, "YuNet assessment runtime could not be loaded");
-            return None;
+            None
         }
-    };
-    let provider = match (&config.vision_provider_enabled, &config.vision_provider_api_key) {
-        (true, Some(api_key)) => {
-            let settings = MuseSettings {
-                base_url: config.vision.base_url.clone(),
-                model: config.vision.model.clone(),
-                api_key: api_key.clone(),
-                timeout: config.vision.timeout,
-                max_response_bytes: config.vision.max_response_bytes,
-                max_retries: config.vision.max_retries,
-                retry_base: std::time::Duration::from_millis(100),
-            };
-            match MuseSparkProvider::new(settings) {
-                Ok(provider) => RuntimeProvider::Muse(provider),
-                Err(error) => {
-                    tracing::error!(?error, "vision provider runtime could not be initialized");
-                    RuntimeProvider::Disabled
-                }
-            }
-        }
-        _ => RuntimeProvider::Disabled,
-    };
-    Some(Arc::new(AssessmentRuntime { detector, provider }))
+    }
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -226,17 +184,10 @@ async fn upload_photo(
         .await
         .map_err(ApiError::from)?;
     let runtime = state.assessment.as_ref().ok_or(ApiError::ServiceUnavailable)?;
-    let assessment_config = AssessmentConfig {
-        advisory_enabled: state.config.vision_provider_enabled,
-        ..AssessmentConfig::default()
-    };
-    let result = assess(&normalized, runtime.detector.as_ref(), &runtime.provider, &assessment_config).await;
+    let disabled_provider = MockProvider { response: Err(ProviderError::Disabled) };
+    let result = assess(&normalized, runtime.detector.as_ref(), &disabled_provider, &AssessmentConfig::default()).await;
     let result = conservative_result(result);
-    let model_version = if matches!(result.advisory, AdvisoryStatus::Used) {
-        Some(state.config.vision.model.clone())
-    } else {
-        None
-    };
+    let model_version = None;
     let response = PhotoAssessmentResponse {
         assessment_id: uuid::Uuid::new_v4().to_string(),
         request_id: request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
@@ -401,7 +352,7 @@ pub fn router(config: Config) -> Router {
             }
         }
     });
-    let assessment = assessment_runtime(&config);
+    let assessment = assessment_runtime();
     let state = AppState {
         config: Arc::new(config),
         oauth,
