@@ -448,38 +448,65 @@ mod return_url_tests {
     }
     #[tokio::test]
     async fn live_mode_cannot_create_checkout_or_portal_sessions_even_if_configured() {
-        use std::collections::HashMap;
         use super::super::config::{
-            ENV_STRIPE_MODE, ENV_STRIPE_SECRET_KEY, ENV_STRIPE_PRICE_GOLD_MONTHLY,
-            ENV_STRIPE_PRICE_GOLD_ANNUAL, ENV_STRIPE_PRICE_PREMIUM_MONTHLY,
-            ENV_STRIPE_PRICE_PREMIUM_ANNUAL,
+            ENV_STRIPE_MODE, ENV_STRIPE_PRICE_GOLD_ANNUAL, ENV_STRIPE_PRICE_GOLD_MONTHLY,
+            ENV_STRIPE_PRICE_PREMIUM_ANNUAL, ENV_STRIPE_PRICE_PREMIUM_MONTHLY,
+            ENV_STRIPE_SECRET_KEY,
         };
         use super::super::{PriceSlot, StripeClient, StripeSettings};
         use crate::billing::{BillingInterval, PlanId};
+        use std::collections::HashMap;
 
         let env = HashMap::from([
             (ENV_STRIPE_MODE, "live".to_owned()),
-            (ENV_STRIPE_SECRET_KEY, "sk_live_placeholder_not_a_real_key".to_owned()),
-            (ENV_STRIPE_PRICE_GOLD_MONTHLY, "price_gold_monthly".to_owned()),
+            (
+                ENV_STRIPE_SECRET_KEY,
+                "sk_live_placeholder_not_a_real_key".to_owned(),
+            ),
+            (
+                ENV_STRIPE_PRICE_GOLD_MONTHLY,
+                "price_gold_monthly".to_owned(),
+            ),
             (ENV_STRIPE_PRICE_GOLD_ANNUAL, "price_gold_annual".to_owned()),
-            (ENV_STRIPE_PRICE_PREMIUM_MONTHLY, "price_premium_monthly".to_owned()),
-            (ENV_STRIPE_PRICE_PREMIUM_ANNUAL, "price_premium_annual".to_owned()),
+            (
+                ENV_STRIPE_PRICE_PREMIUM_MONTHLY,
+                "price_premium_monthly".to_owned(),
+            ),
+            (
+                ENV_STRIPE_PRICE_PREMIUM_ANNUAL,
+                "price_premium_annual".to_owned(),
+            ),
         ]);
         let settings = StripeSettings::from_lookup(|name| env.get(name).cloned(), true)
             .expect("valid settings shape");
         let client = StripeClient::new(&settings).expect("client");
         let urls = policy();
-        let checkout = client.create_checkout_session(
-            PriceSlot { plan: PlanId::Gold, interval: BillingInterval::Monthly },
-            "cus_123abc", "https://app.example.com/success", "https://app.example.com/cancel",
-            &urls, "checkout_once",
-        ).await;
-        let portal = client.create_portal_session(
-            "cus_123abc", "https://app.example.com/billing", &urls, "portal_once",
-        ).await;
+        let checkout = client
+            .create_checkout_session(
+                PriceSlot {
+                    plan: PlanId::Gold,
+                    interval: BillingInterval::Monthly,
+                },
+                "cus_123abc",
+                "https://app.example.com/success",
+                "https://app.example.com/cancel",
+                &urls,
+                "checkout_once",
+            )
+            .await;
+        let portal = client
+            .create_portal_session(
+                "cus_123abc",
+                "https://app.example.com/billing",
+                &urls,
+                "portal_once",
+            )
+            .await;
         assert!(matches!(
             checkout,
-            Err(StripeError::InvalidRequest { reason: "live billing is disabled" })
+            Err(StripeError::InvalidRequest {
+                reason: "live billing is disabled",
+            })
         ));
         assert!(matches!(
             portal,
