@@ -339,3 +339,15 @@ Branch: `issue/23-http-upload-boundary`.
 - Docker runtime explicitly configures the vendored model path and ONNX Runtime library path.
 - HTTP regression coverage now expects a real detector outcome for a valid upload; domain unit tests cover the calibration gate.
 - Verification status: Rust tests, formatting and Clippy have not run because this environment has no Rust toolchain. CI stays deferred until the MVP implementation batch is ready.
+
+
+### Upload streaming defect follow-up — bug #124 (2026-10-30)
+
+Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) records the remaining per-image streaming enforcement gap discovered while reviewing PR #123. The handler bounds the complete request body before multipart parsing, but buffers that bounded body before checking the exact image-part length. The total-body cap is useful but does not satisfy the per-part streaming requirement in issue #23.
+
+- Keep #23 open until its acceptance criteria are implemented and verified; do not close it because PR #123 exists.
+- Fix #124 by incrementally parsing multipart and counting image-part bytes as chunks arrive, while preserving the independent total-request cap.
+- Regenerate Cargo.lock with the Rust toolchain for any multipart dependency/feature change; do not hand-edit it.
+- Add a streamed HTTP regression test proving rejection occurs before the entire image part is buffered.
+- README, OpenAPI and this playbook must describe only verified behavior. The total-body cap and exact per-image cap must not be conflated.
+- Rust formatting, tests, Clippy and build remain scheduled for the final MVP verification pass, as directed by the repository owner.
