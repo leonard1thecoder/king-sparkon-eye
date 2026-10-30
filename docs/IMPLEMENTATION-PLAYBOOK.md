@@ -60,6 +60,39 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 | [#30](https://github.com/leonard1thecoder/king-sparkon-eye/issues/30) | QR-free, event-scoped 1:N gate identification results | Depends on #15, #21–#26 and #28. Coordinate with the enrollment/template design and event contract. |
 | [#31](https://github.com/leonard1thecoder/king-sparkon-eye/issues/31) | Private AWS S3 storage for accepted photos | Depends on merged #27 and roadmap #18. Resolve sync/async trait, authoritative consent, persistent idempotency, access denial, retention/deletion, and #28 failure recovery before wiring persistence. |
 
+
+### Billing workstream — Rust plans first, Stripe after durable usage
+
+Billing epic [#137](https://github.com/leonard1thecoder/king-sparkon-eye/issues/137) is tracking-only. The existing billing requirements and integrations remain in [#138–#144](https://github.com/leonard1thecoder/king-sparkon-eye/issues/138). Rust implementation issues are split so each can be delivered on its own issue branch and PR:
+
+| Issue | Workstream | Dependency / coordination rule |
+|---|---|---|
+| [#145](https://github.com/leonard1thecoder/king-sparkon-eye/issues/145) | Rust billing domain, Free/Gold/Premium entitlements and validated plan configuration | **First Rust implementation task.** Inspect current Rust architecture and configuration; prices/limits are hypotheses and must remain configurable. Align with #138/#139. |
+| [#148](https://github.com/leonard1thecoder/king-sparkon-eye/issues/148) | Durable usage ledger and monthly allowance accounting | Coordinate with #113 PostgreSQL/transactional outbox, #28 authoritative event delivery, #31 S3 lifecycle, and billing contract #143. Do not infer backend confirmation contracts. |
+| [#146](https://github.com/leonard1thecoder/king-sparkon-eye/issues/146) | Tenant-scoped quota enforcement and safe quota behavior | After #145 and the authoritative usage sources from #148 are ready. Use durable shared state and idempotent accounting, not process-local counters. |
+| [#147](https://github.com/leonard1thecoder/king-sparkon-eye/issues/147) | Stripe Checkout and Customer Portal | After plan/configuration and billing account contract are agreed (#138/#139/#145). Never trust browser redirects as payment proof. |
+| [#149](https://github.com/leonard1thecoder/king-sparkon-eye/issues/149) | Verified Stripe webhooks, entitlement projection and reconciliation | Coordinate with #141/#144. Verify raw-body signatures; persist/deduplicate deliveries and support replay. |
+
+**Candidate commercial settings (not approved for production):**
+
+| Plan | Base price | Monthly candidate allowances |
+|---|---:|---|
+| Free | $0 | 1,000 successful enrollments; 5 GB retained original-photo storage; 1,000 active templates; 2,000 eligible completed identification requests |
+| Gold | $99/month or $990/year | 10,000 enrollments; 50 GB photos; 10,000 active templates; 25,000 identification requests |
+| Premium | $299/month or $2,990/year | 50,000 enrollments; 250 GB photos; 50,000 active templates; 150,000 identification requests |
+
+Candidate paid overages: $0.15 per successful confirmed enrollment, $0.015 per active template-month, $0.06 per retained original-photo GB-month, and $0.05 per eligible completed identification request. Validate unit economics, Stripe currency/account support, tax treatment, storage units, quota-reset rules, and customer-facing behavior before enabling production billing. Keep amounts, allowances, effective dates and Stripe Price IDs configurable. Annual price applies to the base subscription only; usage is intended to be invoiced monthly in arrears.
+
+**Recommended billing execution order:**
+1. **#145 first:** define typed plan/price/meter/allowance domain and validated configuration. This is not Stripe Checkout or a live catalog rollout.
+2. **#148 next:** establish append-only, tenant-scoped, idempotent usage accounting and monthly aggregation, gated by real authoritative event/persistence contracts.
+3. **#146:** enforce quotas from durable usage, including race-safe limits, Free hard stops, and explicit behavior for store outages.
+4. **#147:** add tenant-authorized Checkout/Portal using server-side allowlisted price configuration.
+5. **#149:** add verified webhooks, local subscription projection, replay, and reconciliation.
+6. Complete/coordinate #138–#144 as contract and integration dependencies; refresh GitHub state before each step and do not duplicate work already covered by a merged PR.
+
+**Blockers that must remain visible:** #113 PostgreSQL/outbox integration; #28 production Kafka producer and verified backend consumer contract; #31 S3 lifecycle/orphan reconciliation; #132 enrollment authorization; #15 consent-aware storage; and verified Spring Boot consent/enrollment confirmation. Billing must never override consent, authorization, ticket eligibility, worker approval, or admission. Do not send biometric data, images, embeddings, attendee PII, ticket IDs, or raw payloads to Stripe.
+
 ### Status snapshot (reviewed 2026-10-30 after PR #118 merge and main CI run)
 
 This snapshot supersedes the 2026-10-29 status below; that earlier snapshot remains historical.
