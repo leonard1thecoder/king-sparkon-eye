@@ -6,8 +6,8 @@
 //! Object storage and PostgreSQL are not a distributed transaction: callers must
 //! compensate an uploaded object when this transaction fails and run orphan reconciliation.
 
-use sqlx::{PgPool, Postgres, Row, Transaction};
 use serde_json::Value;
+use sqlx::{PgPool, Postgres, Row, Transaction};
 use thiserror::Error;
 
 pub const ENROLLMENT_TOPIC: &str = "eye.enrollments.v1";
@@ -96,14 +96,18 @@ impl EnrollmentOutboxStore {
 
             if let Some(row) = existing {
                 let same = row.try_get::<String, _>("content_sha256").ok().as_deref()
-                        == Some(input.content_sha256.as_str())
-                    && row.try_get::<String, _>("consent_reference").ok().as_deref()
+                    == Some(input.content_sha256.as_str())
+                    && row
+                        .try_get::<String, _>("consent_reference")
+                        .ok()
+                        .as_deref()
                         == Some(input.consent_reference.as_str())
                     && row.try_get::<String, _>("policy_version").ok().as_deref()
                         == Some(input.policy_version.as_str());
                 let event_id = row.try_get::<String, _>("event_id").ok();
                 let enrollment_id = row.try_get::<String, _>("enrollment_id").ok();
-                if same && event_id.as_deref() == Some(input.event_id.as_str())
+                if same
+                    && event_id.as_deref() == Some(input.event_id.as_str())
                     && enrollment_id.as_deref() == Some(input.enrollment_id.as_str())
                 {
                     tx.commit().await?;
@@ -334,13 +338,22 @@ fn validate_input(input: &EnrollmentOutboxInput) -> Result<(), OutboxStoreError>
         || input.object_key.contains("://")
         || input.object_key.contains('\\')
         || input.content_sha256.len() != 64
-        || !input.content_sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || !input
+            .content_sha256
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         || input.byte_len <= 0
         || input.image_width <= 0
         || input.image_height <= 0
         || !valid_version(&input.policy_version)
-        || input.model_version.as_deref().is_some_and(|v| !valid_version(v))
-        || input.idempotency_key.as_deref().is_some_and(|v| !valid_identifier(v))
+        || input
+            .model_version
+            .as_deref()
+            .is_some_and(|v| !valid_version(v))
+        || input
+            .idempotency_key
+            .as_deref()
+            .is_some_and(|v| !valid_identifier(v))
         || input.created_at_ms <= 0
         || !payload_matches(input)
     {
@@ -354,53 +367,87 @@ fn payload_matches(input: &EnrollmentOutboxInput) -> bool {
         return false;
     };
     const ALLOWED_KEYS: &[&str] = &[
-        "eventId", "eventType", "eventVersion", "enrollmentId", "objectKey",
-        "contentSha256", "byteLen", "dimensions", "consentReference",
-        "policyVersion", "modelVersion", "idempotencyKey", "persistence",
+        "eventId",
+        "eventType",
+        "eventVersion",
+        "enrollmentId",
+        "objectKey",
+        "contentSha256",
+        "byteLen",
+        "dimensions",
+        "consentReference",
+        "policyVersion",
+        "modelVersion",
+        "idempotencyKey",
+        "persistence",
         "occurredAtMs",
     ];
-    if object.keys().any(|key| !ALLOWED_KEYS.contains(&key.as_str())) {
+    if object
+        .keys()
+        .any(|key| !ALLOWED_KEYS.contains(&key.as_str()))
+    {
         return false;
     }
     let dimensions = input.payload.get("dimensions");
     input.payload.get("eventId").and_then(Value::as_str) == Some(input.event_id.as_str())
         && input.payload.get("eventType").and_then(Value::as_str) == Some("photo.enrolled.v1")
         && input.payload.get("eventVersion").and_then(Value::as_str) == Some("1.0.0")
-        && input.payload.get("enrollmentId").and_then(Value::as_str) == Some(input.enrollment_id.as_str())
-        && input.payload.get("consentReference").and_then(Value::as_str) == Some(input.consent_reference.as_str())
-        && input.payload.get("policyVersion").and_then(Value::as_str) == Some(input.policy_version.as_str())
+        && input.payload.get("enrollmentId").and_then(Value::as_str)
+            == Some(input.enrollment_id.as_str())
+        && input
+            .payload
+            .get("consentReference")
+            .and_then(Value::as_str)
+            == Some(input.consent_reference.as_str())
+        && input.payload.get("policyVersion").and_then(Value::as_str)
+            == Some(input.policy_version.as_str())
         && input.payload.get("persistence").and_then(Value::as_str) == Some("PENDING")
         && input.payload.get("objectKey").and_then(Value::as_str) == Some(input.object_key.as_str())
-        && input.payload.get("contentSha256").and_then(Value::as_str) == Some(input.content_sha256.as_str())
+        && input.payload.get("contentSha256").and_then(Value::as_str)
+            == Some(input.content_sha256.as_str())
         && input.payload.get("byteLen").and_then(Value::as_i64) == Some(input.byte_len)
-        && dimensions.and_then(|value| value.get("width")).and_then(Value::as_u64)
+        && dimensions
+            .and_then(|value| value.get("width"))
+            .and_then(Value::as_u64)
             == Some(input.image_width as u64)
-        && dimensions.and_then(|value| value.get("height")).and_then(Value::as_u64)
+        && dimensions
+            .and_then(|value| value.get("height"))
+            .and_then(Value::as_u64)
             == Some(input.image_height as u64)
         && input.payload.get("modelVersion").and_then(Value::as_str)
             == input.model_version.as_deref()
         && input.payload.get("idempotencyKey").and_then(Value::as_str)
             == input.idempotency_key.as_deref()
-        && input.payload.get("occurredAtMs").and_then(Value::as_i64)
-            == Some(input.created_at_ms)
+        && input.payload.get("occurredAtMs").and_then(Value::as_i64) == Some(input.created_at_ms)
 }
 
 fn valid_identifier(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 128
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 fn valid_consent_reference(value: &str) -> bool {
     (8..=128).contains(&value.len())
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 fn valid_version(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 128
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
 }
 
 fn valid_error_category(value: &str) -> bool {
-    !value.is_empty() && value.len() <= MAX_ERROR_CATEGORY_LEN
-        && value.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+    !value.is_empty()
+        && value.len() <= MAX_ERROR_CATEGORY_LEN
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
 }

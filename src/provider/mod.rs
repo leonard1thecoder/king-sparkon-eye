@@ -59,12 +59,10 @@ pub struct MockProvider {
 }
 
 impl VisionProvider for MockProvider {
-    fn advise(&self, _png: Vec<u8>) -> impl Future<Output = Result<String, ProviderError>> + Send {
-        let response = self.response.clone();
-        async move { response }
+    async fn advise(&self, _png: Vec<u8>) -> Result<String, ProviderError> {
+        self.response.clone()
     }
 }
-
 
 /// Provider used when advisory calls are intentionally disabled for a route.
 /// It never performs network I/O or receives image bytes from an external service.
@@ -72,10 +70,7 @@ impl VisionProvider for MockProvider {
 pub struct DisabledProvider;
 
 impl VisionProvider for DisabledProvider {
-    fn advise(
-        &self,
-        _png: Vec<u8>,
-    ) -> impl Future<Output = Result<String, ProviderError>> + Send {
-        async { Err(ProviderError::Disabled) }
+    async fn advise(&self, _png: Vec<u8>) -> Result<String, ProviderError> {
+        Err(ProviderError::Disabled)
     }
 }

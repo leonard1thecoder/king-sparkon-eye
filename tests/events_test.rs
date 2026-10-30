@@ -191,7 +191,10 @@ async fn idempotency_key_cannot_alias_two_different_enrollments() {
         PhotoEnrolledEventV1::from_record(&other_record, "evt-2".into(), 1_700_000_001_000)
             .unwrap();
 
-    assert_eq!(publisher.publish_enrollment_event(&first).await.unwrap(), "evt-1");
+    assert_eq!(
+        publisher.publish_enrollment_event(&first).await.unwrap(),
+        "evt-1"
+    );
     assert_eq!(
         publisher.publish_enrollment_event(&second).await,
         Err(KafkaPublishError::IdempotencyConflict)

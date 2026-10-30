@@ -140,7 +140,8 @@ fn multipart(boundary: &str, image: &[u8], filename: &str, part_type: &str) -> V
 
 fn png_fixture() -> Vec<u8> {
     use image::{DynamicImage, ImageFormat, RgbImage};
-    let image = DynamicImage::ImageRgb8(RgbImage::from_pixel(320, 240, image::Rgb([128, 128, 128])));
+    let image =
+        DynamicImage::ImageRgb8(RgbImage::from_pixel(320, 240, image::Rgb([128, 128, 128])));
     let mut cursor = std::io::Cursor::new(Vec::new());
     image.write_to(&mut cursor, ImageFormat::Png).unwrap();
     cursor.into_inner()
@@ -153,14 +154,38 @@ const TEST_REDIRECT_URL: &str = "https://eye.example.test/v1/auth/google/callbac
 /// A complete OAuth environment. The JWT signing secret used by the photo endpoint lives here.
 fn oauth_env() -> Vec<(&'static str, &'static str)> {
     vec![
-        (king_sparkon_eye::config::ENV_OAUTH_GOOGLE_CLIENT_ID, "test-client-id"),
-        (king_sparkon_eye::config::ENV_OAUTH_GOOGLE_CLIENT_SECRET, "test-client-secret"),
-        (king_sparkon_eye::config::ENV_OAUTH_GOOGLE_REDIRECT_URL, TEST_REDIRECT_URL),
-        (king_sparkon_eye::config::ENV_OAUTH_DATABASE_REST_URL, "https://db.example.test/rest/v1"),
-        (king_sparkon_eye::config::ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY, "test-service-role-key"),
-        (king_sparkon_eye::config::ENV_OAUTH_CALLBACK_URLS, TEST_REDIRECT_URL),
-        (king_sparkon_eye::config::ENV_OAUTH_EXCHANGE_SECRET, "test-exchange-secret-at-least-32-bytes"),
-        (king_sparkon_eye::config::ENV_JWT_SIGNING_SECRET, TEST_JWT_SECRET),
+        (
+            king_sparkon_eye::config::ENV_OAUTH_GOOGLE_CLIENT_ID,
+            "test-client-id",
+        ),
+        (
+            king_sparkon_eye::config::ENV_OAUTH_GOOGLE_CLIENT_SECRET,
+            "test-client-secret",
+        ),
+        (
+            king_sparkon_eye::config::ENV_OAUTH_GOOGLE_REDIRECT_URL,
+            TEST_REDIRECT_URL,
+        ),
+        (
+            king_sparkon_eye::config::ENV_OAUTH_DATABASE_REST_URL,
+            "https://db.example.test/rest/v1",
+        ),
+        (
+            king_sparkon_eye::config::ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY,
+            "test-service-role-key",
+        ),
+        (
+            king_sparkon_eye::config::ENV_OAUTH_CALLBACK_URLS,
+            TEST_REDIRECT_URL,
+        ),
+        (
+            king_sparkon_eye::config::ENV_OAUTH_EXCHANGE_SECRET,
+            "test-exchange-secret-at-least-32-bytes",
+        ),
+        (
+            king_sparkon_eye::config::ENV_JWT_SIGNING_SECRET,
+            TEST_JWT_SECRET,
+        ),
         (king_sparkon_eye::config::ENV_JWT_KID, TEST_KID),
     ]
 }
@@ -212,12 +237,17 @@ async fn post_upload_with(
         .unwrap();
     let status = response.status();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    )
 }
 
 /// Posts an upload with a valid `enrollment:write` token, for tests that exercise the pipeline.
 async fn post_upload(
-    vars: &[(&str, &str)], content_type: &str, body: Vec<u8>,
+    vars: &[(&str, &str)],
+    content_type: &str,
+    body: Vec<u8>,
 ) -> (StatusCode, serde_json::Value) {
     let token = enrollment_bearer();
     post_upload_with(vars, Some(&token), content_type, body).await
@@ -225,13 +255,13 @@ async fn post_upload(
 
 #[tokio::test]
 async fn valid_image_enters_assessment_pipeline_and_returns_detector_outcome() {
-    let body = multipart("eye-boundary", &png_fixture(), "misleading.jpg", "image/jpeg");
-    let (status, json) = post_upload(
-        &[],
-        "multipart/form-data; boundary=eye-boundary",
-        body,
-    )
-    .await;
+    let body = multipart(
+        "eye-boundary",
+        &png_fixture(),
+        "misleading.jpg",
+        "image/jpeg",
+    );
+    let (status, json) = post_upload(&[], "multipart/form-data; boundary=eye-boundary", body).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["suitability"], "RETAKE_REQUIRED");
     assert_eq!(json["reasonCodes"][0], "NO_FACE_DETECTED");
@@ -241,7 +271,12 @@ async fn valid_image_enters_assessment_pipeline_and_returns_detector_outcome() {
 
 #[tokio::test]
 async fn malformed_image_is_rejected_at_http_boundary() {
-    let body = multipart("eye-boundary", b"\x89PNG\r\n\x1a\n", "photo.png", "image/png");
+    let body = multipart(
+        "eye-boundary",
+        b"\x89PNG\r\n\x1a\n",
+        "photo.png",
+        "image/png",
+    );
     let (status, json) = post_upload(&[], "multipart/form-data; boundary=eye-boundary", body).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(json["code"], "IMAGE_MALFORMED");
@@ -260,8 +295,10 @@ async fn per_file_byte_limit_is_enforced_before_decode() {
     let body = multipart("eye-boundary", &[7u8; 33], "photo.png", "image/png");
     let (status, json) = post_upload(
         &[("EYE_UPLOAD_MAX_BYTES", "32")],
-        "multipart/form-data; boundary=eye-boundary", body,
-    ).await;
+        "multipart/form-data; boundary=eye-boundary",
+        body,
+    )
+    .await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(json["code"], "PAYLOAD_TOO_LARGE");
 }
@@ -271,8 +308,10 @@ async fn total_request_limit_is_enforced_while_receiving_body() {
     let body = vec![b'x'; 32 + 64 * 1024 + 1];
     let (status, json) = post_upload(
         &[("EYE_UPLOAD_MAX_BYTES", "32")],
-        "multipart/form-data; boundary=eye-boundary", body,
-    ).await;
+        "multipart/form-data; boundary=eye-boundary",
+        body,
+    )
+    .await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(json["code"], "PAYLOAD_TOO_LARGE");
 }
@@ -280,8 +319,11 @@ async fn total_request_limit_is_enforced_while_receiving_body() {
 #[tokio::test]
 async fn malformed_multipart_has_a_stable_validation_error() {
     let (status, json) = post_upload(
-        &[], "multipart/form-data; boundary=eye-boundary", b"not multipart".to_vec(),
-    ).await;
+        &[],
+        "multipart/form-data; boundary=eye-boundary",
+        b"not multipart".to_vec(),
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(json["code"], "VALIDATION_FAILED");
 }
@@ -304,7 +346,8 @@ async fn missing_authorization_is_rejected_before_body_is_read() {
         None,
         "multipart/form-data; boundary=eye-boundary",
         body,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(json["code"], "UNAUTHORIZED");
 }
@@ -322,8 +365,12 @@ async fn malformed_or_non_bearer_authorization_is_rejected() {
     ] {
         let body = multipart("eye-boundary", &png_fixture(), "photo.png", "image/png");
         let (status, json) = post_upload_with(
-            &[], Some(&header), "multipart/form-data; boundary=eye-boundary", body,
-        ).await;
+            &[],
+            Some(&header),
+            "multipart/form-data; boundary=eye-boundary",
+            body,
+        )
+        .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "header {header:?}");
         assert_eq!(json["code"], "UNAUTHORIZED", "header {header:?}");
     }
@@ -332,35 +379,59 @@ async fn malformed_or_non_bearer_authorization_is_rejected() {
 #[tokio::test]
 async fn token_signed_with_another_secret_is_rejected() {
     let forged = bearer(
-        &["enrollment:write"], now_secs(),
-        "attacker-controlled-secret-32-bytes!!", TEST_KID,
+        &["enrollment:write"],
+        now_secs(),
+        "attacker-controlled-secret-32-bytes!!",
+        TEST_KID,
     );
     let body = multipart("eye-boundary", &png_fixture(), "photo.png", "image/png");
     let (status, json) = post_upload_with(
-        &[], Some(&forged), "multipart/form-data; boundary=eye-boundary", body,
-    ).await;
+        &[],
+        Some(&forged),
+        "multipart/form-data; boundary=eye-boundary",
+        body,
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(json["code"], "UNAUTHORIZED");
 }
 
 #[tokio::test]
 async fn token_with_unknown_key_id_is_rejected() {
-    let other_kid = bearer(&["enrollment:write"], now_secs(), TEST_JWT_SECRET, "key-rotated-out");
+    let other_kid = bearer(
+        &["enrollment:write"],
+        now_secs(),
+        TEST_JWT_SECRET,
+        "key-rotated-out",
+    );
     let body = multipart("eye-boundary", &png_fixture(), "photo.png", "image/png");
     let (status, _) = post_upload_with(
-        &[], Some(&other_kid), "multipart/form-data; boundary=eye-boundary", body,
-    ).await;
+        &[],
+        Some(&other_kid),
+        "multipart/form-data; boundary=eye-boundary",
+        body,
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
 async fn expired_token_is_rejected() {
     // Issued an hour ago with a 15-minute lifetime.
-    let stale = bearer(&["enrollment:write"], now_secs() - 3600, TEST_JWT_SECRET, TEST_KID);
+    let stale = bearer(
+        &["enrollment:write"],
+        now_secs() - 3600,
+        TEST_JWT_SECRET,
+        TEST_KID,
+    );
     let body = multipart("eye-boundary", &png_fixture(), "photo.png", "image/png");
     let (status, json) = post_upload_with(
-        &[], Some(&stale), "multipart/form-data; boundary=eye-boundary", body,
-    ).await;
+        &[],
+        Some(&stale),
+        "multipart/form-data; boundary=eye-boundary",
+        body,
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(json["code"], "UNAUTHORIZED");
 }
@@ -370,8 +441,12 @@ async fn valid_token_without_enrollment_scope_is_forbidden() {
     let wrong_scope = bearer(&["gate:identify"], now_secs(), TEST_JWT_SECRET, TEST_KID);
     let body = multipart("eye-boundary", &png_fixture(), "photo.png", "image/png");
     let (status, json) = post_upload_with(
-        &[], Some(&wrong_scope), "multipart/form-data; boundary=eye-boundary", body,
-    ).await;
+        &[],
+        Some(&wrong_scope),
+        "multipart/form-data; boundary=eye-boundary",
+        body,
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(json["code"], "FORBIDDEN");
 }
@@ -381,8 +456,12 @@ async fn valid_token_with_enrollment_scope_reaches_the_pipeline() {
     let body = multipart("eye-boundary", &png_fixture(), "photo.png", "image/png");
     let token = enrollment_bearer();
     let (status, json) = post_upload_with(
-        &[], Some(&token), "multipart/form-data; boundary=eye-boundary", body,
-    ).await;
+        &[],
+        Some(&token),
+        "multipart/form-data; boundary=eye-boundary",
+        body,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["reasonCodes"][0], "NO_FACE_DETECTED");
 }
@@ -392,12 +471,17 @@ async fn without_oauth_configuration_every_request_fails_closed() {
     // No OAuth env means no verification key, so even a correctly signed token is refused.
     let token = enrollment_bearer();
     let body = multipart("eye-boundary", &png_fixture(), "photo.png", "image/png");
-    let response = api::router(config(&[])).oneshot(
-        Request::builder().method("POST")
-            .uri("/v1/enrollment/photo-assessments")
-            .header("content-type", "multipart/form-data; boundary=eye-boundary")
-            .header("authorization", token)
-            .body(Body::from(body)).unwrap(),
-    ).await.unwrap();
+    let response = api::router(config(&[]))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/enrollment/photo-assessments")
+                .header("content-type", "multipart/form-data; boundary=eye-boundary")
+                .header("authorization", token)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

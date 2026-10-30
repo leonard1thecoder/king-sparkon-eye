@@ -211,7 +211,6 @@ pub async fn assess<D: FaceDetector, P: VisionProvider>(
     result
 }
 
-
 /// Applies the conservative MVP calibration gate. Current quality thresholds are starting
 /// points only; until evaluated against a consented dataset, a nominal pass is unavailable.
 /// Explicit retake outcomes and detector failures retain their existing typed outcomes.
