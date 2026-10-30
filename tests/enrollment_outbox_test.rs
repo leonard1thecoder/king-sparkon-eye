@@ -9,9 +9,20 @@ use king_sparkon_eye::persistence::{
     migrate,
 };
 use serde_json::json;
+use sqlx::PgPool;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use std::str::FromStr;
 use uuid::Uuid;
 
-async fn store() -> Option<EnrollmentOutboxStore> {
+/// One PostgreSQL schema per test. The tests run in parallel against a single database, and
+/// `claim_due` is global across the table, so a shared table lets one test claim another test's
+/// event. A schema pins every connection of the test's pool to its own tables through
+/// `search_path`. Each test creates its own schema, so the schemas do not interfere.
+struct Fixture {
+    options: PgConnectOptions,
+}
+
+async fn fixture() -> Option<Fixture> {
     let url = match std::env::var("EYE_TEST_DATABASE_URL") {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
@@ -19,9 +30,34 @@ async fn store() -> Option<EnrollmentOutboxStore> {
             return None;
         }
     };
-    let pool = connect(&url).await.expect("connect to Eye test PostgreSQL");
-    migrate(&pool).await.expect("apply SQLx migrations");
-    Some(EnrollmentOutboxStore::new(pool))
+    let schema = format!("outbox_test_{}", Uuid::new_v4().simple());
+    let admin = connect(&url).await.expect("connect to Eye test PostgreSQL");
+    // The name is "outbox_test_" plus 32 hex digits from a UUID, so it cannot carry input.
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE SCHEMA \"{schema}\"")))
+        .execute(&admin)
+        .await
+        .expect("create per-test schema");
+    admin.close().await;
+    let options = PgConnectOptions::from_str(&url)
+        .expect("EYE_TEST_DATABASE_URL is a valid PostgreSQL URL")
+        .options([("search_path", schema.as_str())]);
+    Some(Fixture { options })
+}
+
+impl Fixture {
+    async fn pool(&self) -> PgPool {
+        PgPoolOptions::new()
+            .max_connections(8)
+            .connect_with(self.options.clone())
+            .await
+            .expect("connect to the per-test schema")
+    }
+
+    async fn store(&self) -> EnrollmentOutboxStore {
+        let pool = self.pool().await;
+        migrate(&pool).await.expect("apply SQLx migrations");
+        EnrollmentOutboxStore::new(pool)
+    }
 }
 
 fn input(_tag: &str) -> EnrollmentOutboxInput {
@@ -61,16 +97,15 @@ fn input(_tag: &str) -> EnrollmentOutboxInput {
 
 #[tokio::test]
 async fn metadata_and_outbox_commit_atomically_and_survive_new_pool() {
-    let Some(store) = store().await else { return };
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
     let item = input("restart");
     assert_eq!(
         store.commit_enrollment(&item).await.unwrap(),
         CommitOutcome::Created
     );
-    let url = std::env::var("EYE_TEST_DATABASE_URL").unwrap();
     drop(store);
-    let fresh_pool = connect(&url).await.unwrap();
-    let fresh = EnrollmentOutboxStore::new(fresh_pool);
+    let fresh = EnrollmentOutboxStore::new(fx.pool().await);
     let claimed = fresh
         .claim_due(item.created_at_ms + 1, 60_000, 4)
         .await
@@ -83,7 +118,8 @@ async fn metadata_and_outbox_commit_atomically_and_survive_new_pool() {
 
 #[tokio::test]
 async fn same_idempotency_key_returns_existing_and_conflict_is_rejected() {
-    let Some(store) = store().await else { return };
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
     let item = input("idem");
     assert_eq!(
         store.commit_enrollment(&item).await.unwrap(),
@@ -104,7 +140,8 @@ async fn same_idempotency_key_returns_existing_and_conflict_is_rejected() {
 
 #[tokio::test]
 async fn broker_ack_is_required_before_delivered_state_and_replay_is_durable() {
-    let Some(store) = store().await else { return };
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
     let item = input("ack");
     store.commit_enrollment(&item).await.unwrap();
     assert!(
@@ -134,7 +171,8 @@ async fn broker_ack_is_required_before_delivered_state_and_replay_is_durable() {
 
 #[tokio::test]
 async fn retry_exhaustion_dead_letters_and_operator_replay_are_atomic() {
-    let Some(store) = store().await else { return };
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
     let item = input("replay");
     store.commit_enrollment(&item).await.unwrap();
     store
@@ -168,18 +206,25 @@ async fn retry_exhaustion_dead_letters_and_operator_replay_are_atomic() {
 
 #[tokio::test]
 async fn concurrent_claimers_do_not_receive_the_same_event() {
-    let Some(store) = store().await else { return };
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
     let item = input("claim");
     store.commit_enrollment(&item).await.unwrap();
     let a = store.claim_due(item.created_at_ms + 1, 60_000, 1);
     let b = store.claim_due(item.created_at_ms + 1, 60_000, 1);
     let (a, b) = tokio::join!(a, b);
-    assert_ne!(a.unwrap().len() + b.unwrap().len(), 2);
+    let (a, b) = (a.unwrap(), b.unwrap());
+    assert_eq!(
+        a.len() + b.len(),
+        1,
+        "exactly one concurrent claimer receives the due event"
+    );
 }
 
 #[tokio::test]
 async fn invalid_payload_is_rejected_before_database_write() {
-    let Some(store) = store().await else { return };
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
     let mut item = input("invalid");
     item.payload["eventVersion"] = json!("9.9.9");
     assert_eq!(
@@ -204,7 +249,8 @@ async fn invalid_payload_is_rejected_before_database_write() {
 
 #[tokio::test]
 async fn failed_outbox_insert_rolls_back_the_enrollment_row() {
-    let Some(store) = store().await else { return };
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
     let first = input("first");
     store.commit_enrollment(&first).await.unwrap();
     let mut second = input("second");
@@ -212,8 +258,7 @@ async fn failed_outbox_insert_rolls_back_the_enrollment_row() {
     second.payload["eventId"] = json!(first.event_id);
     assert!(store.commit_enrollment(&second).await.is_err());
 
-    let url = std::env::var("EYE_TEST_DATABASE_URL").unwrap();
-    let pool = connect(&url).await.unwrap();
+    let pool = fx.pool().await;
     let count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM eye_enrollment_records WHERE enrollment_id=$1")
             .bind(&second.enrollment_id)
