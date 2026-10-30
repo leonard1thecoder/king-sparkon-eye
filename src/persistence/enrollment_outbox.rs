@@ -276,7 +276,6 @@ impl EnrollmentOutboxStore {
             "UPDATE eye_kafka_outbox SET status='PENDING', attempts=0, next_attempt_at_ms=$3,              lease_until_ms=NULL, last_error_category=NULL, delivered_at_ms=NULL, updated_at_ms=$3              WHERE event_id=$1 AND status='DEAD_LETTER'              AND EXISTS (SELECT 1 FROM eye_kafka_dead_letters d WHERE d.event_id=$1)",
         )
         .bind(event_id)
-        .bind(operator_reference)
         .bind(now_ms)
         .execute(&mut *tx)
         .await?;
@@ -356,6 +355,9 @@ fn payload_matches(input: &EnrollmentOutboxInput) -> bool {
         && input.payload.get("consentReference").and_then(Value::as_str) == Some(input.consent_reference.as_str())
         && input.payload.get("policyVersion").and_then(Value::as_str) == Some(input.policy_version.as_str())
         && input.payload.get("persistence").and_then(Value::as_str) == Some("PENDING")
+        && input.payload.get("objectKey").and_then(Value::as_str) == Some(input.object_key.as_str())
+        && input.payload.get("contentSha256").and_then(Value::as_str) == Some(input.content_sha256.as_str())
+        && input.payload.get("byteLen").and_then(Value::as_i64) == Some(input.byte_len)
 }
 
 fn valid_identifier(value: &str) -> bool {
