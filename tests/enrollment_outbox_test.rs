@@ -35,7 +35,7 @@ fn input(_tag: &str) -> EnrollmentOutboxInput {
         policy_version: "policy-v1".into(),
         model_version: Some("model-v1".into()),
         idempotency_key: Some(idem.clone()),
-        created_at_ms: 1_800_000_000_000,
+        created_at_ms: 1_800_000_000_000_i64,
         payload: json!({
             "eventId": format!("evt_{id}"),
             "eventType": "photo.enrolled.v1",
@@ -50,7 +50,7 @@ fn input(_tag: &str) -> EnrollmentOutboxInput {
             "modelVersion": "model-v1",
             "idempotencyKey": idem,
             "persistence": "PENDING",
-            "occurredAtMs": 1_800_000_000_000
+            "occurredAtMs": 1_800_000_000_000_i64
         }),
     }
 }
