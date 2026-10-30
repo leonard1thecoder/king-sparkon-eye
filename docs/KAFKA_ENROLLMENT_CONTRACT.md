@@ -20,7 +20,7 @@ The Rust payload type is `PhotoEnrolledEventV1` in `src/domain/events.rs`. It ca
 
 An event may be created for an enrollment only after the assessment has passed, caller authorization has succeeded, authoritative consent has been verified, and the active enrollment plus outbox intent have been committed durably. Deleted, failed, uncertain, unauthorized, or non-consented enrollments must not publish.
 
-The current `EnrollmentRecord` represents an active stored object and has `PENDING` persistence until Spring Boot confirms metadata persistence. Its consent reference is only identifier-shape validated, not checked against a consent authority. The current metadata map is process-local. Consequently, the present code can reject deleted and `FAILED`/`NOT_REQUESTED` records, but it cannot assert the complete publish gate. No production publish path is enabled by this branch.
+The current `EnrollmentRecord` represents an active stored object and has `PENDING` persistence until Spring Boot confirms metadata persistence. Its consent reference is only identifier-shape validated, not checked against a consent authority. The legacy `src/storage` metadata map is process-local. The #113 branch adds a separate SQLx repository and migration for durable metadata/outbox commit, but it is not yet connected to `src/storage` or an HTTP enrollment route. Consequently, the complete publish gate is not yet enforced by a production path.
 
 ## Delivery and recovery
 
@@ -33,12 +33,13 @@ The current `EnrollmentRecord` represents an active stored object and has `PENDI
 
 ## Ownership and open cross-repository contract
 
-Spring Boot remains authoritative for user/ticket association, eligibility, consent and metadata persistence. Kafka delivery never admits a ticket. The accessible backend README and OAuth documentation do not establish an Eye-specific consent verification endpoint or consumer contract for this event. Until the backend owner supplies and agrees those contracts in a separate linked issue/PR, Rust must fail closed rather than guess endpoint paths, DTO fields, consumer offsets, or database schema.
+Spring Boot remains authoritative for user/ticket association, eligibility, consent and metadata persistence. Kafka delivery never admits a ticket. The accessible backend README and OAuth documentation do not establish an Eye-specific consent verification endpoint or consumer contract for this event. The backend source currently documents the consent verification path and event envelope, and contains the strict validator, consumer and transactional ingestion service. However, backend contract issue #66 remains open; obtain explicit owner sign-off and verify the deployment configuration before enabling the Rust producer. Rust must continue to fail closed when consent authority is unavailable.
 
 Legal consent wording and retention periods are not technically approved by this event decision. A shape-valid `consentReference` is not proof of consent.
 
 ## Implementation status
 
 - **Implemented on the #28 issue branch:** event-construction guard for deleted/ineligible persistence states; stable enrollment partition key; process-local duplicate key guard including cross-enrollment idempotency conflict; schema/hash checks; regression tests.
-- **Not implemented:** real `rust-rdkafka` producer, TLS/auth configuration, durable metadata store, transactional outbox, restart-safe retries, dead-letter/replay, metrics, authoritative consent verification, HTTP enrollment-to-outbox wiring, Spring Boot consumer integration.
+- **Implemented on #113 branch, pending review/merge:** SQLx Eye PostgreSQL metadata/outbox transaction, durable claim leases, persisted attempts, broker-acknowledgement transition, dead-letter/replay and PostgreSQL integration tests. The repository is not yet called by the enrollment flow.
+- **Not implemented:** real `rust-rdkafka` producer, TLS/auth configuration, worker/dispatcher runtime, metrics, authoritative consent verification wiring, HTTP enrollment-to-outbox wiring, object-upload compensation/orphan reconciliation, and deployment enablement. Backend consent/event contract issue #66 remains open.
 - **Validation:** this editing environment does not provide Cargo, so local Rust format, Clippy, tests and lockfile verification could not be run. Repository CI is required before merge. No dependency or Cargo.lock change is included in this partial PR.

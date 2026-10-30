@@ -4,7 +4,7 @@
 
 King Sparkon Eye is designed to let an authorized gate worker find an enrolled attendee through a live face-recognition check, review the matched ticket information, and explicitly approve entry. Ticket validity and the final admission decision remain under the existing Spring Boot ticket-management backend.
 
-> **Project status (2026-10-30):** This repository now contains a Rust codebase, mounted OAuth routes and two partial Eye-owned PostgreSQL persistence foundations. The OAuth HTTP runtime still uses a PostgREST RPC adapter, while PR #118 added a separate direct-SQLx persistence layer; these paths have not yet been reconciled or fully wired. Kafka/outbox source is draft-only and not exported or started. These integrations are **not production-ready**; verify CI and the open acceptance criteria before deployment.
+> **Project status (2026-10-30):** This repository now contains a Rust codebase and mounted OAuth routes. PR #118 added a direct-SQLx Eye PostgreSQL persistence foundation for OAuth. The #113 branch adds a SQLx enrollment metadata/outbox repository and PostgreSQL migration with durable claim, retry, acknowledgement, dead-letter and replay operations; it is not yet merged or wired to the enrollment flow or a Kafka worker. The older PostgREST draft remains unexported. These integrations are **not production-ready**; verify CI and the open acceptance criteria before deployment.
 
 ## Agent source-of-truth repositories — required before planning
 
