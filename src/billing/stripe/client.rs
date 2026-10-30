@@ -477,8 +477,14 @@ mod return_url_tests {
         let portal = client.create_portal_session(
             "cus_123abc", "https://app.example.com/billing", &urls, "portal_once",
         ).await;
-        assert_eq!(checkout, Err(StripeError::InvalidRequest { reason: "live billing is disabled" }));
-        assert_eq!(portal, Err(StripeError::InvalidRequest { reason: "live billing is disabled" }));
+        assert!(matches!(
+            checkout,
+            Err(StripeError::InvalidRequest { reason: "live billing is disabled" })
+        ));
+        assert!(matches!(
+            portal,
+            Err(StripeError::InvalidRequest { reason: "live billing is disabled" })
+        ));
     }
 
 }
