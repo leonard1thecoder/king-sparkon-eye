@@ -1,6 +1,6 @@
 # Stripe integration — catalog foundation (issue #139)
 
-**Status: partial.** The #139 catalog foundation is merged (PR #155). The #141 webhook signature verifier is implemented on branch `issue/141-webhook-signature-verification`, pending merge. Test mode only. Nothing in the service runtime calls this code yet, and webhooks are not persisted or processed.
+**Status: partial.** The #139 configuration/client foundation is merged (PR #155); this branch adds an opt-in test-mode-only base product/price provisioner. The #141 webhook signature verifier is merged (PR #156). No billing code is wired into the service runtime, and webhook events are not persisted or processed.
 
 Related: [`BILLING_PLAN_DOMAIN.md`](BILLING_PLAN_DOMAIN.md) (plan and meter domain, #145), [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md) (sequencing).
 
@@ -68,15 +68,29 @@ Error codes: `WEBHOOK_SECRET_INVALID`, `WEBHOOK_SIGNATURE_MISSING`, `WEBHOOK_SIG
 
 Known-answer test: the vector in the test file was computed with Python's `hmac`/`hashlib`, independent of the Rust code.
 
+### Test-mode base catalog provisioning (this #139 slice)
+
+Run from the repository root:
+
+```bash
+python3 scripts/stripe/provision_test_catalog.py
+EYE_STRIPE_SECRET_KEY=sk_test_... python3 scripts/stripe/provision_test_catalog.py --apply
+```
+
+The default command validates the candidate catalog and performs no network requests. `--apply` requires an `sk_test_` key; the API host is fixed to Stripe and redirects are not followed. It creates or reuses one Product per paid plan and one licensed recurring base Price per monthly/annual interval. Stable metadata keys are searched before creation, Stripe idempotency keys are supplied, and multiple matches or mismatched existing prices fail closed. Amounts are parsed from the candidate JSON and converted exactly to USD minor units; no amount or Stripe ID is hardcoded. The command prints the resulting test Price IDs for operator-managed test configuration.
+
+This is **not production price approval**. It deliberately provisions only the four candidate base-price slots for Gold and Premium. Free has no Stripe Price. It does not provision metered usage prices, change existing prices, archive superseded prices, or wire startup/runtime billing. A changed price requires a new catalog version/key; do not mutate an existing version in place. Do not use the generated IDs with live keys.
+
 ## What is not implemented (the rest of #139 and #141)
 
 - **Webhook persistence and processing (#141 durable work).** Nothing stores delivery IDs, deduplicates, or applies subscription, invoice or payment events. The endpoint, the durable inbox/outbox, replay and entitlement projection depend on #113 (durable PostgreSQL), and no HTTP route exists yet.
 
 - **Metered prices.** Enrollment, template-storage, original-photo storage and identification meters are not mapped or verified. These need the Billing Meter work in #143 and a confirmed billing contract (#138).
-- **Provisioning.** There is no idempotent catalog-provisioning script and no documented Dashboard procedure yet. The issue requires one.
+- **Metered price provisioning.** Enrollment, template storage, original-photo storage and identification prices remain blocked on #138/#143's agreed billing contract and meter semantics.
+- **Archiving** of superseded prices. The provisioner never mutates or archives an existing price. The issue requires one.
 - **Archiving** of superseded prices.
 - **Startup wiring.** Nothing calls `verify_catalog` at startup, and the service does not read these variables.
-- **Catalog naming and metadata documentation.** Product names and metadata are not yet defined.
+- **Catalog naming and metadata documentation.** The test-mode provisioner uses stable `eye_catalog_key`, `eye_price_key`, plan/version and candidate-status metadata; a production naming and approval policy remains open.
 - **Currency and tax.** Only USD is accepted. Tax behaviour is not configured.
 
 ## Blockers for live use
@@ -90,11 +104,11 @@ Live mode stays refused until all of the following are done:
 ## Secrets and privacy
 
 - No key, price ID or webhook secret is committed. Tests use the placeholder `sk_test_placeholder_not_a_real_key`, which is not a valid credential.
-- No biometric images, embeddings, attendee PII, ticket IDs or raw payloads are sent to Stripe. The client only retrieves prices.
+- No biometric images, embeddings, attendee PII, ticket IDs or raw payloads are sent to Stripe. The client retrieves prices; the test-mode provisioner sends only plan/version/catalog metadata and recurring price fields.
 
 ## Verification
 
-Commands run on `issue/139-stripe-catalog-and-client` with toolchain 1.97.0:
+Existing verification evidence from merged PRs #155/#156 (toolchain 1.97.0):
 
 - `cargo test --test stripe_config_test`: 14 passed.
 - `cargo test --test stripe_catalog_test`: 16 passed. Each test uses a local loopback mock server. No network access.
@@ -102,3 +116,8 @@ Commands run on `issue/139-stripe-catalog-and-client` with toolchain 1.97.0:
 - `cargo test --all-features` on the #141 branch: 443 passed, 0 failed across all targets.
 - `cargo clippy --all-targets --all-features -- -D warnings`, with the four pre-existing lints allowed on the command line (`unused_imports`, `clippy::collapsible_if`, `clippy::too_many_arguments`, `clippy::manual_async_fn`): exit 0.
 - `rustfmt --edition 2024` on the new Stripe files.
+
+Additional checks for this branch (not yet run in this ChatGPT execution):
+
+- `python3 tests/test_stripe_catalog_provisioning.py`
+- `python3 scripts/stripe/provision_test_catalog.py` (dry-run; no credentials or network)
