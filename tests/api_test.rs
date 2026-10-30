@@ -128,3 +128,97 @@ fn readiness_logic_matches_dependency_rules() {
         DependencyState::Disabled
     );
 }
+
+fn multipart(boundary: &str, image: &[u8], filename: &str, part_type: &str) -> Vec<u8> {
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{filename}\"\r\nContent-Type: {part_type}\r\n\r\n"
+    ).into_bytes();
+    body.extend_from_slice(image);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    body
+}
+
+fn png_fixture() -> Vec<u8> {
+    use image::{DynamicImage, ImageFormat, RgbImage};
+    let image = DynamicImage::ImageRgb8(RgbImage::from_pixel(4, 4, image::Rgb([20, 40, 60])));
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    image.write_to(&mut cursor, ImageFormat::Png).unwrap();
+    cursor.into_inner()
+}
+
+async fn post_upload(
+    vars: &[(&str, &str)], content_type: &str, body: Vec<u8>,
+) -> (StatusCode, serde_json::Value) {
+    let response = api::router(config(vars)).oneshot(
+        Request::builder().method("POST")
+            .uri("/v1/enrollment/photo-assessments")
+            .header("content-type", content_type)
+            .body(Body::from(body)).unwrap(),
+    ).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+#[tokio::test]
+async fn valid_image_is_decoded_but_not_reported_as_assessed() {
+    let body = multipart("eye-boundary", &png_fixture(), "misleading.jpg", "image/jpeg");
+    let (status, json) = post_upload(&[], "multipart/form-data; boundary=eye-boundary", body).await;
+    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(json["code"], "ASSESSMENT_NOT_IMPLEMENTED");
+    assert!(json["message"].as_str().unwrap().contains("assessment"));
+}
+
+#[tokio::test]
+async fn malformed_image_is_rejected_at_http_boundary() {
+    let body = multipart("eye-boundary", b"not an image", "photo.png", "image/png");
+    let (status, json) = post_upload(&[], "multipart/form-data; boundary=eye-boundary", body).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(json["code"], "IMAGE_MALFORMED");
+}
+
+#[tokio::test]
+async fn unsupported_image_is_rejected_at_http_boundary() {
+    let body = multipart("eye-boundary", b"GIF89a", "photo.gif", "image/gif");
+    let (status, json) = post_upload(&[], "multipart/form-data; boundary=eye-boundary", body).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(json["code"], "UNSUPPORTED_MEDIA_TYPE");
+}
+
+#[tokio::test]
+async fn per_file_byte_limit_is_enforced_before_decode() {
+    let body = multipart("eye-boundary", &[7u8; 33], "photo.png", "image/png");
+    let (status, json) = post_upload(
+        &[("EYE_UPLOAD_MAX_BYTES", "32")],
+        "multipart/form-data; boundary=eye-boundary", body,
+    ).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(json["code"], "PAYLOAD_TOO_LARGE");
+}
+
+#[tokio::test]
+async fn total_request_limit_is_enforced_while_receiving_body() {
+    let body = vec![b'x'; 32 + 64 * 1024 + 1];
+    let (status, json) = post_upload(
+        &[("EYE_UPLOAD_MAX_BYTES", "32")],
+        "multipart/form-data; boundary=eye-boundary", body,
+    ).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(json["code"], "PAYLOAD_TOO_LARGE");
+}
+
+#[tokio::test]
+async fn malformed_multipart_has_a_stable_validation_error() {
+    let (status, json) = post_upload(
+        &[], "multipart/form-data; boundary=eye-boundary", b"not multipart".to_vec(),
+    ).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(json["code"], "VALIDATION_FAILED");
+}
+
+#[tokio::test]
+async fn unsupported_request_media_type_is_rejected() {
+    let (status, json) = post_upload(&[], "application/json", b"{}".to_vec()).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(json["code"], "UNSUPPORTED_MEDIA_TYPE");
+}

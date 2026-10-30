@@ -3,7 +3,7 @@
   "info": {
     "title": "King Sparkon Eye API",
     "version": "0.1.0",
-    "description": "Wire contract for the Rust vision service. Source of truth for buyer photo assessment and QR-free, event-scoped gate identification. Image suitability, persistence and face-match outcome are separate fields. Nothing here represents final admission: only Spring Boot admits an attendee, after an authenticated worker approves entry. Operations listed under paths are contract definitions. Only the health endpoints are implemented so far (issue #21)."
+    "description": "Wire contract for the Rust vision service. Image suitability, persistence and face-match outcome are separate fields. Nothing here represents final admission: only Spring Boot admits an attendee, after an authenticated worker approves entry. Health endpoints and the multipart upload-validation boundary are implemented; the assessment operation currently returns ASSESSMENT_NOT_IMPLEMENTED after successful validation until the assessment orchestrator is wired."
   },
   "paths": {
     "/health/live": {
@@ -87,7 +87,7 @@
     "/v1/enrollment/photo-assessments": {
       "post": {
         "summary": "Assess a buyer enrollment photo",
-        "description": "Accepts a multipart request with an `image` part and optional metadata. Rust validates the file, runs objective checks and optional frontier-model guidance, then returns suitability. Persistence is reported separately and is not implied by a passed assessment.",
+        "description": "Accepts multipart/form-data with one image part and optional clientRequestId. The HTTP boundary enforces a total request-body cap and exact image-byte cap, ignores client filename/MIME claims, and validates/normalizes JPEG or static PNG before any inference/provider call. Until the assessment orchestrator is wired, valid uploads return 501 ASSESSMENT_NOT_IMPLEMENTED and are never represented as assessed.",
         "operationId": "createPhotoAssessment",
         "requestBody": {
           "required": true,
@@ -102,7 +102,7 @@
                   "image": {
                     "type": "string",
                     "format": "binary",
-                    "description": "JPEG, PNG or WebP. Size and dimension limits are enforced before inference."
+                    "description": "JPEG or static PNG bytes. Client filename and part MIME type are ignored. Default image cap is 10 MiB; width, height, pixel count, decode allocation and decode time are bounded."
                   },
                   "clientRequestId": {
                     "$ref": "#/components/schemas/Identifier"
@@ -114,7 +114,7 @@
         },
         "responses": {
           "200": {
-            "description": "Assessment completed. Check `suitability` for the outcome.",
+            "description": "Reserved for the future wired assessment flow. The current implementation does not return this response.",
             "content": {
               "application/json": {
                 "schema": {
@@ -167,17 +167,31 @@
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
           },
+          "422": {
+            "$ref": "#/components/responses/ImageDimensionsExceeded"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
           "500": {
             "$ref": "#/components/responses/Internal"
           },
+          "501": {
+            "description": "Image passed ingress validation, but assessment orchestration is not yet wired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                },
+                "example": {
+                  "code": "ASSESSMENT_NOT_IMPLEMENTED",
+                  "message": "photo assessment is not available until the assessment pipeline is wired"
+                }
+              }
+            }
+          },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
-          },
-          "422": {
-            "$ref": "#/components/responses/ImageDimensionsExceeded"
           }
         }
       }
@@ -265,6 +279,9 @@
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
           },
+          "422": {
+            "$ref": "#/components/responses/ImageDimensionsExceeded"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
@@ -273,9 +290,6 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
-          },
-          "422": {
-            "$ref": "#/components/responses/ImageDimensionsExceeded"
           }
         }
       }
@@ -448,7 +462,8 @@
           "SERVICE_UNAVAILABLE",
           "IMAGE_MALFORMED",
           "IMAGE_DIMENSIONS_EXCEEDED",
-          "INTERNAL"
+          "INTERNAL",
+          "ASSESSMENT_NOT_IMPLEMENTED"
         ]
       },
       "ErrorBody": {

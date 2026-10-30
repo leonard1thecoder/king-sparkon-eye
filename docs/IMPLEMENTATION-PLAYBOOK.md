@@ -310,3 +310,18 @@ The approved technical defaults remove the design-choice blocker but do not sati
 | Idempotency / partitioning | Publisher dedupe map is process-local. This PR separates the stable partition key (`enrollmentId`) from idempotency and rejects a key reused by another enrollment. | In-memory only; not restart-safe or transactional. |
 | Consent and identity | Storage accepts any syntactically valid consent reference. Backend source inspected for this run does not establish an Eye-specific consent verification API or an Eye enrollment Kafka consumer contract. | Cross-repository blockers; fail closed before production. |
 | Durable delivery | Current enrollment metadata lives in `Mutex<State>`; only `MemoryKafkaProducer` exists. There is no atomic durable metadata/outbox transaction or real TLS producer. | Not implemented; keep #28 open. |
+
+
+## HTTP upload-boundary implementation update (reviewed 2026-10-30)
+
+Issue [#23](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23) was reopened because the existing ingress library did not satisfy its end-to-end HTTP acceptance criteria. The issue-scoped branch adds the multipart HTTP boundary while keeping detector/provider/assessment work out of scope.
+
+- `POST /v1/enrollment/photo-assessments` reads multipart bodies under a total request cap of the configured image limit plus 64 KiB of multipart overhead.
+- The `image` part has its own exact `EYE_UPLOAD_MAX_BYTES` cap. Filename and part MIME claims are ignored; file signatures decide whether bytes are supported.
+- Only JPEG and static PNG are supported by the current decoder. The OpenAPI description was corrected from JPEG/PNG/WebP to JPEG/static PNG.
+- Existing dimension, pixel, decode-allocation and decode-time limits remain enforced by `src/ingress/`.
+- Valid decoded images return `501 ASSESSMENT_NOT_IMPLEMENTED`. The route does not fabricate an assessment while the detector/provider/policy orchestrator is not wired.
+- HTTP tests cover valid-but-not-assessed, malformed, unsupported, misleading filename/MIME, per-file oversize, total request oversize, malformed multipart and unsupported request media type.
+- README and OpenAPI status/format claims were synchronized. `AGENTS.md` and bootstrap lifecycle/configuration were reviewed; no reusable agent rule or bootstrap change was required for this route-level issue.
+
+CI and the full Rust test suite remain deferred until the MVP implementation batch is ready, per the owner-directed execution order. Do not close #23 until the branch has been built/tested and merged.
