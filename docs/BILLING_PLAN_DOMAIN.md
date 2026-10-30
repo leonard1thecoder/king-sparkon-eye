@@ -16,7 +16,8 @@ This document describes the Rust plan, meter and allowance model in `src/billing
 | Pure included-vs-measured-vs-billable overage arithmetic (`assess_meter`, `assess_usage`) | Implemented |
 | Candidate catalog file, tagged `candidate_unapproved` | Implemented |
 | Loading the catalog into the service `Config` or runtime | **Not implemented** (no runtime consumer yet) |
-| Measuring usage (durable usage ledger, monthly aggregation) | **Planned**, issue #148 |
+| Usage ledger reference semantics: append-only, idempotent, reversible, tenant-scoped, period aggregation, level sampling (`src/billing/ledger.rs`) | Implemented as a **non-durable reference model** (issue #148 core) |
+| Durable PostgreSQL ledger, transactional outbox, Stripe Billing Meter reporting | **Planned / blocked**, issues #113, #28, #143, #138 |
 | Enforcing allowances (blocking, refusing, or tenant-scoped quotas) | **Planned**, issue #146 |
 | Stripe products, prices, metered prices, Checkout, Customer Portal, webhooks | **Planned**, issues #139, #140, #142, #141, #147, #149 |
 | Billing-account and tenant mapping from API credentials | **Planned**, issue #138 contract |
@@ -162,6 +163,22 @@ Validation before any live use: unit economics, Stripe account and currency supp
 - A face match or a Kafka event is never a billable enrollment or an admission approval.
 - No biometric images, embeddings, attendee PII, ticket IDs, secrets or raw request payloads are placed in billing configuration, logs, errors or Stripe metadata. Error messages name a plan, meter or field, never a configured value.
 - The catalog contains no Stripe Price IDs and no secrets. Stripe IDs belong to the later Stripe catalog work (#139), kept separate for test and live.
+
+## Usage ledger (issue #148 core)
+
+`LedgerModel` in `src/billing/ledger.rs` defines the ledger rules that a durable adapter must reproduce. It is **not durable** and must not drive enforcement or invoicing.
+
+- **Append-only.** Entries are never edited. Corrections are explicit reversals that reference the original event key.
+- **Idempotency.** Each entry is keyed by `(tenant, event key)`. An identical replay returns `Duplicate` with the original sequence number and changes nothing. A reused key with different content is `KeyConflict`.
+- **Tenant scoping.** Keys, totals and reversals are all scoped to the tenant. A tenant cannot reverse another tenant's entry.
+- **Sources map to meters.** `ConfirmedEnrollment` → enrollments, `EligibleIdentificationCompleted` → identification requests (flows). `TemplateSample` → active templates, `PhotoStorageSample` → retained photo storage (levels). A mismatch is rejected.
+- **Flows.** Quantity must be positive. A reversal carries the original's quantity and is booked to the **original's period**, so a later correction never makes a period negative. Each original can be reversed once.
+- **Levels.** Daily samples are taken at 00:00 UTC. A later sample for the same day supersedes an earlier one. For a billable window, every day must have a sample, or the call fails with `LEDGER_LEVEL_SAMPLE_MISSING`. There is no silent undercount.
+- **Level rounding (candidate, unapproved).** Template-months = `ceil(sum of daily counts / billable days)`. GiB-months = `ceil(sum of daily bytes / (billable days × 2^30))`. Deletions mid-month lower the daily samples and therefore the average. The divisor is the billable window, so a partial month uses only its billable days.
+- **Reconciliation.** `reconcile(ledger, authoritative)` reports `Match` or `Drift`. It never adjusts a total.
+- **Source trust.** The ledger does not verify that an enrollment was authoritatively confirmed. Only confirmed occurrences may produce an `AppendRequest`, and that contract is not yet agreed (#138, backend #66).
+
+Not implemented: the PostgreSQL table and migration, transactional outbox publication, the durable adapter, Stripe Billing Meter reporting, and reconciliation against authoritative storage inventory.
 
 ## Blockers and dependencies
 

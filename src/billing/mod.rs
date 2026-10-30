@@ -9,6 +9,7 @@
 //! See `docs/BILLING_PLAN_DOMAIN.md` for the semantics (periods, versioning, overage rules).
 
 pub mod catalog;
+pub mod ledger;
 pub mod period;
 
 use std::fmt;
