@@ -1,9 +1,8 @@
 //! King Sparkon Eye: Rust vision service.
 //!
-//! Current scope (issue #21): crate skeleton, configuration, HTTP liveness and
-//! readiness endpoints, structured logging and graceful shutdown. Image
-//! validation, ONNX inference, provider adapters and assessment policy are
-//! planned in later issues and are intentionally not implemented here.
+//! Rust vision service with bounded multipart ingress, YuNet face detection and
+//! conservative photo assessment. Uncalibrated nominal passes are reported as
+//! ASSESSMENT_UNAVAILABLE. Enrollment persistence and admission remain separate.
 
 pub mod advisory;
 pub mod api;

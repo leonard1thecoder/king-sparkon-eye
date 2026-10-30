@@ -310,3 +310,44 @@ The approved technical defaults remove the design-choice blocker but do not sati
 | Idempotency / partitioning | Publisher dedupe map is process-local. This PR separates the stable partition key (`enrollmentId`) from idempotency and rejects a key reused by another enrollment. | In-memory only; not restart-safe or transactional. |
 | Consent and identity | Storage accepts any syntactically valid consent reference. Backend source inspected for this run does not establish an Eye-specific consent verification API or an Eye enrollment Kafka consumer contract. | Cross-repository blockers; fail closed before production. |
 | Durable delivery | Current enrollment metadata lives in `Mutex<State>`; only `MemoryKafkaProducer` exists. There is no atomic durable metadata/outbox transaction or real TLS producer. | Not implemented; keep #28 open. |
+
+
+## HTTP upload-boundary implementation update (reviewed 2026-10-30)
+
+Issue [#23](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23) was reopened because the existing ingress library did not satisfy its end-to-end HTTP acceptance criteria. The issue-scoped branch adds the multipart HTTP boundary and wires the vendored YuNet detector into the domain assessment pipeline.
+
+- `POST /v1/enrollment/photo-assessments` reads multipart bodies under a total request cap of the configured image limit plus 64 KiB of multipart overhead.
+- The `image` part has its own exact `EYE_UPLOAD_MAX_BYTES` cap. Filename and part MIME claims are ignored; file signatures decide whether bytes are supported.
+- Only JPEG and static PNG are supported by the current decoder. The OpenAPI description was corrected from JPEG/PNG/WebP to JPEG/static PNG.
+- Existing dimension, pixel, decode-allocation and decode-time limits remain enforced by `src/ingress/`.
+- Valid decoded images enter the YuNet-backed assessment pipeline. A nominal pass is converted to `ASSESSMENT_UNAVAILABLE` until the quality thresholds are calibrated against a consented dataset; detector errors remain unavailable and explicit retake outcomes remain retake outcomes.
+- HTTP tests cover a real no-face detector outcome, malformed/unsupported images, misleading filename/MIME, per-file oversize, total request oversize, malformed multipart and unsupported request media type. Domain tests cover the conservative calibration gate.
+- README and OpenAPI status/format claims were synchronized. `AGENTS.md` and bootstrap lifecycle/configuration were reviewed; no reusable agent rule or bootstrap change was required for this route-level issue.
+
+CI and the full Rust test suite remain deferred until the MVP implementation batch is ready, per the owner-directed execution order. Do not close #23 until the branch has been built/tested and merged.
+
+
+### Issue #23 — HTTP upload boundary and conservative assessment wiring (2026-10-30)
+
+Branch: `issue/23-http-upload-boundary`.
+
+- The bounded multipart route validates and normalizes the image before model/provider work.
+- The route initializes the vendored YuNet ONNX Runtime/model once per process and calls the existing domain `assess()` pipeline.
+- The endpoint does not call Muse Spark: the current response contract has no field for its guidance, so sending biometric images to the provider would produce unused output. Provider integration remains a separate contract-backed step.
+- The conservative calibration gate converts every nominal `ASSESSMENT_PASSED` into `ASSESSMENT_UNAVAILABLE` until thresholds are evaluated against a consented dataset. Retake and detector failure outcomes retain their typed statuses.
+- Response reports `persistence: NOT_REQUESTED`; this route does not store/enroll the image, publish an event, perform identity matching, or make admission decisions.
+- Docker runtime explicitly configures the vendored model path and ONNX Runtime library path.
+- HTTP regression coverage now expects a real detector outcome for a valid upload; domain unit tests cover the calibration gate.
+- Verification status: Rust tests, formatting and Clippy have not run because this environment has no Rust toolchain. CI stays deferred until the MVP implementation batch is ready.
+
+
+### Upload streaming defect follow-up — bug #124 (2026-10-30)
+
+Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) records the remaining per-image streaming enforcement gap discovered while reviewing PR #123. The handler bounds the complete request body before multipart parsing, but buffers that bounded body before checking the exact image-part length. The total-body cap is useful but does not satisfy the per-part streaming requirement in issue #23.
+
+- Keep #23 open until its acceptance criteria are implemented and verified; do not close it because PR #123 exists.
+- Fix #124 by incrementally parsing multipart and counting image-part bytes as chunks arrive, while preserving the independent total-request cap.
+- Regenerate Cargo.lock with the Rust toolchain for any multipart dependency/feature change; do not hand-edit it.
+- Add a streamed HTTP regression test proving rejection occurs before the entire image part is buffered.
+- README, OpenAPI and this playbook must describe only verified behavior. The total-body cap and exact per-image cap must not be conflated.
+- Rust formatting, tests, Clippy and build remain scheduled for the final MVP verification pass, as directed by the repository owner.

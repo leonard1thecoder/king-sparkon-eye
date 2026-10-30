@@ -1,9 +1,8 @@
 //! Face detection interface and detection outcomes (issue #24).
 //!
-//! The ONNX-backed detector is not implemented yet. Its model artifact, licence and
-//! runtime still need a decision (see README). Everything here is model-independent:
-//! the `FaceDetector` trait, validation of detector output, and the zero/one/many
-//! classification. HTTP handlers depend only on this interface.
+//! The ONNX-backed YuNet detector and vendored runtime are implemented. This module exposes
+//! the detector interface, validates detector output, and classifies zero/one/many faces.
+//! HTTP handlers depend on the detector interface rather than model-specific output.
 //!
 //! Detection is not identity comparison and not liveness detection.
 

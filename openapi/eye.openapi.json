@@ -3,7 +3,7 @@
   "info": {
     "title": "King Sparkon Eye API",
     "version": "0.1.0",
-    "description": "Wire contract for the Rust vision service. Source of truth for buyer photo assessment and QR-free, event-scoped gate identification. Image suitability, persistence and face-match outcome are separate fields. Nothing here represents final admission: only Spring Boot admits an attendee, after an authenticated worker approves entry. Operations listed under paths are contract definitions. Only the health endpoints are implemented so far (issue #21)."
+    "description": "King Sparkon Eye Rust vision API. The service validates uploads and runs YuNet-backed photo assessment. Nominal passes are conservatively returned as ASSESSMENT_UNAVAILABLE until photo-quality thresholds are calibrated against a consented evaluation dataset. No result is an identity decision or admission."
   },
   "paths": {
     "/health/live": {
@@ -87,7 +87,7 @@
     "/v1/enrollment/photo-assessments": {
       "post": {
         "summary": "Assess a buyer enrollment photo",
-        "description": "Accepts a multipart request with an `image` part and optional metadata. Rust validates the file, runs objective checks and optional frontier-model guidance, then returns suitability. Persistence is reported separately and is not implied by a passed assessment.",
+        "description": "Validates and normalizes an uploaded JPEG or static PNG, runs the YuNet-backed assessment pipeline, and returns structured suitability. Until quality thresholds are calibrated against a consented evaluation dataset, a nominal pass is downgraded to ASSESSMENT_UNAVAILABLE. Persistence is NOT_REQUESTED; this endpoint does not enroll or admit a person. Muse Spark guidance is not requested by this endpoint because the current response contract does not expose guidance.",
         "operationId": "createPhotoAssessment",
         "requestBody": {
           "required": true,
@@ -102,7 +102,7 @@
                   "image": {
                     "type": "string",
                     "format": "binary",
-                    "description": "JPEG, PNG or WebP. Size and dimension limits are enforced before inference."
+                    "description": "JPEG or static PNG bytes. Client filename and part MIME type are ignored. Default image cap is 10 MiB; width, height, pixel count, decode allocation and decode time are bounded."
                   },
                   "clientRequestId": {
                     "$ref": "#/components/schemas/Identifier"
@@ -114,7 +114,7 @@
         },
         "responses": {
           "200": {
-            "description": "Assessment completed. Check `suitability` for the outcome.",
+            "description": "Assessment pipeline completed. An uncalibrated nominal pass is returned as ASSESSMENT_UNAVAILABLE; a detector failure is also unavailable. This is not an identity decision or admission.",
             "content": {
               "application/json": {
                 "schema": {
@@ -129,8 +129,8 @@
                     "FACE_NOT_FRONTAL"
                   ],
                   "persistence": "NOT_REQUESTED",
-                  "modelVersion": "muse-spark-1.3",
-                  "policyVersion": "photo-policy-0.1.0"
+                  "modelVersion": null,
+                  "policyVersion": "photo-quality-uncalibrated-v1"
                 }
               }
             }
@@ -167,6 +167,9 @@
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
           },
+          "422": {
+            "$ref": "#/components/responses/ImageDimensionsExceeded"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
@@ -175,9 +178,6 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
-          },
-          "422": {
-            "$ref": "#/components/responses/ImageDimensionsExceeded"
           }
         }
       }
@@ -265,6 +265,9 @@
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
           },
+          "422": {
+            "$ref": "#/components/responses/ImageDimensionsExceeded"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
@@ -273,9 +276,6 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
-          },
-          "422": {
-            "$ref": "#/components/responses/ImageDimensionsExceeded"
           }
         }
       }
@@ -580,7 +580,8 @@
                   "enum": [
                     "ok",
                     "disabled",
-                    "missing_credentials"
+                    "missing_credentials",
+                    "unavailable"
                   ]
                 }
               }
