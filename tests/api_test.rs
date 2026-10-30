@@ -163,7 +163,12 @@ async fn post_upload(
 #[tokio::test]
 async fn valid_image_is_decoded_but_not_reported_as_assessed() {
     let body = multipart("eye-boundary", &png_fixture(), "misleading.jpg", "image/jpeg");
-    let (status, json) = post_upload(&[], "multipart/form-data; boundary=eye-boundary", body).await;
+    let (status, json) = post_upload(
+        &[],
+        "multipart/form-data; boundary=eye-boundary",
+        body,
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
     assert_eq!(json["code"], "ASSESSMENT_NOT_IMPLEMENTED");
     assert!(json["message"].as_str().unwrap().contains("assessment"));
@@ -171,7 +176,7 @@ async fn valid_image_is_decoded_but_not_reported_as_assessed() {
 
 #[tokio::test]
 async fn malformed_image_is_rejected_at_http_boundary() {
-    let body = multipart("eye-boundary", b"not an image", "photo.png", "image/png");
+    let body = multipart("eye-boundary", b"\x89PNG\r\n\x1a\n", "photo.png", "image/png");
     let (status, json) = post_upload(&[], "multipart/form-data; boundary=eye-boundary", body).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(json["code"], "IMAGE_MALFORMED");
