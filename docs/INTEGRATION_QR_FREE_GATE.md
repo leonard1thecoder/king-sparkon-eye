@@ -34,7 +34,7 @@ Rust never returns "admitted". A `LIKELY_MATCH` outcome is a candidate signal fo
 | Face-embedding adapter | Implemented (library) | `src/inference/sface.rs`, `tests/embedding_test.rs`. Recognition accuracy unverified (#61 open). |
 | Private storage and enrollment metadata | Implemented (in-memory, S3 adapter with mock client) | `src/storage/mod.rs`, `src/storage/s3.rs`; tests in `tests/storage_test.rs`, `tests/s3_test.rs`. |
 | Kafka enrollment event schema and in-memory publisher | Implemented (in-memory only) | `src/domain/events.rs`; topic `eye.enrollments.v1`, event type `photo.enrolled.v1`, version `1.0.0`. No real Kafka producer or TLS configuration exists (#28 open). |
-| Authentication and API keys | Implemented (library) | `src/auth/`; tests in `tests/auth_test.rs`, `tests/jwt_test.rs`, `tests/apikey_test.rs`, `tests/guard_test.rs`. The photo-assessment route applies the bearer-JWT `enrollment:write` guard (#130). API-key auth and the gate guard are not mounted. |
+| Authentication and API keys | Implemented (library) | `src/auth/`; tests in `tests/auth_test.rs`, `tests/jwt_test.rs`, `tests/apikey_test.rs`, `tests/guard_test.rs`. The photo-assessment route applies the bearer-JWT `enrollment:write` guard (#130). API-key auth and the gate guard are not mounted. Tokens come from `POST /v1/auth/login` (#133) or the Google sign-in exchange. |
 | Google sign-in core | Implemented (library) | `src/auth/google.rs`; `tests/google_oidc_test.rs`. No routes (#93 open). |
 
 **Not implemented over HTTP:** enrollment assessment and gate identification. The running router serves only health endpoints.

@@ -28,13 +28,14 @@ use crate::auth::google::{
     ExpectedIdToken, GoogleAuthError, Jwk, PkcePair, build_authorization_url, decide_account_link,
     random_urlsafe, verify_id_token,
 };
+use crate::auth::hash_password;
 use crate::auth::jwt::{
     ACCESS_TOKEN_TTL_SECS, AccessTokenClaims, EYE_TOKEN_AUDIENCE, EYE_TOKEN_ISSUER,
     REFRESH_TOKEN_TTL_SECS, TokenPair, sign_access_token,
 };
 use crate::auth::oauth_flow::CallbackAllowlist;
 use crate::config::OAuthRuntimeConfig;
-use crate::error::ApiError;
+use crate::error::{ApiError, ValidationError};
 
 const OAUTH_COOKIE: &str = "eye_oauth_transaction";
 const JSON_MAX_BYTES: usize = 64 * 1024;
@@ -64,6 +65,15 @@ pub struct ExchangeRequest {
     pub code: String,
     pub callback_url: String,
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+// Deliberately not Debug: the password must never reach logs or error output.
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,6 +129,7 @@ impl OAuthRuntime {
             .route("/v1/auth/google/callback", get(google_callback))
             .route("/v1/auth/oauth/exchange", post(oauth_exchange))
             .route("/v1/auth/refresh", post(refresh_session))
+            .route("/v1/auth/login", post(password_login))
     }
 
     async fn rate_limit(
@@ -723,6 +734,113 @@ async fn oauth_exchange(
             )
                 .into_response();
         }
+    };
+    let now = now_seconds();
+    let raw_refresh = match random_urlsafe(32) {
+        Ok(raw) => format!("refr_{raw}"),
+        Err(_) => return ApiError::ServiceUnavailable.into_response(),
+    };
+    let token_hash = hash_hex(&raw_refresh);
+    let family = match random_urlsafe(24) {
+        Ok(value) => format!("fam_{value}"),
+        Err(_) => return ApiError::ServiceUnavailable.into_response(),
+    };
+    match oauth
+        .token_pair(&user, None, family, now, raw_refresh, token_hash, false)
+        .await
+    {
+        Ok(pair) => Json(pair).into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+/// Password login limits. The window is the same fixed 60-second window used by OAuth routes.
+const LOGIN_PEER_LIMIT: u32 = 10;
+const LOGIN_EMAIL_LIMIT: u32 = 5;
+const LOGIN_MAX_PASSWORD_BYTES: usize = 1024;
+const LOGIN_MAX_EMAIL_BYTES: usize = 254;
+/// Salt used for the timing-equalising hash when the account does not exist.
+const LOGIN_DUMMY_SALT: &str = "eye-login-timing-equaliser";
+
+fn invalid_login() -> Response {
+    // One response for unknown email, wrong password and disabled account, so the caller
+    // learns nothing about which accounts exist.
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(OAuthErrorBody {
+            code: "INVALID_CREDENTIALS",
+            message: "The email or password is incorrect",
+        }),
+    )
+        .into_response()
+}
+
+async fn password_login(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(request): Json<LoginRequest>,
+) -> Response {
+    let Some(oauth) = state.oauth.as_ref() else {
+        return ApiError::ServiceUnavailable.into_response();
+    };
+    if let Err(err) = oauth
+        .rate_limit(peer, "password-login", LOGIN_PEER_LIMIT)
+        .await
+    {
+        return err.into_response();
+    }
+    let email = request.email.trim().to_ascii_lowercase();
+    if email.len() < 3
+        || email.len() > LOGIN_MAX_EMAIL_BYTES
+        || !email.contains('@')
+        || request.password.is_empty()
+        || request.password.len() > LOGIN_MAX_PASSWORD_BYTES
+    {
+        return ApiError::Validation(ValidationError {
+            field: "credentials",
+            rule: "is invalid",
+        })
+        .into_response();
+    }
+    // Per-account limit, so rotating source addresses cannot guess one password without limit.
+    let email_bucket = hash_hex(&format!("password-login-email:{email}"));
+    match oauth
+        .store
+        .allow_oauth_attempt(&email_bucket, now_ms(), 60_000, LOGIN_EMAIL_LIMIT)
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => return ApiError::RateLimited.into_response(),
+        Err(_) => return ApiError::ServiceUnavailable.into_response(),
+    }
+
+    let credentials = match oauth.store.password_credentials_by_email(&email).await {
+        Ok(found) => found,
+        Err(_) => return ApiError::ServiceUnavailable.into_response(),
+    };
+    let verified = match &credentials {
+        Some(stored) => {
+            let candidate = hash_password(&request.password, &stored.salt);
+            constant_time_eq(candidate.as_bytes(), stored.password_hash.as_bytes())
+                && stored.is_active
+        }
+        None => {
+            // Spend comparable time on an unknown account.
+            let _ = hash_password(&request.password, LOGIN_DUMMY_SALT);
+            false
+        }
+    };
+    let Some(stored) = credentials.filter(|_| verified) else {
+        return invalid_login();
+    };
+
+    let user = DurableUser {
+        user_id: stored.user_id,
+        email: stored.email,
+        role: stored.role,
+        scopes: stored.scopes,
+        is_active: stored.is_active,
+        created_at_ms: stored.created_at_ms,
     };
     let now = now_seconds();
     let raw_refresh = match random_urlsafe(32) {
