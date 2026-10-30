@@ -19,7 +19,7 @@ This document describes the Rust plan, meter and allowance model in `src/billing
 | Usage ledger reference semantics: append-only, idempotent, reversible, tenant-scoped, period aggregation, level sampling (`src/billing/ledger.rs`) | Implemented as a **non-durable reference model** (issue #148 core) |
 | Durable PostgreSQL ledger, transactional outbox, Stripe Billing Meter reporting | **Planned / blocked**, issues #113, #28, #143, #138 |
 | Enforcing allowances (blocking, refusing, or tenant-scoped quotas) | **Planned**, issue #146 |
-| Stripe products, prices, metered prices, Checkout, Customer Portal, webhooks | **Partial** for #139 (base-price configuration, verification and pinned client, test mode only; see `docs/STRIPE_INTEGRATION.md`). **Partial** for #141 (webhook signature verification only, pending merge). **Planned:** metered prices and provisioning (#139), #140, #142, #141 persistence and entitlement sync, #147, #149 |
+| Stripe products, prices, metered prices, Checkout, Customer Portal, webhooks | **Partial** for #139: base-price config/verification plus test-mode-only product/base-price provisioner; no metered prices or runtime wiring. **Partial** for #141: signature verification merged in PR #156; durable event processing remains blocked on #113. See `docs/STRIPE_INTEGRATION.md`. |
 | Billing-account and tenant mapping from API credentials | **Planned**, issue #138 contract |
 | Confirmed, billable enrollment source | **Blocked**, see [Blockers](#blockers-and-dependencies) |
 
@@ -183,7 +183,7 @@ Not implemented: the PostgreSQL table and migration, transactional outbox public
 ## Blockers and dependencies
 
 - **#138** (billing contract): pricing decisions, currency, tax, proration, billable-enrollment confirmation, and the billing-account mapping are not agreed.
-- **#139** (Stripe catalog): partial. Test/live configuration validation, base-price verification and a pinned client are implemented on `issue/139-stripe-catalog-and-client`. Metered prices, the provisioning procedure, archiving and catalog documentation remain open. Live use is blocked on catalog approval.
+- **#139** (Stripe catalog): partial. PR #155 provides test/live configuration validation and base-price verification; this branch adds a test-mode-only base product/price provisioner. Metered prices remain blocked on #138/#143; archiving and runtime wiring remain open. Live use is blocked on catalog approval.
 - **#113** (durable PostgreSQL/outbox): open. Enrollment metadata and outbox ownership is decided in principle (Eye PostgreSQL), but the adapter and transactions are not implemented.
 - **#28** (Kafka producer and backend consumer contract): open.
 - **#148** (durable usage ledger): not started. No durable, authoritative usage source exists yet.

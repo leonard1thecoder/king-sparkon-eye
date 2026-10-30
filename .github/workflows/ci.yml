@@ -59,8 +59,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # No provider keys are configured on the runner. Provider behaviour
       # is tested against local mocks, so CI must pass without credentials.
-      - name: Run tests
+      - name: Run Rust tests
         run: cargo test --all-features --locked
+      - name: Run Stripe catalog provisioner tests
+        run: python3 tests/test_stripe_catalog_provisioning.py
 
   container-build:
     name: Container image builds (no push)
