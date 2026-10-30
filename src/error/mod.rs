@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 pub enum ErrorCode {
     NotReady,
     NotFound,
+    Unauthorized,
+    Forbidden,
     ValidationFailed,
     PayloadTooLarge,
     UnsupportedMediaType,
@@ -26,6 +28,8 @@ impl ErrorCode {
     pub const ALL: &'static [ErrorCode] = &[
         ErrorCode::NotReady,
         ErrorCode::NotFound,
+        ErrorCode::Unauthorized,
+        ErrorCode::Forbidden,
         ErrorCode::ValidationFailed,
         ErrorCode::PayloadTooLarge,
         ErrorCode::UnsupportedMediaType,
@@ -58,6 +62,11 @@ pub enum ApiError {
     NotReady,
     #[error("resource not found")]
     NotFound,
+    /// Deliberately uniform: missing, malformed, expired or unverifiable credentials all look the same.
+    #[error("authentication required")]
+    Unauthorized,
+    #[error("insufficient permission for this operation")]
+    Forbidden,
     #[error("request validation failed: {0}")]
     Validation(ValidationError),
     #[error("payload exceeds the allowed size")]
@@ -84,6 +93,8 @@ impl ApiError {
         match self {
             ApiError::NotReady => ErrorCode::NotReady,
             ApiError::NotFound => ErrorCode::NotFound,
+            ApiError::Unauthorized => ErrorCode::Unauthorized,
+            ApiError::Forbidden => ErrorCode::Forbidden,
             ApiError::Validation(_) => ErrorCode::ValidationFailed,
             ApiError::PayloadTooLarge => ErrorCode::PayloadTooLarge,
             ApiError::UnsupportedMediaType => ErrorCode::UnsupportedMediaType,
@@ -105,6 +116,8 @@ impl ApiError {
             ApiError::ImageMalformed => StatusCode::BAD_REQUEST,
             ApiError::ImageDimensionsExceeded => StatusCode::UNPROCESSABLE_ENTITY,
             ApiError::NotFound => StatusCode::NOT_FOUND,
+            ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
+            ApiError::Forbidden => StatusCode::FORBIDDEN,
             ApiError::Validation(_) => StatusCode::BAD_REQUEST,
             ApiError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             ApiError::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,

@@ -5,7 +5,10 @@ use std::sync::{Arc, OnceLock};
 
 use axum::body::{Body, to_bytes};
 use axum::extract::State;
-use axum::http::{header::{CONTENT_LENGTH, CONTENT_TYPE}, HeaderName, Request, StatusCode};
+use axum::http::{
+    HeaderMap, HeaderName, Request, StatusCode,
+    header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
+};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -14,6 +17,7 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::TraceLayer;
 
 use crate::auth::oauth_runtime::OAuthRuntime;
+use crate::auth::{BoundaryError, CallerIdentity, RouteGuard, verify_access_token};
 use crate::config::Config;
 use crate::contract::{PersistenceStatus, PhotoAssessmentResponse};
 use crate::domain::{AssessmentConfig, assess, conservative_result};
@@ -154,11 +158,65 @@ async fn ready(State(state): State<AppState>) -> Response {
 
 const MULTIPART_OVERHEAD_BYTES: usize = 64 * 1024;
 const MULTIPART_MAX_HEADER_BYTES: usize = 8 * 1024;
+/// Minimum HS256 signing-secret length, matching the configuration check.
+const MIN_JWT_SECRET_BYTES: usize = 32;
+
+fn current_unix_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
+}
+
+/// Authenticates `POST /v1/enrollment/photo-assessments`: a bearer JWT with `enrollment:write`.
+///
+/// Fails closed. A missing or short signing secret, a missing or malformed header, and any
+/// token that does not verify all return the same `401`. A verified token without the scope
+/// returns `403`. Runs before the body is read, so unauthenticated callers cannot reach ingress.
+fn authenticate_enrollment(
+    config: &crate::config::Config,
+    headers: &HeaderMap,
+) -> Result<CallerIdentity, ApiError> {
+    authenticate_enrollment_at(config, headers, current_unix_seconds())
+}
+
+fn authenticate_enrollment_at(
+    config: &crate::config::Config,
+    headers: &HeaderMap,
+    now_secs: u64,
+) -> Result<CallerIdentity, ApiError> {
+    // The signing secret and key ID belong to the OAuth runtime configuration. When OAuth is
+    // not fully configured there is no verification key, so every request fails closed.
+    let oauth = config.oauth.as_ref().ok_or(ApiError::Unauthorized)?;
+    let secret = oauth.jwt_signing_secret.expose();
+    if secret.len() < MIN_JWT_SECRET_BYTES {
+        return Err(ApiError::Unauthorized);
+    }
+    let header = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or(ApiError::Unauthorized)?;
+    let token = header
+        .split_once(' ')
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+        .map(|(_, token)| token.trim())
+        .filter(|token| !token.is_empty())
+        .ok_or(ApiError::Unauthorized)?;
+    let claims = verify_access_token(token, &oauth.jwt_kid, secret.as_bytes(), now_secs)
+        .map_err(|_| ApiError::Unauthorized)?;
+    let caller = CallerIdentity::User(claims);
+    RouteGuard::authorize_enrollment(&caller).map_err(|error| match error {
+        BoundaryError::ForbiddenScope | BoundaryError::CrossEventAccessDenied => ApiError::Forbidden,
+        BoundaryError::Unauthorized => ApiError::Unauthorized,
+    })?;
+    Ok(caller)
+}
 
 async fn upload_photo(
     State(state): State<AppState>,
     request: Request<Body>,
 ) -> Result<Response, ApiError> {
+    authenticate_enrollment(&state.config, request.headers())?;
     let request_id = request.headers()
         .get(REQUEST_ID_HEADER)
         .and_then(|value| value.to_str().ok())

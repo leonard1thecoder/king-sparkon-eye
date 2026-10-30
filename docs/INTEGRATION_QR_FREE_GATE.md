@@ -34,21 +34,21 @@ Rust never returns "admitted". A `LIKELY_MATCH` outcome is a candidate signal fo
 | Face-embedding adapter | Implemented (library) | `src/inference/sface.rs`, `tests/embedding_test.rs`. Recognition accuracy unverified (#61 open). |
 | Private storage and enrollment metadata | Implemented (in-memory, S3 adapter with mock client) | `src/storage/mod.rs`, `src/storage/s3.rs`; tests in `tests/storage_test.rs`, `tests/s3_test.rs`. |
 | Kafka enrollment event schema and in-memory publisher | Implemented (in-memory only) | `src/domain/events.rs`; topic `eye.enrollments.v1`, event type `photo.enrolled.v1`, version `1.0.0`. No real Kafka producer or TLS configuration exists (#28 open). |
-| Authentication and API keys | Implemented (library) | `src/auth/`; tests in `tests/auth_test.rs`, `tests/jwt_test.rs`, `tests/apikey_test.rs`, `tests/guard_test.rs`. Route guards are not mounted on any HTTP route. |
+| Authentication and API keys | Implemented (library) | `src/auth/`; tests in `tests/auth_test.rs`, `tests/jwt_test.rs`, `tests/apikey_test.rs`, `tests/guard_test.rs`. The photo-assessment route applies the bearer-JWT `enrollment:write` guard (#130). API-key auth and the gate guard are not mounted. |
 | Google sign-in core | Implemented (library) | `src/auth/google.rs`; `tests/google_oidc_test.rs`. No routes (#93 open). |
 
 **Not implemented over HTTP:** enrollment assessment and gate identification. The running router serves only health endpoints.
 
 ---
 
-## 3. Specified HTTP contract (OpenAPI, not mounted)
+## 3. HTTP contract (OpenAPI)
 
-`openapi/eye.openapi.json` (version `0.1.0`) defines these operations. They are **not** served by the running service.
+`openapi/eye.openapi.json` (version `0.1.0`) defines these operations. The photo-assessment operation is served by the running service and requires a bearer JWT with `enrollment:write`. The gate operation is not mounted.
 
 | Method and path | Operation | Responses |
 |---|---|---|
-| `POST /v1/enrollment/photo-assessments` | `createPhotoAssessment` | 200, 400, 413, 415, 422, 429, 500, 503 |
-| `POST /v1/gate/identifications` | `createGateIdentification` | 200, 400, 413, 415, 422, 429, 500, 503 |
+| `POST /v1/enrollment/photo-assessments` | `createPhotoAssessment` | 200, 400, 401, 403, 413, 415, 422, 429, 500, 503 |
+| `POST /v1/gate/identifications` | `createGateIdentification` | 200, 400, 413, 415, 422, 429, 500, 503 (not mounted) |
 | `GET /health/live` | `getLiveness` | 200 |
 | `GET /health/ready` | `getReadiness` | 200, 503 |
 

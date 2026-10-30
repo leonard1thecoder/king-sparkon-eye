@@ -83,10 +83,9 @@ Trust boundaries:
 ### T8. Unauthorized access to enrollment or gate endpoints
 
 - **Description:** An unauthenticated caller enrolls a face or runs a gate identification.
-- **Current state:** Library. Scope rules exist for `enrollment:write` and `gate:identify` (`src/auth/guard.rs`). Token and API-key verification is tested. No HTTP route is mounted, so nothing is protected at the network layer yet.
-- **Verification:** `tests/guard_test.rs`, `tests/jwt_test.rs`, `tests/apikey_test.rs`, `tests/adversarial_auth_test.rs`.
-- **Open items:** Route wiring and the Google sign-in flow (#45, #93). Route-policy matrix tests (#48).
-- **Rating:** High until routes are mounted.
+- **Current state:** Partly mounted. `POST /v1/enrollment/photo-assessments` requires a bearer JWT with `enrollment:write`, checked before the body is read (`src/api/mod.rs`, `authenticate_enrollment`). Missing, invalid or expired tokens get `401`; a valid token without the scope gets `403`. Without the OAuth configuration (which holds the signing key), every request is refused. The gate endpoint is not mounted, and API keys are not accepted on the photo route.
+- **Verification:** `tests/api_test.rs` (authentication cases, including an oversized unauthenticated body that is refused with `401`); `tests/guard_test.rs`, `tests/jwt_test.rs`, `tests/apikey_test.rs`, `tests/adversarial_auth_test.rs`. Live check with `curl` against the binary: no token, garbage, forged, expired and oversized requests return `401`; wrong scope returns `403`; a valid token returns `200`.
+- **Open items:** Gate route wiring (#30) and API-key acceptance. Token issuance and the Google sign-in flow (#45, #93). Route-policy matrix tests (#48).
 
 ### T9. Token forgery, replay and key misuse
 
@@ -140,7 +139,7 @@ Trust boundaries:
 | T5 | Provider outage | Library, mitigated by design | Medium |
 | T6 | Kafka replay | Partial (in-process only) | Medium |
 | T7 | Unauthorized admission | Mitigated by design, no test | High |
-| T8 | Unauthorized endpoint access | Library only, no routes | High |
+| T8 | Unauthorized endpoint access | Photo route authenticated (#130); gate route not mounted | High |
 | T9 | Token forgery and replay | Mitigated in library | Medium |
 | T10 | Biometric data exposure | Partial, no log-redaction test | High |
 | T11 | Unsafe retention | Partial, no consent check | High |

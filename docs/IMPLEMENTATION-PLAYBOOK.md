@@ -312,6 +312,12 @@ The approved technical defaults remove the design-choice blocker but do not sati
 | Durable delivery | Current enrollment metadata lives in `Mutex<State>`; only `MemoryKafkaProducer` exists. There is no atomic durable metadata/outbox transaction or real TLS producer. | Not implemented; keep #28 open. |
 
 
+## Photo-assessment authentication update (issue #130, reviewed 2026-10-30)
+
+- `POST /v1/enrollment/photo-assessments` requires `Authorization: Bearer <JWT>` with the `enrollment:write` scope. The check runs before the body is read, so unauthenticated callers never reach ingress.
+- The verification key is the OAuth runtime's signing secret and key ID. Without the full OAuth configuration, the route refuses every request (fail closed).
+- Not yet included: API-key acceptance, token issuance, and the gate endpoint. Until a token issuance path exists, no caller can use the photo route in a running deployment.
+
 ## HTTP upload-boundary implementation update (reviewed 2026-10-30)
 
 Issue [#23](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23) was reopened because the existing ingress library did not satisfy its end-to-end HTTP acceptance criteria. The issue-scoped branch adds the multipart HTTP boundary and wires the vendored YuNet detector into the domain assessment pipeline.
