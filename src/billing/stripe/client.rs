@@ -250,7 +250,10 @@ impl StripeClient {
             .bearer_auth(self.secret.expose())
             .header("Stripe-Version", STRIPE_API_VERSION)
             .header("Idempotency-Key", idempotency_key)
-            .form(&[("customer", customer_id), ("return_url", return_url.as_str())])
+            .form(&[
+                ("customer", customer_id),
+                ("return_url", return_url.as_str()),
+            ])
             .send()
             .await
             .map_err(|_| StripeError::Unavailable)?;
@@ -380,7 +383,10 @@ mod return_url_tests {
         let value = policy()
             .validate("https://app.example.com/billing/return?source=portal")
             .expect("allowed");
-        assert_eq!(value, "https://app.example.com/billing/return?source=portal");
+        assert_eq!(
+            value,
+            "https://app.example.com/billing/return?source=portal"
+        );
     }
 
     #[test]
@@ -390,7 +396,13 @@ mod return_url_tests {
             "https://app.example.com.evil.test/",
             "http://app.example.com/",
         ] {
-            assert!(matches!(policy().validate(value), Err(StripeError::InvalidRequest { .. })), "{value}");
+            assert!(
+                matches!(
+                    policy().validate(value),
+                    Err(StripeError::InvalidRequest { .. })
+                ),
+                "{value}"
+            );
         }
     }
 
@@ -407,7 +419,10 @@ mod return_url_tests {
             "https://app.example.com/path",
             "https://user@app.example.com/",
         ] {
-            assert!(ReturnUrlPolicy::new([origin.to_owned()]).is_err(), "{origin}");
+            assert!(
+                ReturnUrlPolicy::new([origin.to_owned()]).is_err(),
+                "{origin}"
+            );
         }
         assert!(ReturnUrlPolicy::new(Vec::<String>::new()).is_err());
     }
