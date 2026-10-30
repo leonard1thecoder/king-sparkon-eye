@@ -1,6 +1,6 @@
 # Stripe integration — catalog foundation (issue #139)
 
-**Status: partial.** Implemented on branch `issue/139-stripe-catalog-and-client`, pending merge. Test mode only. Nothing in the service runtime calls this code yet.
+**Status: partial.** The #139 catalog foundation is merged (PR #155). The #141 webhook signature verifier is implemented on branch `issue/141-webhook-signature-verification`, pending merge. Test mode only. Nothing in the service runtime calls this code yet, and webhooks are not persisted or processed.
 
 Related: [`BILLING_PLAN_DOMAIN.md`](BILLING_PLAN_DOMAIN.md) (plan and meter domain, #145), [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md) (sequencing).
 
@@ -49,7 +49,28 @@ Error codes: `STRIPE_CONFIG_INVALID`, `STRIPE_PRICE_ID_DUPLICATE`, `STRIPE_LIVE_
 
 `verify_catalog` checks all four slots and stops at the first failure.
 
-## What is not implemented (the rest of #139)
+### Webhook signature verification (#141 slice)
+
+Code: `src/billing/stripe/webhook.rs`. Tests: `tests/stripe_webhook_test.rs` (23 tests). This is a pure verifier. It does not parse events, persist deliveries, deduplicate, or change billing state.
+
+The contract follows the official `stripe` Python SDK (`stripe/_webhook.py`, v16.1.0), which was read directly:
+
+- The signed payload is `"{t}.{raw body}"`, using the exact bytes received.
+- The signature is the lowercase hex HMAC-SHA256 of the signed payload, keyed with the `whsec_` endpoint secret.
+- Any `v1` entry may match. `v0` and other schemes are ignored.
+- The default tolerance is 300 seconds.
+
+One deliberate difference: the SDK rejects only timestamps that are too old. This verifier also rejects timestamps more than the tolerance in the future. A skewed local clock can cause false rejections, so the tolerance is a parameter.
+
+The signature is checked before the timestamp. Stripe's Python code does the same, so a forged header does not reveal whether its timestamp is recent.
+
+Error codes: `WEBHOOK_SECRET_INVALID`, `WEBHOOK_SIGNATURE_MISSING`, `WEBHOOK_SIGNATURE_MALFORMED`, `WEBHOOK_SIGNATURE_MISMATCH`, `WEBHOOK_TIMESTAMP_OUT_OF_TOLERANCE`. Messages never include the header, the body or the secret.
+
+Known-answer test: the vector in the test file was computed with Python's `hmac`/`hashlib`, independent of the Rust code.
+
+## What is not implemented (the rest of #139 and #141)
+
+- **Webhook persistence and processing (#141 durable work).** Nothing stores delivery IDs, deduplicates, or applies subscription, invoice or payment events. The endpoint, the durable inbox/outbox, replay and entitlement projection depend on #113 (durable PostgreSQL), and no HTTP route exists yet.
 
 - **Metered prices.** Enrollment, template-storage, original-photo storage and identification meters are not mapped or verified. These need the Billing Meter work in #143 and a confirmed billing contract (#138).
 - **Provisioning.** There is no idempotent catalog-provisioning script and no documented Dashboard procedure yet. The issue requires one.
@@ -77,6 +98,7 @@ Commands run on `issue/139-stripe-catalog-and-client` with toolchain 1.97.0:
 
 - `cargo test --test stripe_config_test`: 14 passed.
 - `cargo test --test stripe_catalog_test`: 16 passed. Each test uses a local loopback mock server. No network access.
-- `cargo test --all-features`: all targets passed.
+- `cargo test --test stripe_webhook_test`: 23 passed. Pure, no network.
+- `cargo test --all-features` on the #141 branch: 443 passed, 0 failed across all targets.
 - `cargo clippy --all-targets --all-features -- -D warnings`, with the four pre-existing lints allowed on the command line (`unused_imports`, `clippy::collapsible_if`, `clippy::too_many_arguments`, `clippy::manual_async_fn`): exit 0.
 - `rustfmt --edition 2024` on the new Stripe files.
