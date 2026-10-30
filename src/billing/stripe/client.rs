@@ -521,8 +521,9 @@ mod return_url_tests {
         ));
         assert!(matches!(
             portal,
-            Err(StripeError::InvalidRequest { reason: "live billing is disabled" })
+            Err(StripeError::InvalidRequest {
+                reason: "live billing is disabled"
+            })
         ));
     }
-
 }

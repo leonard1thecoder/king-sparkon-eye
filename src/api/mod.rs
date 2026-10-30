@@ -21,10 +21,10 @@ use crate::auth::{BoundaryError, CallerIdentity, RouteGuard, verify_access_token
 use crate::config::Config;
 use crate::contract::{PersistenceStatus, PhotoAssessmentResponse};
 use crate::domain::{AssessmentConfig, assess, conservative_result};
-use crate::inference::yunet::YunetDetector;
-use crate::provider::DisabledProvider;
 use crate::error::{ApiError, ValidationError};
+use crate::inference::yunet::YunetDetector;
 use crate::ingress::ingest_with_timeout;
+use crate::provider::DisabledProvider;
 
 pub const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -39,19 +39,26 @@ struct AssessmentRuntime {
     detector: Arc<YunetDetector>,
 }
 
-static YUNET_DETECTOR: OnceLock<Result<Arc<YunetDetector>, crate::inference::InferenceError>> = OnceLock::new();
+static YUNET_DETECTOR: OnceLock<Result<Arc<YunetDetector>, crate::inference::InferenceError>> =
+    OnceLock::new();
 
 fn load_detector() -> Result<Arc<YunetDetector>, crate::inference::InferenceError> {
-    YUNET_DETECTOR.get_or_init(|| {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let model_path = std::env::var_os("EYE_YUNET_MODEL_PATH")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| root.join("artifacts/models/yunet-2023mar/face_detection_yunet_2023mar.onnx"));
-        let runtime_path = std::env::var_os("ORT_DYLIB_PATH")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| root.join("artifacts/onnxruntime/1.31.1/linux-x86_64/libonnxruntime.so.1.31.1"));
-        YunetDetector::load(&model_path, &runtime_path).map(Arc::new)
-    }).clone()
+    YUNET_DETECTOR
+        .get_or_init(|| {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+            let model_path = std::env::var_os("EYE_YUNET_MODEL_PATH")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    root.join("artifacts/models/yunet-2023mar/face_detection_yunet_2023mar.onnx")
+                });
+            let runtime_path = std::env::var_os("ORT_DYLIB_PATH")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    root.join("artifacts/onnxruntime/1.31.1/linux-x86_64/libonnxruntime.so.1.31.1")
+                });
+            YunetDetector::load(&model_path, &runtime_path).map(Arc::new)
+        })
+        .clone()
 }
 
 fn assessment_runtime() -> Option<Arc<AssessmentRuntime>> {
@@ -155,7 +162,6 @@ async fn ready(State(state): State<AppState>) -> Response {
     (code, Json(report)).into_response()
 }
 
-
 const MULTIPART_OVERHEAD_BYTES: usize = 64 * 1024;
 const MULTIPART_MAX_HEADER_BYTES: usize = 8 * 1024;
 /// Minimum HS256 signing-secret length, matching the configuration check.
@@ -206,7 +212,9 @@ fn authenticate_enrollment_at(
         .map_err(|_| ApiError::Unauthorized)?;
     let caller = CallerIdentity::User(claims);
     RouteGuard::authorize_enrollment(&caller).map_err(|error| match error {
-        BoundaryError::ForbiddenScope | BoundaryError::CrossEventAccessDenied => ApiError::Forbidden,
+        BoundaryError::ForbiddenScope | BoundaryError::CrossEventAccessDenied => {
+            ApiError::Forbidden
+        }
         BoundaryError::Unauthorized => ApiError::Unauthorized,
     })?;
     Ok(caller)
@@ -217,7 +225,8 @@ async fn upload_photo(
     request: Request<Body>,
 ) -> Result<Response, ApiError> {
     authenticate_enrollment(&state.config, request.headers())?;
-    let request_id = request.headers()
+    let request_id = request
+        .headers()
         .get(REQUEST_ID_HEADER)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
@@ -243,17 +252,23 @@ async fn upload_photo(
     let body = to_bytes(request.into_body(), body_limit)
         .await
         .map_err(|_| ApiError::PayloadTooLarge)?;
-    let image = extract_multipart_image(
-        &body,
-        &boundary,
-        state.config.image_limits.max_upload_bytes,
-    )?;
+    let image =
+        extract_multipart_image(&body, &boundary, state.config.image_limits.max_upload_bytes)?;
     let normalized = ingest_with_timeout(image, state.config.image_limits)
         .await
         .map_err(ApiError::from)?;
-    let runtime = state.assessment.as_ref().ok_or(ApiError::ServiceUnavailable)?;
+    let runtime = state
+        .assessment
+        .as_ref()
+        .ok_or(ApiError::ServiceUnavailable)?;
     let disabled_provider = DisabledProvider;
-    let result = assess(&normalized, runtime.detector.as_ref(), &disabled_provider, &AssessmentConfig::default()).await;
+    let result = assess(
+        &normalized,
+        runtime.detector.as_ref(),
+        &disabled_provider,
+        &AssessmentConfig::default(),
+    )
+    .await;
     let result = conservative_result(result);
     let model_version = None;
     let response = PhotoAssessmentResponse {
@@ -328,8 +343,8 @@ fn extract_multipart_image(
             .map(|offset| data_start + offset)
             .ok_or_else(invalid_multipart)?;
         let part_data = &body[data_start..marker_start];
-        let field_name = multipart_field_name(&body[cursor..header_end])
-            .ok_or_else(invalid_multipart)?;
+        let field_name =
+            multipart_field_name(&body[cursor..header_end]).ok_or_else(invalid_multipart)?;
         match field_name.as_str() {
             "image" => {
                 if image.is_some() {
@@ -385,7 +400,9 @@ fn multipart_field_name(headers: &[u8]) -> Option<String> {
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn invalid_multipart() -> ApiError {

@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::extract::{ConnectInfo, Query, State};
-use axum::http::header::{COOKIE, LOCATION, SET_COOKIE};
+use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{
@@ -17,7 +17,6 @@ use axum::{
 };
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::json;
 use tokio::sync::RwLock;
 
 use crate::api::AppState;
@@ -25,8 +24,8 @@ use crate::auth::durable_store::{
     DurableEyeStore, DurableStoreError, DurableUser, PasswordCredentials, hash_hex, new_oauth_user,
 };
 use crate::auth::google::{
-    ExpectedIdToken, GoogleAuthError, Jwk, PkcePair, build_authorization_url, decide_account_link,
-    random_urlsafe, verify_id_token,
+    ExpectedIdToken, GoogleAuthError, Jwk, PkcePair, build_authorization_url, random_urlsafe,
+    verify_id_token,
 };
 use crate::auth::jwt::{
     ACCESS_TOKEN_TTL_SECS, AccessTokenClaims, EYE_TOKEN_AUDIENCE, EYE_TOKEN_ISSUER,
@@ -104,6 +103,14 @@ pub struct OAuthRuntime {
     jwks: RwLock<Option<Cached<Vec<Jwk>>>>,
 }
 
+/// A refresh token minted for one family. Grouped so `token_pair` stays within the argument limit.
+struct RefreshGrant {
+    family_id: String,
+    refresh_raw: String,
+    refresh_hash: String,
+    refresh_already_persisted: bool,
+}
+
 impl OAuthRuntime {
     pub fn new(config: OAuthRuntimeConfig) -> Result<Self, ApiError> {
         let allowlist =
@@ -177,12 +184,11 @@ impl OAuthRuntime {
     }
 
     async fn jwks(&self, force_refresh: bool) -> Result<Vec<Jwk>, ApiError> {
-        if !force_refresh {
-            if let Some(cached) = self.jwks.read().await.as_ref()
-                && cached.expires_at > Instant::now()
-            {
-                return Ok(cached.value.clone());
-            }
+        if !force_refresh
+            && let Some(cached) = self.jwks.read().await.as_ref()
+            && cached.expires_at > Instant::now()
+        {
+            return Ok(cached.value.clone());
         }
 
         let discovery = self.discovery().await?;
@@ -238,12 +244,15 @@ impl OAuthRuntime {
         &self,
         user: &DurableUser,
         event_id: Option<String>,
-        family_id: String,
+        grant: RefreshGrant,
         now_seconds: u64,
-        refresh_raw: String,
-        refresh_hash: String,
-        refresh_already_persisted: bool,
     ) -> Result<TokenPair, ApiError> {
+        let RefreshGrant {
+            family_id,
+            refresh_raw,
+            refresh_hash,
+            refresh_already_persisted,
+        } = grant;
         let claims = AccessTokenClaims {
             iss: EYE_TOKEN_ISSUER.to_owned(),
             sub: user.user_id.clone(),
@@ -748,7 +757,17 @@ async fn oauth_exchange(
         Err(_) => return ApiError::ServiceUnavailable.into_response(),
     };
     match oauth
-        .token_pair(&user, None, family, now, raw_refresh, token_hash, false)
+        .token_pair(
+            &user,
+            None,
+            RefreshGrant {
+                family_id: family,
+                refresh_raw: raw_refresh,
+                refresh_hash: token_hash,
+                refresh_already_persisted: false,
+            },
+            now,
+        )
         .await
     {
         Ok(pair) => Json(pair).into_response(),
@@ -865,7 +884,17 @@ async fn password_login(
         Err(_) => return ApiError::ServiceUnavailable.into_response(),
     };
     match oauth
-        .token_pair(&user, None, family, now, raw_refresh, token_hash, false)
+        .token_pair(
+            &user,
+            None,
+            RefreshGrant {
+                family_id: family,
+                refresh_raw: raw_refresh,
+                refresh_hash: token_hash,
+                refresh_already_persisted: false,
+            },
+            now,
+        )
         .await
     {
         Ok(pair) => Json(pair).into_response(),
@@ -987,11 +1016,13 @@ async fn refresh_session(
         .token_pair(
             &user,
             rotation.event_id,
-            family_id,
+            RefreshGrant {
+                family_id,
+                refresh_raw: raw_new,
+                refresh_hash: new_hash,
+                refresh_already_persisted: true,
+            },
             now_seconds(),
-            raw_new,
-            new_hash,
-            true,
         )
         .await
     {
