@@ -124,4 +124,6 @@ For trusted camera sidecars, scanner devices, and worker CLI utilities:
 | `/v1/gate/identifications` | `POST` | JWT or API Key | `gate:identify` (Must match authorized `event_id`) |
 | `/v1/admin/api-keys` | `POST`/`GET` | Admin JWT | `admin:all` |
 
+**Implementation status (issue #133):** `POST /v1/auth/login` takes `{email, password}`. It is rate limited per peer address (10 per minute) and per email (5 per minute) with `eye_allow_oauth_attempt`, and returns `{accessToken, refreshToken, tokenType, expiresInSecs}` on success. Unknown email, wrong password, and disabled account all return `401 INVALID_CREDENTIALS` with the same body. It needs migration `db/migrations/202610290004_eye_password_login.sql` applied to the Eye database. Passwords are still hashed with salted SHA-256, which is not a password KDF; upgrading it is a separate issue.
+
 **Implementation status (issue #130):** `POST /v1/enrollment/photo-assessments` accepts bearer JWTs with `enrollment:write` only. API keys are not accepted yet, and no route issues tokens yet, so this route is refused for everyone until an issuance path exists.

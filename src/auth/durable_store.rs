@@ -33,6 +33,29 @@ pub struct DurableEyeStore {
     service_key: String,
 }
 
+/// Stored credential row for password login. Its Debug output omits the hash and salt.
+#[derive(Clone, Deserialize)]
+pub struct PasswordCredentials {
+    pub user_id: String,
+    pub email: String,
+    pub password_hash: String,
+    pub salt: String,
+    pub role: UserRole,
+    pub scopes: Vec<String>,
+    pub is_active: bool,
+    pub created_at_ms: u64,
+}
+
+impl std::fmt::Debug for PasswordCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PasswordCredentials")
+            .field("user_id", &self.user_id)
+            .field("role", &self.role)
+            .field("is_active", &self.is_active)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct DurableUser {
     pub user_id: String,
@@ -255,6 +278,19 @@ impl DurableEyeStore {
             )
             .await?;
         Ok(rows.first().is_some_and(|row| row.allowed))
+    }
+
+    pub async fn password_credentials_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Option<PasswordCredentials>, DurableStoreError> {
+        let rows: Vec<PasswordCredentials> = self
+            .rpc(
+                "eye_password_credentials_by_email",
+                json!({"p_email": email}),
+            )
+            .await?;
+        Ok(rows.into_iter().next())
     }
 
     pub async fn issue_refresh_token(

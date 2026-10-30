@@ -312,6 +312,13 @@ The approved technical defaults remove the design-choice blocker but do not sati
 | Durable delivery | Current enrollment metadata lives in `Mutex<State>`; only `MemoryKafkaProducer` exists. There is no atomic durable metadata/outbox transaction or real TLS producer. | Not implemented; keep #28 open. |
 
 
+## Password login update (issue #133, reviewed 2026-10-30)
+
+- `POST /v1/auth/login` is mounted with the OAuth routes and returns `503` when OAuth is not fully configured.
+- It reads credentials through `eye_password_credentials_by_email` (migration `202610290004`). That migration must be applied to the Eye database. Nothing applies migrations automatically.
+- Rate limits use `eye_allow_oauth_attempt`. The limits are 10 per minute per peer and 5 per minute per email.
+- Blockers and follow-ups: password hashing is SHA-256 (a KDF upgrade needs its own issue, and existing rows would need rehashing on login). Google sign-in grants `enrollment:write` to every verified account (#132). The login route is not in `openapi/eye.openapi.json`, which also omits the OAuth routes.
+
 ## Photo-assessment authentication update (issue #130, reviewed 2026-10-30)
 
 - `POST /v1/enrollment/photo-assessments` requires `Authorization: Bearer <JWT>` with the `enrollment:write` scope. The check runs before the body is read, so unauthenticated callers never reach ingress.
