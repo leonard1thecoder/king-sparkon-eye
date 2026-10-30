@@ -328,9 +328,11 @@ fn validate_input(input: &EnrollmentOutboxInput) -> Result<(), OutboxStoreError>
         || !valid_identifier(&input.event_id)
         || !valid_consent_reference(&input.consent_reference)
         || !input.object_key.starts_with("enrollments/")
+        || input.object_key.len() <= "enrollments/".len()
         || input.object_key.len() > 512
         || input.object_key.contains("..")
         || input.object_key.contains("://")
+        || input.object_key.contains('\\')
         || input.content_sha256.len() != 64
         || !input.content_sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         || input.byte_len <= 0
@@ -348,6 +350,19 @@ fn validate_input(input: &EnrollmentOutboxInput) -> Result<(), OutboxStoreError>
 }
 
 fn payload_matches(input: &EnrollmentOutboxInput) -> bool {
+    let Some(object) = input.payload.as_object() else {
+        return false;
+    };
+    const ALLOWED_KEYS: &[&str] = &[
+        "eventId", "eventType", "eventVersion", "enrollmentId", "objectKey",
+        "contentSha256", "byteLen", "dimensions", "consentReference",
+        "policyVersion", "modelVersion", "idempotencyKey", "persistence",
+        "occurredAtMs",
+    ];
+    if object.keys().any(|key| !ALLOWED_KEYS.contains(&key.as_str())) {
+        return false;
+    }
+    let dimensions = input.payload.get("dimensions");
     input.payload.get("eventId").and_then(Value::as_str) == Some(input.event_id.as_str())
         && input.payload.get("eventType").and_then(Value::as_str) == Some("photo.enrolled.v1")
         && input.payload.get("eventVersion").and_then(Value::as_str) == Some("1.0.0")
@@ -358,6 +373,16 @@ fn payload_matches(input: &EnrollmentOutboxInput) -> bool {
         && input.payload.get("objectKey").and_then(Value::as_str) == Some(input.object_key.as_str())
         && input.payload.get("contentSha256").and_then(Value::as_str) == Some(input.content_sha256.as_str())
         && input.payload.get("byteLen").and_then(Value::as_i64) == Some(input.byte_len)
+        && dimensions.and_then(|value| value.get("width")).and_then(Value::as_u64)
+            == Some(input.image_width as u64)
+        && dimensions.and_then(|value| value.get("height")).and_then(Value::as_u64)
+            == Some(input.image_height as u64)
+        && input.payload.get("modelVersion").and_then(Value::as_str)
+            == input.model_version.as_deref()
+        && input.payload.get("idempotencyKey").and_then(Value::as_str)
+            == input.idempotency_key.as_deref()
+        && input.payload.get("occurredAtMs").and_then(Value::as_i64)
+            == Some(input.created_at_ms)
 }
 
 fn valid_identifier(value: &str) -> bool {
