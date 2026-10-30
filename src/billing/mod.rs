@@ -11,6 +11,7 @@
 pub mod catalog;
 pub mod ledger;
 pub mod period;
+pub mod stripe;
 
 use std::fmt;
 
@@ -36,7 +37,7 @@ impl PlanId {
 }
 
 /// Recurring base-subscription interval. Usage is always accounted monthly in arrears.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BillingInterval {
     Monthly,

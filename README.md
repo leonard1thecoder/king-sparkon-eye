@@ -220,7 +220,7 @@ The umbrella coding issue tracks the implementation sequence and keeps code chan
 See the [open GitHub issues](https://github.com/leonard1thecoder/king-sparkon-eye/issues) for the complete implementation sequence.
 
 
-### Billing and plan tiers — domain modelled; enforcement and Stripe not implemented
+### Billing and plan tiers — domain modelled; enforcement not implemented; Stripe catalog foundation partial
 
 Billing work is tracked separately from the vision/admission path. The candidate tiers are hypotheses only and must not be treated as approved live prices or implemented entitlements:
 
@@ -236,7 +236,7 @@ Candidate paid-plan overages are $0.15 per successful confirmed enrollment, $0.0
 
 **Implementation sequence:** [#145 plan domain/configuration](https://github.com/leonard1thecoder/king-sparkon-eye/issues/145) → [#148 durable usage ledger](https://github.com/leonard1thecoder/king-sparkon-eye/issues/148) → [#146 quota enforcement](https://github.com/leonard1thecoder/king-sparkon-eye/issues/146) → [#147 Checkout/Customer Portal](https://github.com/leonard1thecoder/king-sparkon-eye/issues/147) → [#149 webhooks/reconciliation](https://github.com/leonard1thecoder/king-sparkon-eye/issues/149), coordinated with the broader billing contract/catalog/integration tasks [#137–#144](https://github.com/leonard1thecoder/king-sparkon-eye/issues/137).
 
-**Current status:** the #145 domain model is merged. The #148 usage-ledger semantics are implemented as a non-durable reference model on branch `issue/148-usage-ledger`. The durable PostgreSQL ledger, outbox and Stripe reporting, plus issues #146, #147 and #149 and the contracts in #138–#144, remain open. This work does not implement billing enforcement, durable usage accounting, subscription management, or Stripe configuration. Before commercial enrollment is enabled, resolve existing dependencies including #113 (durable PostgreSQL/outbox), #28 (Kafka producer and consumer contract), #31 (private S3 lifecycle), #132 (enrollment authorization), #15 (consent-aware storage), and the authoritative backend consent/enrollment confirmation contract. Never allow billing status to grant consent, enrollment authorization, ticket eligibility, or admission.
+**Current status:** the #145 domain model is merged. The #148 usage-ledger semantics are implemented as a non-durable reference model on branch `issue/148-usage-ledger`. The durable PostgreSQL ledger, outbox and Stripe reporting, plus issues #146, #147 and #149 and the contracts in #138–#144, remain open. The #139 Stripe foundation (`src/billing/stripe/`, branch `issue/139-stripe-catalog-and-client`, pending merge) validates test/live configuration and verifies the four base prices against Stripe in test mode. Nothing calls it at runtime, live mode is refused until the catalog is approved, and metered prices and provisioning remain open. This work does not implement billing enforcement, durable usage accounting, or subscription management. Before commercial enrollment is enabled, resolve existing dependencies including #113 (durable PostgreSQL/outbox), #28 (Kafka producer and consumer contract), #31 (private S3 lifecycle), #132 (enrollment authorization), #15 (consent-aware storage), and the authoritative backend consent/enrollment confirmation contract. Never allow billing status to grant consent, enrollment authorization, ticket eligibility, or admission.
 
 ## Codebase changes and refactoring workflow
 
