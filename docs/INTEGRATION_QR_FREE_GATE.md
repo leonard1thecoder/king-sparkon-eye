@@ -28,9 +28,9 @@ Rust never returns "admitted". A `LIKELY_MATCH` outcome is a candidate signal fo
 | Area | State | Evidence |
 |---|---|---|
 | Health endpoints | Implemented | `src/api/mod.rs` mounts `GET /health/live` and `GET /health/ready`. |
-| Upload validation and decode | Implemented (library) | `src/ingress/mod.rs`; tests in `tests/ingress_test.rs`. Not reachable over HTTP yet. |
+| Upload validation and decode | Implemented, reachable over HTTP | `src/ingress/mod.rs`; tests in `tests/ingress_test.rs`; served by `POST /v1/enrollment/photo-assessments`. |
 | ONNX face detector and quality checks | Implemented (library) | `src/inference/yunet.rs`, `src/quality/mod.rs`; tests in `tests/yunet_test.rs`, `tests/detection_quality_test.rs`. Tested on synthetic tensors and blank/noise images only (#55 open). |
-| Deterministic assessment | Implemented (library) | `src/advisory/mod.rs`, assessment tests in `tests/assessment_test.rs`. |
+| Deterministic assessment | Implemented, reachable over HTTP (no authentication yet) | `src/advisory/mod.rs`, `src/domain/`; tests in `tests/assessment_test.rs`; served by `POST /v1/enrollment/photo-assessments`. |
 | Face-embedding adapter | Implemented (library) | `src/inference/sface.rs`, `tests/embedding_test.rs`. Recognition accuracy unverified (#61 open). |
 | Private storage and enrollment metadata | Implemented (in-memory, S3 adapter with mock client) | `src/storage/mod.rs`, `src/storage/s3.rs`; tests in `tests/storage_test.rs`, `tests/s3_test.rs`. |
 | Kafka enrollment event schema and in-memory publisher | Implemented (in-memory only) | `src/domain/events.rs`; topic `eye.enrollments.v1`, event type `photo.enrolled.v1`, version `1.0.0`. No real Kafka producer or TLS configuration exists (#28 open). |

@@ -1,6 +1,6 @@
 # Threat model: QR-free gate identification (issues #11 and #17)
 
-**Status: living document, reviewed 2026-10-29.** Each threat states what the code does today, how it is verified, and what is still open. "Library" means the control exists as tested Rust code but is not wired into any HTTP route. Mounted routes are `/health/*`, `POST /v1/enrollment/photo-assessments` (bearer JWT with `enrollment:write`, issue #130) and the `/v1/auth/*` OAuth routes (see `docs/INTEGRATION_QR_FREE_GATE.md` §2).
+**Status: living document, reviewed 2026-10-29.** Each threat states what the code does today, how it is verified, and what is still open. "Library" means the control exists as tested Rust code but is not wired into any HTTP route. Mounted routes are `/health/*`, `POST /v1/enrollment/photo-assessments` (unauthenticated) and the `/v1/auth/*` OAuth routes (see `docs/INTEGRATION_QR_FREE_GATE.md` §2).
 
 Risk ratings are qualitative and assume the system is used at a live event gate. They are proposals for review, not an accepted risk register.
 
