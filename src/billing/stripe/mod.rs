@@ -11,7 +11,7 @@ pub mod config;
 pub mod webhook;
 
 pub use client::{
-    STRIPE_API_VERSION, StripeClient, StripeError, verify_catalog, verify_price_slot,
+    STRIPE_API_VERSION, HostedSession, ReturnUrlPolicy, StripeClient, StripeError, verify_catalog, verify_price_slot,
 };
 pub use config::{PriceSlot, StripeConfigError, StripeMode, StripePriceMap, StripeSettings};
 pub use webhook::{
