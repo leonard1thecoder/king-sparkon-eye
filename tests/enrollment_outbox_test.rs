@@ -126,6 +126,14 @@ async fn invalid_payload_is_rejected_before_database_write() {
     let mut item = input("invalid");
     item.payload["eventVersion"] = json!("9.9.9");
     assert_eq!(store.commit_enrollment(&item).await, Err(OutboxStoreError::Rejected));
+
+    let mut sensitive = input("sensitive");
+    sensitive.payload["embedding"] = json!([0.1, 0.2]);
+    assert_eq!(store.commit_enrollment(&sensitive).await, Err(OutboxStoreError::Rejected));
+
+    let mut mismatched = input("mismatch");
+    mismatched.payload["dimensions"]["width"] = json!(1);
+    assert_eq!(store.commit_enrollment(&mismatched).await, Err(OutboxStoreError::Rejected));
 }
 
 #[tokio::test]
