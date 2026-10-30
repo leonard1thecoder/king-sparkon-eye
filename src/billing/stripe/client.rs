@@ -275,3 +275,46 @@ pub async fn verify_catalog(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod return_url_tests {
+    use super::{ReturnUrlPolicy, StripeError, valid_idempotency_key, valid_stripe_id};
+
+    fn policy() -> ReturnUrlPolicy {
+        ReturnUrlPolicy::new(["https://app.example.com/".to_owned()]).expect("valid origin")
+    }
+
+    #[test]
+    fn allows_paths_and_queries_on_an_exact_configured_https_origin() {
+        let value = policy().validate("https://app.example.com/billing/return?source=portal").expect("allowed");
+        assert_eq!(value, "https://app.example.com/billing/return?source=portal");
+    }
+
+    #[test]
+    fn rejects_unlisted_origins_and_subdomain_confusion() {
+        for value in ["https://evil.example.com/return", "https://app.example.com.evil.test/", "http://app.example.com/"] {
+            assert!(matches!(policy().validate(value), Err(StripeError::InvalidRequest { .. })), "{value}");
+        }
+    }
+
+    #[test]
+    fn rejects_credentials_fragments_and_non_origin_allowlist_entries() {
+        for value in ["https://user@app.example.com/", "https://app.example.com/#fragment"] {
+            assert!(policy().validate(value).is_err(), "{value}");
+        }
+        for origin in ["http://app.example.com/", "https://app.example.com/path", "https://user@app.example.com/"] {
+            assert!(ReturnUrlPolicy::new([origin.to_owned()]).is_err(), "{origin}");
+        }
+        assert!(ReturnUrlPolicy::new(Vec::<String>::new()).is_err());
+    }
+
+    #[test]
+    fn customer_and_idempotency_identifiers_are_strictly_validated() {
+        assert!(valid_stripe_id("cus_123abc", "cus_"));
+        assert!(!valid_stripe_id("cus_", "cus_"));
+        assert!(!valid_stripe_id("cus_123/../x", "cus_"));
+        assert!(valid_idempotency_key("tenant_42_checkout_gold_monthly"));
+        assert!(!valid_idempotency_key("contains spaces"));
+        assert!(!valid_idempotency_key(""));
+    }
+}
