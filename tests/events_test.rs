@@ -122,7 +122,7 @@ async fn publisher_retries_and_recovers_if_initial_attempt_fails() {
         PhotoEnrolledEventV1::from_record(&record, "evt-retry".to_string(), 1_700_000_000_000)
             .unwrap();
 
-    let res = publisher.publish_enrollment_event(&event);
+    let res = publisher.publish_enrollment_event(&event).await;
     assert!(res.is_ok());
 
     let messages = publisher.producer().published_messages();
@@ -140,7 +140,7 @@ async fn publisher_fails_if_retries_exhausted_and_does_not_corrupt_state() {
         PhotoEnrolledEventV1::from_record(&record, "evt-fail".to_string(), 1_700_000_000_000)
             .unwrap();
 
-    let res = publisher.publish_enrollment_event(&event);
+    let res = publisher.publish_enrollment_event(&event).await;
     assert_eq!(res, Err(KafkaPublishError::Unavailable));
 
     let messages = publisher.producer().published_messages();
@@ -191,7 +191,7 @@ async fn idempotency_key_cannot_alias_two_different_enrollments() {
         PhotoEnrolledEventV1::from_record(&other_record, "evt-2".into(), 1_700_000_001_000)
             .unwrap();
 
-    assert_eq!(publisher.publish_enrollment_event(&first).unwrap(), "evt-1");
+    assert_eq!(publisher.publish_enrollment_event(&first).await.unwrap(), "evt-1");
     assert_eq!(
         publisher.publish_enrollment_event(&second).await,
         Err(KafkaPublishError::IdempotencyConflict)
@@ -227,7 +227,7 @@ async fn invalid_identifiers_in_event_are_rejected_before_publish() {
     let event =
         PhotoEnrolledEventV1::from_record(&record, "evt-001".to_string(), 1_700_000_000_000)
             .unwrap();
-    let res = publisher.publish_enrollment_event(&event);
+    let res = publisher.publish_enrollment_event(&event).await;
 
     assert!(matches!(res, Err(KafkaPublishError::ValidationError(_))));
     assert_eq!(publisher.producer().published_messages().len(), 0);
