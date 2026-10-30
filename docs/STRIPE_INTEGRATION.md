@@ -85,10 +85,8 @@ This is **not production price approval**. It deliberately provisions only the f
 
 - **Webhook persistence and processing (#141 durable work).** Nothing stores delivery IDs, deduplicates, or applies subscription, invoice or payment events. The endpoint, the durable inbox/outbox, replay and entitlement projection depend on #113 (durable PostgreSQL), and no HTTP route exists yet.
 
-- **Metered prices.** Enrollment, template-storage, original-photo storage and identification meters are not mapped or verified. These need the Billing Meter work in #143 and a confirmed billing contract (#138).
-- **Metered price provisioning.** Enrollment, template storage, original-photo storage and identification prices remain blocked on #138/#143's agreed billing contract and meter semantics.
-- **Archiving** of superseded prices. The provisioner never mutates or archives an existing price. The issue requires one.
-- **Archiving** of superseded prices.
+- **Metered prices.** Enrollment, template storage, original-photo storage and identification prices are not mapped or provisioned. This remains blocked on #138/#143's agreed billing contract and meter semantics.
+- **Archiving** of superseded prices. The provisioner never mutates or archives an existing price.
 - **Startup wiring.** Nothing calls `verify_catalog` at startup, and the service does not read these variables.
 - **Catalog naming and metadata documentation.** The test-mode provisioner uses stable `eye_catalog_key`, `eye_price_key`, plan/version and candidate-status metadata; a production naming and approval policy remains open.
 - **Currency and tax.** Only USD is accepted. Tax behaviour is not configured.
