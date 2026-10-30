@@ -220,7 +220,7 @@ The umbrella coding issue tracks the implementation sequence and keeps code chan
 See the [open GitHub issues](https://github.com/leonard1thecoder/king-sparkon-eye/issues) for the complete implementation sequence.
 
 
-### Billing and plan tiers — planned, not implemented
+### Billing and plan tiers — domain modelled; enforcement and Stripe not implemented
 
 Billing work is tracked separately from the vision/admission path. The candidate tiers are hypotheses only and must not be treated as approved live prices or implemented entitlements:
 
@@ -232,9 +232,11 @@ Billing work is tracked separately from the vision/admission path. The candidate
 
 Candidate paid-plan overages are $0.15 per successful confirmed enrollment, $0.015 per active template-month, $0.06 per retained original-photo GB-month, and $0.05 per eligible completed identification request. All prices, allowances, units, tax treatment, currency availability, and overage behavior require validation and must be configurable rather than hardcoded. Annual billing applies to the base subscription; usage is intended to be invoiced monthly in arrears.
 
+**Implemented in issue #145 (candidate only):** the Rust billing domain in `src/billing/` parses and validates a candidate catalog at `config/billing/plan-catalog.candidate.json`. Values are tagged `candidate_unapproved`; the service runtime does not load the catalog, nothing enforces quotas, and no Stripe call is made. Semantics and validation rules: [`docs/BILLING_PLAN_DOMAIN.md`](docs/BILLING_PLAN_DOMAIN.md).
+
 **Implementation sequence:** [#145 plan domain/configuration](https://github.com/leonard1thecoder/king-sparkon-eye/issues/145) → [#148 durable usage ledger](https://github.com/leonard1thecoder/king-sparkon-eye/issues/148) → [#146 quota enforcement](https://github.com/leonard1thecoder/king-sparkon-eye/issues/146) → [#147 Checkout/Customer Portal](https://github.com/leonard1thecoder/king-sparkon-eye/issues/147) → [#149 webhooks/reconciliation](https://github.com/leonard1thecoder/king-sparkon-eye/issues/149), coordinated with the broader billing contract/catalog/integration tasks [#137–#144](https://github.com/leonard1thecoder/king-sparkon-eye/issues/137).
 
-**Current status:** these are open planning/implementation issues. This README update does not implement billing, quota enforcement, subscription management, or Stripe configuration. Before commercial enrollment is enabled, resolve existing dependencies including #113 (durable PostgreSQL/outbox), #28 (Kafka producer and consumer contract), #31 (private S3 lifecycle), #132 (enrollment authorization), #15 (consent-aware storage), and the authoritative backend consent/enrollment confirmation contract. Never allow billing status to grant consent, enrollment authorization, ticket eligibility, or admission.
+**Current status:** the #145 domain model is implemented on its issue branch until merged. Issues #146, #147, #148, #149 and the contracts in #138–#144 remain open. This work does not implement billing enforcement, durable usage accounting, subscription management, or Stripe configuration. Before commercial enrollment is enabled, resolve existing dependencies including #113 (durable PostgreSQL/outbox), #28 (Kafka producer and consumer contract), #31 (private S3 lifecycle), #132 (enrollment authorization), #15 (consent-aware storage), and the authoritative backend consent/enrollment confirmation contract. Never allow billing status to grant consent, enrollment authorization, ticket eligibility, or admission.
 
 ## Codebase changes and refactoring workflow
 

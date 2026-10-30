@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "currency": "USD",
+  "approval_status": "candidate_unapproved",
+  "plans": [
+    {
+      "id": "free",
+      "versions": [
+        {
+          "version": 1,
+          "effective_from": "2026-11-01",
+          "base": { "monthly": "0", "annual": "0" },
+          "included": {
+            "enrollments": 1000,
+            "retained_photo_storage_gb": 5,
+            "active_templates": 1000,
+            "identification_requests": 2000
+          },
+          "overage": { "mode": "block" }
+        }
+      ]
+    },
+    {
+      "id": "gold",
+      "versions": [
+        {
+          "version": 1,
+          "effective_from": "2026-11-01",
+          "base": { "monthly": "99.00", "annual": "990.00" },
+          "included": {
+            "enrollments": 10000,
+            "retained_photo_storage_gb": 50,
+            "active_templates": 10000,
+            "identification_requests": 25000
+          },
+          "overage": {
+            "mode": "bill",
+            "rates": {
+              "enrollments": "0.15",
+              "retained_photo_storage_gb": "0.06",
+              "active_templates": "0.015",
+              "identification_requests": "0.05"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "premium",
+      "versions": [
+        {
+          "version": 1,
+          "effective_from": "2026-11-01",
+          "base": { "monthly": "299.00", "annual": "2990.00" },
+          "included": {
+            "enrollments": 50000,
+            "retained_photo_storage_gb": 250,
+            "active_templates": 50000,
+            "identification_requests": 150000
+          },
+          "overage": {
+            "mode": "bill",
+            "rates": {
+              "enrollments": "0.15",
+              "retained_photo_storage_gb": "0.06",
+              "active_templates": "0.015",
+              "identification_requests": "0.05"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
