@@ -20,7 +20,7 @@ async fn store() -> Option<EnrollmentOutboxStore> {
     Some(EnrollmentOutboxStore::new(pool))
 }
 
-fn input(tag: &str) -> EnrollmentOutboxInput {
+fn input(_tag: &str) -> EnrollmentOutboxInput {
     let id = Uuid::new_v4().simple().to_string();
     let idem = format!("idem_{}", Uuid::new_v4().simple());
     EnrollmentOutboxInput {
@@ -34,7 +34,7 @@ fn input(tag: &str) -> EnrollmentOutboxInput {
         image_height: 480,
         policy_version: "policy-v1".into(),
         model_version: Some("model-v1".into()),
-        idempotency_key: Some(idem),
+        idempotency_key: Some(idem.clone()),
         created_at_ms: 1_800_000_000_000,
         payload: json!({
             "eventId": format!("evt_{id}"),
