@@ -87,7 +87,7 @@
     "/v1/enrollment/photo-assessments": {
       "post": {
         "summary": "Assess a buyer enrollment photo",
-        "description": "Validates and normalizes an uploaded JPEG or static PNG, runs the YuNet-backed assessment pipeline, and returns structured suitability. Until quality thresholds are calibrated against a consented evaluation dataset, a nominal pass is downgraded to ASSESSMENT_UNAVAILABLE. Persistence is NOT_REQUESTED; this endpoint does not enroll or admit a person. Muse Spark guidance is not requested by this endpoint because the current response contract does not expose guidance.",
+        "description": "Requires a bearer JWT with the `enrollment:write` scope. Validates and normalizes an uploaded JPEG or static PNG, runs the YuNet-backed assessment pipeline, and returns structured suitability. Until quality thresholds are calibrated against a consented evaluation dataset, a nominal pass is downgraded to ASSESSMENT_UNAVAILABLE. Persistence is NOT_REQUESTED; this endpoint does not enroll or admit a person. Muse Spark guidance is not requested by this endpoint because the current response contract does not expose guidance.",
         "operationId": "createPhotoAssessment",
         "requestBody": {
           "required": true,
@@ -161,6 +161,12 @@
               }
             }
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
           },
@@ -179,7 +185,12 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/v1/gate/identifications": {
@@ -380,6 +391,34 @@
             }
           }
         }
+      },
+      "Unauthorized": {
+        "description": "Credentials are missing, malformed, expired, or cannot be verified. The response is the same for every such case.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "code": "UNAUTHORIZED",
+              "message": "authentication required"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The credential is valid but lacks the scope required for this operation.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            },
+            "example": {
+              "code": "FORBIDDEN",
+              "message": "insufficient permission for this operation"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -441,6 +480,8 @@
         "enum": [
           "NOT_READY",
           "NOT_FOUND",
+          "UNAUTHORIZED",
+          "FORBIDDEN",
           "VALIDATION_FAILED",
           "PAYLOAD_TOO_LARGE",
           "UNSUPPORTED_MEDIA_TYPE",
@@ -588,6 +629,14 @@
             }
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Eye access token (HS256, issued by the Rust service) sent as `Authorization: Bearer <token>`. Scope rules are per operation."
       }
     }
   }

@@ -123,3 +123,5 @@ For trusted camera sidecars, scanner devices, and worker CLI utilities:
 | `/v1/enrollment/photo-assessments` | `POST` | JWT or API Key | `enrollment:write` |
 | `/v1/gate/identifications` | `POST` | JWT or API Key | `gate:identify` (Must match authorized `event_id`) |
 | `/v1/admin/api-keys` | `POST`/`GET` | Admin JWT | `admin:all` |
+
+**Implementation status (issue #130):** `POST /v1/enrollment/photo-assessments` accepts bearer JWTs with `enrollment:write` only. API keys are not accepted yet, and no route issues tokens yet, so this route is refused for everyone until an issuance path exists.
