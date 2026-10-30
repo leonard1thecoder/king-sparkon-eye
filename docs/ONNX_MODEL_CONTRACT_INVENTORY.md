@@ -30,7 +30,7 @@ This document serves as the verified inventory and contract specification for ON
   - `bbox_{8,16,32}`: Bounding box offsets (`[1, 6400, 4]`, `[1, 1600, 4]`, `[1, 400, 4]`).
   - `kps_{8,16,32}`: 5 landmark keypoints (`[1, 6400, 10]`, `[1, 1600, 10]`, `[1, 400, 10]`) covering right eye, left eye, nose tip, right mouth corner, left mouth corner.
 - **Verification (`tests/yunet_test.rs`):** the vendored model loads and passes I/O validation; missing or corrupt artifacts return controlled errors; repeated calls and fresh instances return the same detections within `1e-6`. Real-face accuracy and zero/one/many fixtures on real photos are still open (#55).
-- **Not yet wired:** the detector is not loaded at startup or by readiness (`/health/ready` checks only the vision provider).
+- **Wired:** the detector is loaded when the router is built and used by `POST /v1/enrollment/photo-assessments`. `/health/ready` reports a `face_detector` dependency as `unavailable` only if the load failed.
 
 ---
 
