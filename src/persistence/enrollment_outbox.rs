@@ -273,7 +273,7 @@ impl EnrollmentOutboxStore {
         }
         let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
-            "UPDATE eye_kafka_outbox SET status='PENDING', attempts=0, next_attempt_at_ms=$3,              lease_until_ms=NULL, last_error_category=NULL, delivered_at_ms=NULL, updated_at_ms=$3              WHERE event_id=$1 AND status='DEAD_LETTER'              AND EXISTS (SELECT 1 FROM eye_kafka_dead_letters d WHERE d.event_id=$1)",
+            "UPDATE eye_kafka_outbox SET status='PENDING', attempts=0, next_attempt_at_ms=$2, lease_until_ms=NULL, last_error_category=NULL, delivered_at_ms=NULL, updated_at_ms=$2 WHERE event_id=$1 AND status='DEAD_LETTER'              AND EXISTS (SELECT 1 FROM eye_kafka_dead_letters d WHERE d.event_id=$1)",
         )
         .bind(event_id)
         .bind(now_ms)
