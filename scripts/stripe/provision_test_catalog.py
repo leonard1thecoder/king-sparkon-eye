@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -30,6 +31,8 @@ class ProvisionError(Exception):
 
 
 def amount_to_minor_units(value: str) -> int:
+    if not isinstance(value, str) or not re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?", value):
+        raise ProvisionError("catalog base prices must be plain decimal strings with at most two places")
     try:
         amount = Decimal(value)
     except (InvalidOperation, TypeError):
@@ -47,6 +50,8 @@ def load_catalog(path: Path) -> dict[str, Any]:
         catalog = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         raise ProvisionError("could not read a valid billing catalog JSON document") from None
+    if not isinstance(catalog, dict):
+        raise ProvisionError("billing catalog root must be a JSON object")
     if (
         catalog.get("schema_version") != 1
         or catalog.get("currency") != "USD"
@@ -72,7 +77,9 @@ def load_catalog(path: Path) -> dict[str, Any]:
             raise ProvisionError("each paid plan must have at least one version")
         for version in versions:
             try:
-                int(version["version"])
+                version_number = version["version"]
+                if isinstance(version_number, bool) or not isinstance(version_number, int) or version_number < 1:
+                    raise ValueError("invalid version")
                 for interval, _ in INTERVALS:
                     amount_to_minor_units(version["base"][interval])
             except (KeyError, TypeError, ValueError):
@@ -195,7 +202,12 @@ def provision_catalog(catalog: dict[str, Any], stripe: Any) -> list[tuple[str, s
                 catalog_key,
             )
             product_id = product.get("id")
-            if (not isinstance(product_id, str) or not product_id.startswith("prod_")\n                    or product.get("active") is not True or product.get("livemode") is not False):
+            if (
+                not isinstance(product_id, str)
+                or not product_id.startswith("prod_")
+                or product.get("active") is not True
+                or product.get("livemode") is not False
+            ):
                 raise ProvisionError("matched Stripe Product is invalid or inactive")
             for interval_key, stripe_interval in INTERVALS:
                 price_key = f"{plan_id}-v{version_number}-{interval_key}"
@@ -221,7 +233,10 @@ def provision_catalog(catalog: dict[str, Any], stripe: Any) -> list[tuple[str, s
                     or recurring.get("usage_type", "licensed") != "licensed"
                 ):
                     raise ProvisionError("existing Stripe Price does not match candidate catalog: " + price_key)
-                output.append((f"EYE_STRIPE_PRICE_{plan_id.upper()}_{interval_key.upper()}", price["id"]))
+                env_name = f"EYE_STRIPE_PRICE_{plan_id.upper()}_{interval_key.upper()}"
+                if version_number > 1:
+                    env_name += f"_V{version_number}"
+                output.append((env_name, price["id"]))
     return output
 
 
