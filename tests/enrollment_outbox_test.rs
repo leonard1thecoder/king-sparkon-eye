@@ -127,3 +127,25 @@ async fn invalid_payload_is_rejected_before_database_write() {
     item.payload["eventVersion"] = json!("9.9.9");
     assert_eq!(store.commit_enrollment(&item).await, Err(OutboxStoreError::Rejected));
 }
+
+#[tokio::test]
+async fn failed_outbox_insert_rolls_back_the_enrollment_row() {
+    let Some(store) = store().await else { return };
+    let first = input("first");
+    store.commit_enrollment(&first).await.unwrap();
+    let mut second = input("second");
+    second.event_id = first.event_id.clone();
+    second.payload["eventId"] = json!(first.event_id);
+    assert!(store.commit_enrollment(&second).await.is_err());
+
+    let url = std::env::var("EYE_TEST_DATABASE_URL").unwrap();
+    let pool = connect(&url).await.unwrap();
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM eye_enrollment_records WHERE enrollment_id=$1",
+    )
+    .bind(&second.enrollment_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 0, "metadata insert must roll back with outbox insert");
+}
