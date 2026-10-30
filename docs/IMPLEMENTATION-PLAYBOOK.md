@@ -317,7 +317,7 @@ The approved technical defaults remove the design-choice blocker but do not sati
 - `POST /v1/auth/login` is mounted with the OAuth routes and returns `503` when OAuth is not fully configured.
 - It reads credentials through `eye_password_credentials_by_email` (migration `202610290004`). That migration must be applied to the Eye database. Nothing applies migrations automatically.
 - Rate limits use `eye_allow_oauth_attempt`. The limits are 10 per minute per peer and 5 per minute per email.
-- Blockers and follow-ups: password hashing is SHA-256 (a KDF upgrade needs its own issue, and existing rows would need rehashing on login). Google sign-in grants `enrollment:write` to every verified account (#132). The login route is not in `openapi/eye.openapi.json`, which also omits the OAuth routes.
+- Password hashing is bcrypt, cost 12, with passwords limited to 71 bytes (issue #135). Legacy SHA-256 rows are rehashed on login by a compare-and-set update in migration `202610290005`, which also needs applying. Legacy rows over 71 bytes stay on SHA-256 until a password change route exists. Google sign-in grants `enrollment:write` to every verified account (#132). The login route is not in `openapi/eye.openapi.json`, which also omits the OAuth routes.
 
 ## Photo-assessment authentication update (issue #130, reviewed 2026-10-30)
 

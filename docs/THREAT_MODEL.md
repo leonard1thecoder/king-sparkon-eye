@@ -85,7 +85,7 @@ Trust boundaries:
 - **Description:** An unauthenticated caller enrolls a face or runs a gate identification.
 - **Current state:** Partly mounted. `POST /v1/enrollment/photo-assessments` requires a bearer JWT with `enrollment:write`, checked before the body is read (`src/api/mod.rs`, `authenticate_enrollment`). Missing, invalid or expired tokens get `401`; a valid token without the scope gets `403`. Without the OAuth configuration (which holds the signing key), every request is refused. The gate endpoint is not mounted, and API keys are not accepted on the photo route.
 - **Verification:** `tests/api_test.rs` (authentication cases, including an oversized unauthenticated body that is refused with `401`); `tests/guard_test.rs`, `tests/jwt_test.rs`, `tests/apikey_test.rs`, `tests/adversarial_auth_test.rs`. Live check with `curl` against the binary: no token, garbage, forged, expired and oversized requests return `401`; wrong scope returns `403`; a valid token returns `200`.
-- **Open items:** Gate route wiring (#30) and API-key acceptance. Password hashing is salted SHA-256, not a password KDF. Google sign-in grants `enrollment:write` to every verified account (#132). Route-policy matrix tests (#48).
+- **Open items:** Gate route wiring (#30) and API-key acceptance. Password hashing is bcrypt (cost 12). Legacy salted SHA-256 rows are upgraded on login (#135). Google sign-in grants `enrollment:write` to every verified account (#132). Route-policy matrix tests (#48).
 
 ### T9. Token forgery, replay and key misuse
 

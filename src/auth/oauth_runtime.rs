@@ -22,18 +22,20 @@ use tokio::sync::RwLock;
 
 use crate::api::AppState;
 use crate::auth::durable_store::{
-    DurableEyeStore, DurableStoreError, DurableUser, hash_hex, new_oauth_user,
+    DurableEyeStore, DurableStoreError, DurableUser, PasswordCredentials, hash_hex, new_oauth_user,
 };
 use crate::auth::google::{
     ExpectedIdToken, GoogleAuthError, Jwk, PkcePair, build_authorization_url, decide_account_link,
     random_urlsafe, verify_id_token,
 };
-use crate::auth::hash_password;
 use crate::auth::jwt::{
     ACCESS_TOKEN_TTL_SECS, AccessTokenClaims, EYE_TOKEN_AUDIENCE, EYE_TOKEN_ISSUER,
     REFRESH_TOKEN_TTL_SECS, TokenPair, sign_access_token,
 };
 use crate::auth::oauth_flow::CallbackAllowlist;
+use crate::auth::password::{
+    Verification, hash_password, spend_equivalent_time, verify_stored_password,
+};
 use crate::config::OAuthRuntimeConfig;
 use crate::error::{ApiError, ValidationError};
 
@@ -759,8 +761,6 @@ const LOGIN_PEER_LIMIT: u32 = 10;
 const LOGIN_EMAIL_LIMIT: u32 = 5;
 const LOGIN_MAX_PASSWORD_BYTES: usize = 1024;
 const LOGIN_MAX_EMAIL_BYTES: usize = 254;
-/// Salt used for the timing-equalising hash when the account does not exist.
-const LOGIN_DUMMY_SALT: &str = "eye-login-timing-equaliser";
 
 fn invalid_login() -> Response {
     // One response for unknown email, wrong password and disabled account, so the caller
@@ -818,21 +818,33 @@ async fn password_login(
         Ok(found) => found,
         Err(_) => return ApiError::ServiceUnavailable.into_response(),
     };
-    let verified = match &credentials {
+
+    // bcrypt is slow by design, so verification runs on a blocking thread.
+    let password = request.password.clone();
+    let (credentials, outcome) = match tokio::task::spawn_blocking(move || match credentials {
         Some(stored) => {
-            let candidate = hash_password(&request.password, &stored.salt);
-            constant_time_eq(candidate.as_bytes(), stored.password_hash.as_bytes())
-                && stored.is_active
+            let outcome = verify_stored_password(&password, &stored.password_hash, &stored.salt);
+            (Some(stored), outcome)
         }
         None => {
-            // Spend comparable time on an unknown account.
-            let _ = hash_password(&request.password, LOGIN_DUMMY_SALT);
-            false
+            spend_equivalent_time(&password);
+            (None, Verification::Invalid)
         }
+    })
+    .await
+    {
+        Ok(pair) => pair,
+        Err(_) => return ApiError::ServiceUnavailable.into_response(),
     };
-    let Some(stored) = credentials.filter(|_| verified) else {
-        return invalid_login();
+
+    let (stored, needs_rehash) = match (credentials.filter(|user| user.is_active), outcome) {
+        (Some(stored), Verification::Valid { needs_rehash }) => (stored, needs_rehash),
+        _ => return invalid_login(),
     };
+
+    if needs_rehash {
+        upgrade_password_hash(oauth, &stored, &request.password).await;
+    }
 
     let user = DurableUser {
         user_id: stored.user_id,
@@ -858,6 +870,27 @@ async fn password_login(
     {
         Ok(pair) => Json(pair).into_response(),
         Err(err) => err.into_response(),
+    }
+}
+
+/// Replaces a legacy SHA-256 hash with bcrypt after a correct login. Failure is logged without
+/// any hash or password and never fails the login.
+async fn upgrade_password_hash(oauth: &OAuthRuntime, stored: &PasswordCredentials, password: &str) {
+    let password = password.to_owned();
+    let new_hash = match tokio::task::spawn_blocking(move || hash_password(&password)).await {
+        Ok(Ok(hash)) => hash,
+        _ => {
+            tracing::warn!("legacy password hash could not be upgraded to bcrypt");
+            return;
+        }
+    };
+    match oauth
+        .store
+        .update_password_hash(&stored.user_id, &stored.password_hash, &new_hash)
+        .await
+    {
+        Ok(true) => {}
+        _ => tracing::warn!("legacy password hash was not upgraded (store unavailable or changed)"),
     }
 }
 

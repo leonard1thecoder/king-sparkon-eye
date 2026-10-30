@@ -280,6 +280,22 @@ impl DurableEyeStore {
         Ok(rows.first().is_some_and(|row| row.allowed))
     }
 
+    /// Replaces a legacy hash with `new_hash` only if the stored hash is still `expected_hash`.
+    pub async fn update_password_hash(
+        &self,
+        user_id: &str,
+        expected_hash: &str,
+        new_hash: &str,
+    ) -> Result<bool, DurableStoreError> {
+        let rows: Vec<BooleanResult> = self
+            .rpc(
+                "eye_update_password_hash",
+                json!({"p_user_id": user_id, "p_expected_hash": expected_hash, "p_new_hash": new_hash}),
+            )
+            .await?;
+        Ok(rows.first().is_some_and(|row| row.ok))
+    }
+
     pub async fn password_credentials_by_email(
         &self,
         email: &str,
