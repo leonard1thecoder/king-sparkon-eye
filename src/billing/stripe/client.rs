@@ -90,7 +90,8 @@ impl ReturnUrlPolicy {
             || !self.origins.contains(&url.origin().ascii_serialization()) {
             return Err(StripeError::InvalidRequest { reason: "return URL origin is not allowed" });
         }
-        Ok(url.to_string())
+        // Preserve Stripe's required literal `{CHECKOUT_SESSION_ID}` success-URL token.
+        Ok(value.to_owned())
     }
 }
 
