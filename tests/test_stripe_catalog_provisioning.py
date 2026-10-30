@@ -22,7 +22,7 @@ class FakeStripe:
 
     def create_product(self, plan_id, key):
         self.created_products += 1
-        item = {"id": f"prod_{plan_id}", "active": True}
+        item = {"id": f"prod_{plan_id}", "active": True, "livemode": False}
         self.products[key] = [item]
         return item
 
