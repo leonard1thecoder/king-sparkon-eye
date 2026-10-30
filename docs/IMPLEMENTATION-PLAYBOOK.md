@@ -67,7 +67,7 @@ Billing epic [#137](https://github.com/leonard1thecoder/king-sparkon-eye/issues/
 
 | Issue | Workstream | Dependency / coordination rule |
 |---|---|---|
-| [#145](https://github.com/leonard1thecoder/king-sparkon-eye/issues/145) | Rust billing domain, Free/Gold/Premium entitlements and validated plan configuration | **First Rust implementation task.** Inspect current Rust architecture and configuration; prices/limits are hypotheses and must remain configurable. Align with #138/#139. |
+| [#145](https://github.com/leonard1thecoder/king-sparkon-eye/issues/145) | Rust billing domain, Free/Gold/Premium entitlements and validated plan configuration | **First Rust implementation task (domain implemented on `issue/145-billing-plan-domain`, pending merge).** Typed plan/meter/allowance model and validated candidate catalog in `src/billing/`; not loaded by runtime, not enforced, no Stripe. Prices/limits remain hypotheses and configurable. Align with #138/#139. See `docs/BILLING_PLAN_DOMAIN.md`. |
 | [#148](https://github.com/leonard1thecoder/king-sparkon-eye/issues/148) | Durable usage ledger and monthly allowance accounting | Coordinate with #113 PostgreSQL/transactional outbox, #28 authoritative event delivery, #31 S3 lifecycle, and billing contract #143. Do not infer backend confirmation contracts. |
 | [#146](https://github.com/leonard1thecoder/king-sparkon-eye/issues/146) | Tenant-scoped quota enforcement and safe quota behavior | After #145 and the authoritative usage sources from #148 are ready. Use durable shared state and idempotent accounting, not process-local counters. |
 | [#147](https://github.com/leonard1thecoder/king-sparkon-eye/issues/147) | Stripe Checkout and Customer Portal | After plan/configuration and billing account contract are agreed (#138/#139/#145). Never trust browser redirects as payment proof. |
@@ -84,12 +84,14 @@ Billing epic [#137](https://github.com/leonard1thecoder/king-sparkon-eye/issues/
 Candidate paid overages: $0.15 per successful confirmed enrollment, $0.015 per active template-month, $0.06 per retained original-photo GB-month, and $0.05 per eligible completed identification request. Validate unit economics, Stripe currency/account support, tax treatment, storage units, quota-reset rules, and customer-facing behavior before enabling production billing. Keep amounts, allowances, effective dates and Stripe Price IDs configurable. Annual price applies to the base subscription only; usage is intended to be invoiced monthly in arrears.
 
 **Recommended billing execution order:**
-1. **#145 first:** define typed plan/price/meter/allowance domain and validated configuration. This is not Stripe Checkout or a live catalog rollout.
+1. **#145 first:** define typed plan/price/meter/allowance domain and validated configuration. This is not Stripe Checkout or a live catalog rollout. *Status 2026-10-30:* domain and validation implemented on `issue/145-billing-plan-domain` (pending merge); durable usage (#148) has no authoritative source yet.
 2. **#148 next:** establish append-only, tenant-scoped, idempotent usage accounting and monthly aggregation, gated by real authoritative event/persistence contracts.
 3. **#146:** enforce quotas from durable usage, including race-safe limits, Free hard stops, and explicit behavior for store outages.
 4. **#147:** add tenant-authorized Checkout/Portal using server-side allowlisted price configuration.
 5. **#149:** add verified webhooks, local subscription projection, replay, and reconciliation.
 6. Complete/coordinate #138–#144 as contract and integration dependencies; refresh GitHub state before each step and do not duplicate work already covered by a merged PR.
+
+**Status note (2026-10-30, #145 branch):** implemented: plan/version/meter/allowance types, exact micro-unit money, validated candidate catalog, UTC monthly allowance periods, and pure overage arithmetic. Not implemented: runtime catalog loading, durable usage ledger, quota enforcement, Stripe catalog or Checkout, and any confirmed billable-enrollment source. Pricing and allowances remain unapproved.
 
 **Blockers that must remain visible:** #113 PostgreSQL/outbox integration; #28 production Kafka producer and verified backend consumer contract; #31 S3 lifecycle/orphan reconciliation; #132 enrollment authorization; #15 consent-aware storage; and verified Spring Boot consent/enrollment confirmation. Billing must never override consent, authorization, ticket eligibility, worker approval, or admission. Do not send biometric data, images, embeddings, attendee PII, ticket IDs, or raw payloads to Stripe.
 
