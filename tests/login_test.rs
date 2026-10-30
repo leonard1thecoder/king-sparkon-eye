@@ -4,6 +4,7 @@
 //! and token issuance all run for real over HTTP. No database is needed.
 
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
 use axum::Json;
 use axum::Router;
@@ -27,10 +28,21 @@ const SALT: &str = "0123456789abcdef";
 const JWT_SECRET: &str = "login-test-signing-secret-at-least-32-bytes";
 const KID: &str = "key-2026-v1";
 
+const BCRYPT_EMAIL: &str = "bcrypt@example.test";
+
 #[derive(Clone)]
 struct MockDb {
     /// Whether the rate-limit RPCs allow the attempt.
     allow: bool,
+    /// Whether the compare-and-set rehash RPC reports failure.
+    fail_update: bool,
+    /// Bodies of every `eye_update_password_hash` call, for assertions.
+    updates: Arc<Mutex<Vec<Value>>>,
+}
+
+struct Mock {
+    base: String,
+    updates: Arc<Mutex<Vec<Value>>>,
 }
 
 async fn rpc(
@@ -42,15 +54,21 @@ async fn rpc(
     match name.as_str() {
         "eye_password_credentials_by_email" => {
             let email = body["p_email"].as_str().unwrap_or_default();
-            let active = email == OPERATOR_EMAIL;
-            if email != OPERATOR_EMAIL && email != DISABLED_EMAIL {
+            let active = email == OPERATOR_EMAIL || email == BCRYPT_EMAIL;
+            if email != OPERATOR_EMAIL && email != DISABLED_EMAIL && email != BCRYPT_EMAIL {
                 return Json(json!([]));
             }
+            // BCRYPT_EMAIL stores a bcrypt hash; the others store the legacy SHA-256 hash.
+            let (stored_hash, salt) = if email == BCRYPT_EMAIL {
+                (bcrypt::hash(PASSWORD, 4).unwrap(), String::new())
+            } else {
+                (hash, SALT.to_owned())
+            };
             Json(json!([{
                 "user_id": "usr_login_test_01",
                 "email": email,
-                "password_hash": hash,
-                "salt": SALT,
+                "password_hash": stored_hash,
+                "salt": salt,
                 "role": "GateOperator",
                 "scopes": ["enrollment:write"],
                 "is_active": active,
@@ -58,21 +76,33 @@ async fn rpc(
             }]))
         }
         "eye_allow_oauth_attempt" => Json(json!([{"allowed": db.allow}])),
+        "eye_update_password_hash" => {
+            db.updates.lock().unwrap().push(body);
+            Json(json!([{"ok": !db.fail_update}]))
+        }
         "eye_issue_refresh_token" => Json(json!([{"ok": true}])),
         _ => Json(json!([])),
     }
 }
 
-async fn start_mock(allow: bool) -> String {
+async fn start_mock(allow: bool, fail_update: bool) -> Mock {
+    let updates = Arc::new(Mutex::new(Vec::new()));
     let app = Router::new()
         .route("/rest/v1/rpc/{name}", post(rpc))
-        .with_state(MockDb { allow });
+        .with_state(MockDb {
+            allow,
+            fail_update,
+            updates: updates.clone(),
+        });
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    format!("http://{addr}/rest/v1")
+    Mock {
+        base: format!("http://{addr}/rest/v1"),
+        updates,
+    }
 }
 
 fn config(database_url: &str) -> Config {
@@ -138,7 +168,7 @@ async fn login(database_url: &str, email: &str, password: &str) -> (StatusCode, 
 
 #[tokio::test]
 async fn correct_password_returns_a_token_the_photo_route_accepts() {
-    let db = start_mock(true).await;
+    let db = start_mock(true, false).await.base;
     let (status, body) = login(&db, OPERATOR_EMAIL, PASSWORD).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let token = body["accessToken"]
@@ -181,7 +211,7 @@ async fn correct_password_returns_a_token_the_photo_route_accepts() {
 
 #[tokio::test]
 async fn unknown_email_wrong_password_and_disabled_account_look_identical() {
-    let db = start_mock(true).await;
+    let db = start_mock(true, false).await.base;
     let unknown = login(&db, "nobody@example.test", PASSWORD).await;
     let wrong = login(&db, OPERATOR_EMAIL, "not-the-password-1").await;
     let disabled = login(&db, DISABLED_EMAIL, PASSWORD).await;
@@ -195,7 +225,7 @@ async fn unknown_email_wrong_password_and_disabled_account_look_identical() {
 
 #[tokio::test]
 async fn rate_limited_attempts_return_429_without_checking_the_password() {
-    let db = start_mock(false).await;
+    let db = start_mock(false, false).await.base;
     let (status, body) = login(&db, OPERATOR_EMAIL, PASSWORD).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(body["code"], "RATE_LIMITED");
@@ -203,7 +233,7 @@ async fn rate_limited_attempts_return_429_without_checking_the_password() {
 
 #[tokio::test]
 async fn malformed_credentials_are_rejected_before_lookup() {
-    let db = start_mock(true).await;
+    let db = start_mock(true, false).await.base;
     let (status, body) = login(&db, OPERATOR_EMAIL, "").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "VALIDATION_FAILED");
@@ -233,4 +263,45 @@ async fn login_is_unavailable_without_oauth_configuration() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn bcrypt_user_logs_in_and_is_not_rewritten() {
+    let mock = start_mock(true, false).await;
+    let (status, body) = login(&mock.base, BCRYPT_EMAIL, PASSWORD).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(mock.updates.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn legacy_user_is_rehashed_to_bcrypt_on_successful_login() {
+    let mock = start_mock(true, false).await;
+    let (status, body) = login(&mock.base, OPERATOR_EMAIL, PASSWORD).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let updates = mock.updates.lock().unwrap();
+    assert_eq!(updates.len(), 1);
+    assert_eq!(updates[0]["p_expected_hash"], hash_password(PASSWORD, SALT));
+    let new_hash = updates[0]["p_new_hash"].as_str().unwrap();
+    assert!(new_hash.starts_with("$2b$12$"), "{new_hash}");
+    assert!(bcrypt::verify(PASSWORD, new_hash).unwrap());
+}
+
+#[tokio::test]
+async fn failed_rehash_does_not_block_the_login() {
+    let mock = start_mock(true, true).await;
+    let (status, body) = login(&mock.base, OPERATOR_EMAIL, PASSWORD).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["accessToken"].as_str().is_some());
+    assert_eq!(mock.updates.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn wrong_password_for_bcrypt_user_matches_unknown_account_response() {
+    let mock = start_mock(true, false).await;
+    let wrong = login(&mock.base, BCRYPT_EMAIL, "not-the-password-1").await;
+    let unknown = login(&mock.base, "nobody@example.test", "not-the-password-1").await;
+    assert_eq!(wrong.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(wrong, unknown);
+    assert!(mock.updates.lock().unwrap().is_empty());
 }
