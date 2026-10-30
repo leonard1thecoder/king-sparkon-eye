@@ -19,7 +19,7 @@ This document describes the Rust plan, meter and allowance model in `src/billing
 | Usage ledger reference semantics: append-only, idempotent, reversible, tenant-scoped, period aggregation, level sampling (`src/billing/ledger.rs`) | Implemented as a **non-durable reference model** (issue #148 core) |
 | Durable PostgreSQL ledger, transactional outbox, Stripe Billing Meter reporting | **Planned / blocked**, issues #113, #28, #143, #138 |
 | Enforcing allowances (blocking, refusing, or tenant-scoped quotas) | **Planned**, issue #146 |
-| Stripe products, prices, metered prices, Checkout, Customer Portal, webhooks | **Partial** for #139 (base-price configuration, verification and pinned client, test mode only; see `docs/STRIPE_INTEGRATION.md`). **Planned:** metered prices and provisioning (#139), #140, #142, #141, #147, #149 |
+| Stripe products, prices, metered prices, Checkout, Customer Portal, webhooks | **Partial** for #139 (base-price configuration, verification and pinned client, test mode only; see `docs/STRIPE_INTEGRATION.md`). **Partial** for #141 (webhook signature verification only, pending merge). **Planned:** metered prices and provisioning (#139), #140, #142, #141 persistence and entitlement sync, #147, #149 |
 | Billing-account and tenant mapping from API credentials | **Planned**, issue #138 contract |
 | Confirmed, billable enrollment source | **Blocked**, see [Blockers](#blockers-and-dependencies) |
 
