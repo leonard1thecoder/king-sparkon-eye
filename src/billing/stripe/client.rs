@@ -400,6 +400,17 @@ mod return_url_tests {
     }
 
     #[test]
+    fn preserves_stripes_checkout_session_placeholder_verbatim() {
+        let value = policy()
+            .validate("https://app.example.com/billing/success?session_id={CHECKOUT_SESSION_ID}")
+            .expect("allowed origin");
+        assert_eq!(
+            value,
+            "https://app.example.com/billing/success?session_id={CHECKOUT_SESSION_ID}"
+        );
+    }
+
+    #[test]
     fn rejects_unlisted_origins_and_subdomain_confusion() {
         for value in [
             "https://evil.example.com/return",
