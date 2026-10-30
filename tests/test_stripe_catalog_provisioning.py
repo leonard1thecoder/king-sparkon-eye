@@ -61,6 +61,17 @@ class ProvisioningTests(unittest.TestCase):
     def test_usd_amount_is_converted_without_float_rounding(self):
         self.assertEqual(MODULE.amount_to_minor_units("99.00"), 9900)
 
+    def test_repository_candidate_catalog_is_valid(self):
+        root = Path(__file__).parents[1]
+        catalog = MODULE.load_catalog(root / "config" / "billing" / "plan-catalog.candidate.json")
+        self.assertEqual(catalog["approval_status"], "candidate_unapproved")
+
+    def test_exponent_and_numeric_amounts_are_rejected(self):
+        for value in ("9.9e1", 99, "+99.00"):
+            with self.subTest(value=value):
+                with self.assertRaises(MODULE.ProvisionError):
+                    MODULE.amount_to_minor_units(value)
+
     def test_fractional_cent_is_rejected(self):
         with self.assertRaises(MODULE.ProvisionError):
             MODULE.amount_to_minor_units("0.015")
