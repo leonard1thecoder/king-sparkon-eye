@@ -195,7 +195,7 @@ def provision_catalog(catalog: dict[str, Any], stripe: Any) -> list[tuple[str, s
                 catalog_key,
             )
             product_id = product.get("id")
-            if not isinstance(product_id, str) or not product_id.startswith("prod_") or not product.get("active"):
+            if (not isinstance(product_id, str) or not product_id.startswith("prod_")\n                    or product.get("active") is not True or product.get("livemode") is not False):
                 raise ProvisionError("matched Stripe Product is invalid or inactive")
             for interval_key, stripe_interval in INTERVALS:
                 price_key = f"{plan_id}-v{version_number}-{interval_key}"
