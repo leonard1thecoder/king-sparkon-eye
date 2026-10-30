@@ -314,7 +314,7 @@ The approved technical defaults remove the design-choice blocker but do not sati
 
 ## HTTP upload-boundary implementation update (reviewed 2026-10-30)
 
-Issue [#23](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23) was reopened because the existing ingress library did not satisfy its end-to-end HTTP acceptance criteria. The issue-scoped branch adds the multipart HTTP boundary while keeping detector/provider/assessment work out of scope.
+Issue [#23](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23) was reopened because the existing ingress library did not satisfy its end-to-end HTTP acceptance criteria. The issue-scoped branch adds the multipart HTTP boundary and wires the vendored YuNet detector into the domain assessment pipeline.
 
 - `POST /v1/enrollment/photo-assessments` reads multipart bodies under a total request cap of the configured image limit plus 64 KiB of multipart overhead.
 - The `image` part has its own exact `EYE_UPLOAD_MAX_BYTES` cap. Filename and part MIME claims are ignored; file signatures decide whether bytes are supported.

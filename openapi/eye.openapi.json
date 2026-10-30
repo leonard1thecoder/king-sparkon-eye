@@ -580,7 +580,8 @@
                   "enum": [
                     "ok",
                     "disabled",
-                    "missing_credentials"
+                    "missing_credentials",
+                    "unavailable"
                   ]
                 }
               }

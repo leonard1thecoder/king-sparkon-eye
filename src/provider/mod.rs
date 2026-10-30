@@ -64,3 +64,18 @@ impl VisionProvider for MockProvider {
         async move { response }
     }
 }
+
+
+/// Provider used when advisory calls are intentionally disabled for a route.
+/// It never performs network I/O or receives image bytes from an external service.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DisabledProvider;
+
+impl VisionProvider for DisabledProvider {
+    fn advise(
+        &self,
+        _png: Vec<u8>,
+    ) -> impl Future<Output = Result<String, ProviderError>> + Send {
+        async { Err(ProviderError::Disabled) }
+    }
+}

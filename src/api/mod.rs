@@ -18,7 +18,7 @@ use crate::config::Config;
 use crate::contract::{PersistenceStatus, PhotoAssessmentResponse};
 use crate::domain::{AssessmentConfig, assess, conservative_result};
 use crate::inference::yunet::YunetDetector;
-use crate::provider::{MockProvider, ProviderError};
+use crate::provider::DisabledProvider;
 use crate::error::{ApiError, ValidationError};
 use crate::ingress::ingest_with_timeout;
 
@@ -74,6 +74,8 @@ pub enum DependencyState {
     Disabled,
     /// Dependency is enabled but its credentials are missing; readiness fails.
     MissingCredentials,
+    /// Required runtime artifact or dependency could not be loaded.
+    Unavailable,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -133,7 +135,15 @@ async fn live() -> Json<LivenessResponse> {
 }
 
 async fn ready(State(state): State<AppState>) -> Response {
-    let report = readiness(&state.config);
+    let mut report = readiness(&state.config);
+    if state.assessment.is_none() {
+        report.dependencies.push(DependencyStatus {
+            name: "face_detector",
+            required: true,
+            state: DependencyState::Unavailable,
+        });
+        report.status = ReadinessStatus::NotReady;
+    }
     let code = match report.status {
         ReadinessStatus::Ready => StatusCode::OK,
         ReadinessStatus::NotReady => StatusCode::SERVICE_UNAVAILABLE,
@@ -184,7 +194,7 @@ async fn upload_photo(
         .await
         .map_err(ApiError::from)?;
     let runtime = state.assessment.as_ref().ok_or(ApiError::ServiceUnavailable)?;
-    let disabled_provider = MockProvider { response: Err(ProviderError::Disabled) };
+    let disabled_provider = DisabledProvider;
     let result = assess(&normalized, runtime.detector.as_ref(), &disabled_provider, &AssessmentConfig::default()).await;
     let result = conservative_result(result);
     let model_version = None;
