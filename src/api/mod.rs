@@ -1,10 +1,10 @@
-//! HTTP routes: liveness, readiness and request-ID/tracing middleware.
+//! HTTP routes: health probes, bounded photo ingress, OAuth, and request-ID/tracing middleware.
 
 use std::sync::Arc;
 
 use axum::body::{Body, to_bytes};
 use axum::extract::State;
-use axum::http::{header::CONTENT_TYPE, HeaderName, Request, StatusCode};
+use axum::http::{header::{CONTENT_LENGTH, CONTENT_TYPE}, HeaderName, Request, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -114,56 +114,91 @@ async fn upload_photo(
     State(state): State<AppState>,
     request: Request<Body>,
 ) -> Result<Response, ApiError> {
-    let content_type = request.headers().get(CONTENT_TYPE)
+    let content_type = request
+        .headers()
+        .get(CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .ok_or(ApiError::UnsupportedMediaType)?;
     let boundary = multipart_boundary(content_type)?;
-    let body_limit = state.config.image_limits.max_upload_bytes
+    let body_limit = state
+        .config
+        .image_limits
+        .max_upload_bytes
         .saturating_add(MULTIPART_OVERHEAD_BYTES);
+    let declared_length = request
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok());
+    if declared_length.is_some_and(|length| length > body_limit) {
+        return Err(ApiError::PayloadTooLarge);
+    }
     let body = to_bytes(request.into_body(), body_limit)
-        .await.map_err(|_| ApiError::PayloadTooLarge)?;
+        .await
+        .map_err(|_| ApiError::PayloadTooLarge)?;
     let image = extract_multipart_image(
-        &body, &boundary, state.config.image_limits.max_upload_bytes,
+        &body,
+        &boundary,
+        state.config.image_limits.max_upload_bytes,
     )?;
     let _normalized = ingest_with_timeout(image, state.config.image_limits)
-        .await.map_err(ApiError::from)?;
+        .await
+        .map_err(ApiError::from)?;
+
+    // A valid upload is not an assessment until the assessment orchestrator is wired.
     Err(ApiError::AssessmentNotImplemented)
 }
 
 fn multipart_boundary(content_type: &str) -> Result<Vec<u8>, ApiError> {
     let mut parameters = content_type.split(';');
-    if !parameters.next().is_some_and(|value|
-        value.trim().eq_ignore_ascii_case("multipart/form-data")) {
+    if !parameters
+        .next()
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("multipart/form-data"))
+    {
         return Err(ApiError::UnsupportedMediaType);
     }
-    let boundary = parameters.find_map(|parameter| {
-        let (name, value) = parameter.trim().split_once('=')?;
-        name.trim().eq_ignore_ascii_case("boundary")
-            .then_some(value.trim().trim_matches('"'))
-    }).ok_or_else(invalid_multipart)?;
-    let valid = !boundary.is_empty() && boundary.len() <= 70
-        && boundary.bytes().all(|byte|
-            byte.is_ascii_alphanumeric() || b"'()+_,-./:=?".contains(&byte));
-    if !valid { return Err(invalid_multipart()); }
+    let boundary = parameters
+        .find_map(|parameter| {
+            let (name, value) = parameter.trim().split_once('=')?;
+            name.trim()
+                .eq_ignore_ascii_case("boundary")
+                .then_some(value.trim().trim_matches('"'))
+        })
+        .ok_or_else(invalid_multipart)?;
+    let valid = !boundary.is_empty()
+        && boundary.len() <= 70
+        && boundary
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"'()+_,-./:=?".contains(&byte));
+    if !valid {
+        return Err(invalid_multipart());
+    }
     Ok(boundary.as_bytes().to_vec())
 }
 
 fn extract_multipart_image(
-    body: &[u8], boundary: &[u8], max_upload_bytes: usize,
+    body: &[u8],
+    boundary: &[u8],
+    max_upload_bytes: usize,
 ) -> Result<Vec<u8>, ApiError> {
     let mut delimiter = b"--".to_vec();
     delimiter.extend_from_slice(boundary);
-    if !body.starts_with(&delimiter) { return Err(invalid_multipart()); }
+    if !body.starts_with(&delimiter) {
+        return Err(invalid_multipart());
+    }
     let mut cursor = delimiter.len();
-    if body.get(cursor..cursor + 2) == Some(b"--") { return Err(missing_image()); }
-    if body.get(cursor..cursor + 2) != Some(b"\r\n") {
+    if body.get(cursor..cursor + 2) == Some(&b"--"[..]) {
+        return Err(missing_image());
+    }
+    if body.get(cursor..cursor + 2) != Some(&b"\r\n"[..]) {
         return Err(invalid_multipart());
     }
     cursor += 2;
     let mut image = None;
     loop {
         let header_end = find_bytes(&body[cursor..], b"\r\n\r\n")
-            .map(|offset| cursor + offset).ok_or_else(invalid_multipart)?;
+            .map(|offset| cursor + offset)
+            .ok_or_else(invalid_multipart)?;
         if header_end - cursor > MULTIPART_MAX_HEADER_BYTES {
             return Err(invalid_multipart());
         }
@@ -171,34 +206,40 @@ fn extract_multipart_image(
         let mut separator = b"\r\n".to_vec();
         separator.extend_from_slice(&delimiter);
         let marker_start = find_bytes(&body[data_start..], &separator)
-            .map(|offset| data_start + offset).ok_or_else(invalid_multipart)?;
+            .map(|offset| data_start + offset)
+            .ok_or_else(invalid_multipart)?;
         let part_data = &body[data_start..marker_start];
         let field_name = multipart_field_name(&body[cursor..header_end])
             .ok_or_else(invalid_multipart)?;
         match field_name.as_str() {
             "image" => {
-                if image.is_some() { return Err(invalid_multipart()); }
+                if image.is_some() {
+                    return Err(invalid_multipart());
+                }
                 if part_data.len() > max_upload_bytes {
                     return Err(ApiError::PayloadTooLarge);
                 }
                 image = Some(part_data.to_vec());
             }
             "clientRequestId" => {
-                if part_data.len() > 1024 { return Err(invalid_multipart()); }
+                if part_data.len() > 1024 {
+                    return Err(invalid_multipart());
+                }
             }
             _ => return Err(invalid_multipart()),
         }
         let marker_after = marker_start + separator.len();
-        match body.get(marker_after..marker_after + 2) {
-            Some(b"--") => {
-                let trailing = &body[marker_after + 2..];
-                if !trailing.is_empty() && trailing != b"\r\n" {
-                    return Err(invalid_multipart());
-                }
-                break;
+        let marker = body.get(marker_after..marker_after + 2);
+        if marker == Some(&b"--"[..]) {
+            let trailing = &body[marker_after + 2..];
+            if !trailing.is_empty() && trailing != &b"\r\n"[..] {
+                return Err(invalid_multipart());
             }
-            Some(b"\r\n") => cursor = marker_after + 2,
-            _ => return Err(invalid_multipart()),
+            break;
+        } else if marker == Some(&b"\r\n"[..]) {
+            cursor = marker_after + 2;
+        } else {
+            return Err(invalid_multipart());
         }
     }
     image.ok_or_else(missing_image)
@@ -208,7 +249,8 @@ fn multipart_field_name(headers: &[u8]) -> Option<String> {
     let headers = std::str::from_utf8(headers).ok()?;
     let disposition = headers.lines().find_map(|line| {
         let (name, value) = line.split_once(':')?;
-        name.trim().eq_ignore_ascii_case("content-disposition")
+        name.trim()
+            .eq_ignore_ascii_case("content-disposition")
             .then_some(value.trim())
     })?;
     let mut parameters = disposition.split(';');
@@ -217,7 +259,8 @@ fn multipart_field_name(headers: &[u8]) -> Option<String> {
     }
     parameters.find_map(|parameter| {
         let (name, value) = parameter.trim().split_once('=')?;
-        name.trim().eq_ignore_ascii_case("name")
+        name.trim()
+            .eq_ignore_ascii_case("name")
             .then(|| value.trim().trim_matches('"').to_owned())
     })
 }
@@ -230,11 +273,16 @@ fn invalid_multipart() -> ApiError {
     ValidationError {
         field: "image",
         rule: "must be provided in a valid multipart/form-data request",
-    }.into()
+    }
+    .into()
 }
 
 fn missing_image() -> ApiError {
-    ValidationError { field: "image", rule: "is required" }.into()
+    ValidationError {
+        field: "image",
+        rule: "is required",
+    }
+    .into()
 }
 
 async fn not_found() -> ApiError {
