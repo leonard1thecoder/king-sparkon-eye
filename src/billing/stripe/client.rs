@@ -6,8 +6,8 @@
 
 use std::time::Duration;
 
-use serde::Deserialize;
 use reqwest::Url;
+use serde::Deserialize;
 
 use super::config::{PriceSlot, StripeMode, StripeSettings};
 use crate::billing::BillingInterval;
@@ -66,29 +66,53 @@ pub struct Recurring {
 
 /// Exact-origin allowlist for hosted billing return URLs.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReturnUrlPolicy { origins: std::collections::BTreeSet<String> }
+pub struct ReturnUrlPolicy {
+    origins: std::collections::BTreeSet<String>,
+}
 
 impl ReturnUrlPolicy {
     pub fn new(origins: impl IntoIterator<Item = String>) -> Result<Self, StripeError> {
         let mut allowed = std::collections::BTreeSet::new();
         for value in origins {
-            let url = Url::parse(&value).map_err(|_| StripeError::InvalidRequest { reason: "return origin is invalid" })?;
-            if url.scheme() != "https" || url.host_str().is_none() || !url.username().is_empty()
-                || url.password().is_some() || url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
-                return Err(StripeError::InvalidRequest { reason: "return origin must be a bare HTTPS origin" });
+            let url = Url::parse(&value).map_err(|_| StripeError::InvalidRequest {
+                reason: "return origin is invalid",
+            })?;
+            if url.scheme() != "https"
+                || url.host_str().is_none()
+                || !url.username().is_empty()
+                || url.password().is_some()
+                || url.path() != "/"
+                || url.query().is_some()
+                || url.fragment().is_some()
+            {
+                return Err(StripeError::InvalidRequest {
+                    reason: "return origin must be a bare HTTPS origin",
+                });
             }
             allowed.insert(url.origin().ascii_serialization());
         }
-        if allowed.is_empty() { return Err(StripeError::InvalidRequest { reason: "at least one return origin is required" }); }
+        if allowed.is_empty() {
+            return Err(StripeError::InvalidRequest {
+                reason: "at least one return origin is required",
+            });
+        }
         Ok(Self { origins: allowed })
     }
 
     pub fn validate(&self, value: &str) -> Result<String, StripeError> {
-        let url = Url::parse(value).map_err(|_| StripeError::InvalidRequest { reason: "return URL is invalid" })?;
-        if url.scheme() != "https" || url.host_str().is_none() || !url.username().is_empty()
-            || url.password().is_some() || url.fragment().is_some()
-            || !self.origins.contains(&url.origin().ascii_serialization()) {
-            return Err(StripeError::InvalidRequest { reason: "return URL origin is not allowed" });
+        let url = Url::parse(value).map_err(|_| StripeError::InvalidRequest {
+            reason: "return URL is invalid",
+        })?;
+        if url.scheme() != "https"
+            || url.host_str().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.fragment().is_some()
+            || !self.origins.contains(&url.origin().ascii_serialization())
+        {
+            return Err(StripeError::InvalidRequest {
+                reason: "return URL origin is not allowed",
+            });
         }
         // Preserve Stripe's required literal `{CHECKOUT_SESSION_ID}` success-URL token.
         Ok(value.to_owned())
@@ -96,19 +120,32 @@ impl ReturnUrlPolicy {
 }
 
 /// Hosted Stripe URL. No Debug implementation: short-lived customer URLs must not be logged.
-pub struct HostedSession { pub id: String, pub url: String }
+pub struct HostedSession {
+    pub id: String,
+    pub url: String,
+}
 
 #[derive(Deserialize)]
-struct HostedSessionResponse { id: String, url: Option<String> }
+struct HostedSessionResponse {
+    id: String,
+    url: Option<String>,
+}
 
 fn valid_stripe_id(value: &str, prefix: &str) -> bool {
-    value.len() > prefix.len() && value.len() <= 255 && value.starts_with(prefix)
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    value.len() > prefix.len()
+        && value.len() <= 255
+        && value.starts_with(prefix)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 fn valid_idempotency_key(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 255
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+    !value.is_empty()
+        && value.len() <= 255
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
 }
 
 /// Stripe client bound to validated settings.
@@ -145,37 +182,78 @@ impl StripeClient {
     /// Price selection is exclusively from validated server configuration; callers must not
     /// pass browser-provided customer IDs, Price IDs, amounts, currencies or return URLs.
     pub async fn create_checkout_session(
-        &self, slot: PriceSlot, customer_id: &str, success_url: &str, cancel_url: &str,
-        return_urls: &ReturnUrlPolicy, idempotency_key: &str,
+        &self,
+        slot: PriceSlot,
+        customer_id: &str,
+        success_url: &str,
+        cancel_url: &str,
+        return_urls: &ReturnUrlPolicy,
+        idempotency_key: &str,
     ) -> Result<HostedSession, StripeError> {
-        if !valid_stripe_id(customer_id, "cus_") { return Err(StripeError::InvalidRequest { reason: "customer identifier is invalid" }); }
-        if !valid_idempotency_key(idempotency_key) { return Err(StripeError::InvalidRequest { reason: "idempotency key is invalid" }); }
-        let price_id = self.prices.get(slot).ok_or(StripeError::InvalidRequest { reason: "configured price is missing" })?;
+        if !valid_stripe_id(customer_id, "cus_") {
+            return Err(StripeError::InvalidRequest {
+                reason: "customer identifier is invalid",
+            });
+        }
+        if !valid_idempotency_key(idempotency_key) {
+            return Err(StripeError::InvalidRequest {
+                reason: "idempotency key is invalid",
+            });
+        }
+        let price_id = self.prices.get(slot).ok_or(StripeError::InvalidRequest {
+            reason: "configured price is missing",
+        })?;
         let success = return_urls.validate(success_url)?;
         let cancel = return_urls.validate(cancel_url)?;
-        let response = self.http.post(format!("{}/v1/checkout/sessions", self.base))
-            .bearer_auth(self.secret.expose()).header("Stripe-Version", STRIPE_API_VERSION)
+        let response = self
+            .http
+            .post(format!("{}/v1/checkout/sessions", self.base))
+            .bearer_auth(self.secret.expose())
+            .header("Stripe-Version", STRIPE_API_VERSION)
             .header("Idempotency-Key", idempotency_key)
-            .form(&[("mode", "subscription"), ("customer", customer_id),
-                ("line_items[0][price]", price_id), ("line_items[0][quantity]", "1"),
-                ("success_url", success.as_str()), ("cancel_url", cancel.as_str())])
-            .send().await.map_err(|_| StripeError::Unavailable)?;
+            .form(&[
+                ("mode", "subscription"),
+                ("customer", customer_id),
+                ("line_items[0][price]", price_id),
+                ("line_items[0][quantity]", "1"),
+                ("success_url", success.as_str()),
+                ("cancel_url", cancel.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|_| StripeError::Unavailable)?;
         parse_hosted_session(response, "checkout.stripe.com").await
     }
 
     /// Creates a Customer Portal session for an existing, server-mapped Stripe Customer.
     pub async fn create_portal_session(
-        &self, customer_id: &str, return_url: &str, return_urls: &ReturnUrlPolicy,
+        &self,
+        customer_id: &str,
+        return_url: &str,
+        return_urls: &ReturnUrlPolicy,
         idempotency_key: &str,
     ) -> Result<HostedSession, StripeError> {
-        if !valid_stripe_id(customer_id, "cus_") { return Err(StripeError::InvalidRequest { reason: "customer identifier is invalid" }); }
-        if !valid_idempotency_key(idempotency_key) { return Err(StripeError::InvalidRequest { reason: "idempotency key is invalid" }); }
+        if !valid_stripe_id(customer_id, "cus_") {
+            return Err(StripeError::InvalidRequest {
+                reason: "customer identifier is invalid",
+            });
+        }
+        if !valid_idempotency_key(idempotency_key) {
+            return Err(StripeError::InvalidRequest {
+                reason: "idempotency key is invalid",
+            });
+        }
         let return_url = return_urls.validate(return_url)?;
-        let response = self.http.post(format!("{}/v1/billing_portal/sessions", self.base))
-            .bearer_auth(self.secret.expose()).header("Stripe-Version", STRIPE_API_VERSION)
+        let response = self
+            .http
+            .post(format!("{}/v1/billing_portal/sessions", self.base))
+            .bearer_auth(self.secret.expose())
+            .header("Stripe-Version", STRIPE_API_VERSION)
             .header("Idempotency-Key", idempotency_key)
             .form(&[("customer", customer_id), ("return_url", return_url.as_str())])
-            .send().await.map_err(|_| StripeError::Unavailable)?;
+            .send()
+            .await
+            .map_err(|_| StripeError::Unavailable)?;
         parse_hosted_session(response, "billing.stripe.com").await
     }
 
@@ -201,14 +279,26 @@ impl StripeClient {
     }
 }
 
-async fn parse_hosted_session(response: reqwest::Response, expected_host: &str) -> Result<HostedSession, StripeError> {
+async fn parse_hosted_session(
+    response: reqwest::Response,
+    expected_host: &str,
+) -> Result<HostedSession, StripeError> {
     let status = response.status();
-    if !status.is_success() { return Err(map_status(status.as_u16())); }
-    let value = response.json::<HostedSessionResponse>().await.map_err(|_| StripeError::UnexpectedResponse)?;
+    if !status.is_success() {
+        return Err(map_status(status.as_u16()));
+    }
+    let value = response
+        .json::<HostedSessionResponse>()
+        .await
+        .map_err(|_| StripeError::UnexpectedResponse)?;
     let url = value.url.ok_or(StripeError::UnexpectedResponse)?;
     let parsed = Url::parse(&url).map_err(|_| StripeError::UnexpectedResponse)?;
-    if parsed.scheme() != "https" || parsed.host_str() != Some(expected_host)
-        || !parsed.username().is_empty() || parsed.password().is_some() || !valid_stripe_id(&value.id, "cs_") {
+    if parsed.scheme() != "https"
+        || parsed.host_str() != Some(expected_host)
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || !valid_stripe_id(&value.id, "cs_")
+    {
         return Err(StripeError::UnexpectedResponse);
     }
     Ok(HostedSession { id: value.id, url })
@@ -287,23 +377,36 @@ mod return_url_tests {
 
     #[test]
     fn allows_paths_and_queries_on_an_exact_configured_https_origin() {
-        let value = policy().validate("https://app.example.com/billing/return?source=portal").expect("allowed");
+        let value = policy()
+            .validate("https://app.example.com/billing/return?source=portal")
+            .expect("allowed");
         assert_eq!(value, "https://app.example.com/billing/return?source=portal");
     }
 
     #[test]
     fn rejects_unlisted_origins_and_subdomain_confusion() {
-        for value in ["https://evil.example.com/return", "https://app.example.com.evil.test/", "http://app.example.com/"] {
+        for value in [
+            "https://evil.example.com/return",
+            "https://app.example.com.evil.test/",
+            "http://app.example.com/",
+        ] {
             assert!(matches!(policy().validate(value), Err(StripeError::InvalidRequest { .. })), "{value}");
         }
     }
 
     #[test]
     fn rejects_credentials_fragments_and_non_origin_allowlist_entries() {
-        for value in ["https://user@app.example.com/", "https://app.example.com/#fragment"] {
+        for value in [
+            "https://user@app.example.com/",
+            "https://app.example.com/#fragment",
+        ] {
             assert!(policy().validate(value).is_err(), "{value}");
         }
-        for origin in ["http://app.example.com/", "https://app.example.com/path", "https://user@app.example.com/"] {
+        for origin in [
+            "http://app.example.com/",
+            "https://app.example.com/path",
+            "https://user@app.example.com/",
+        ] {
             assert!(ReturnUrlPolicy::new([origin.to_owned()]).is_err(), "{origin}");
         }
         assert!(ReturnUrlPolicy::new(Vec::<String>::new()).is_err());
