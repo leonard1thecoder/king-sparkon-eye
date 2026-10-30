@@ -64,11 +64,16 @@ async fn metadata_and_outbox_commit_atomically_and_survive_new_pool() {
     drop(store);
     let fresh_pool = connect(&url).await.unwrap();
     let fresh = EnrollmentOutboxStore::new(fresh_pool);
-    let claimed = fresh.claim_due(item.created_at_ms + 1, 60_000, 4).await.unwrap();
-    assert_eq!(claimed.len(), 1);
-    assert_eq!(claimed[0].event_id, item.event_id);
-    assert_eq!(claimed[0].enrollment_id, item.enrollment_id);
-    assert_eq!(claimed[0].attempts, 1);
+    // Other integration tests share the CI PostgreSQL database and may have
+    // due outbox rows at the same timestamp. Assert this transaction's row
+    // survived the pool restart instead of assuming the global queue is empty.
+    let claimed = fresh.claim_due(item.created_at_ms + 1, 60_000, 100).await.unwrap();
+    let persisted = claimed
+        .iter()
+        .find(|event| event.event_id == item.event_id)
+        .expect("committed outbox event must be claimable through a fresh pool");
+    assert_eq!(persisted.enrollment_id, item.enrollment_id);
+    assert_eq!(persisted.attempts, 1);
 }
 
 #[tokio::test]
