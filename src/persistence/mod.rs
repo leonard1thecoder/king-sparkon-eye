@@ -3,6 +3,7 @@
 //! Only the schema and the atomic operations live here. Wiring these into the
 //! HTTP routes is part of issue #45 and is not done in this module.
 
+pub mod enrollment_outbox;
 pub mod identity;
 pub mod oauth;
 
