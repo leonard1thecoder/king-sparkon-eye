@@ -1,6 +1,6 @@
 # Stripe integration — catalog foundation (issue #139)
 
-**Status: partial.** The #139 configuration/client foundation is merged (PR #155); this branch adds an opt-in test-mode-only base product/price provisioner. The #141 webhook signature verifier is merged (PR #156). No billing code is wired into the service runtime, and webhook events are not persisted or processed.
+**Status: partial.** The #139 configuration/client foundation is merged (PR #155); the test-mode-only base product/price provisioner is available. The #141 webhook signature verifier is merged (PR #156). Issue #147 adds server-side Stripe hosted-session adapter primitives, but no billing routes are wired into the service runtime. Webhook events are not persisted or processed.
 
 Related: [`BILLING_PLAN_DOMAIN.md`](BILLING_PLAN_DOMAIN.md) (plan and meter domain, #145), [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md) (sequencing).
 
@@ -80,6 +80,19 @@ EYE_STRIPE_SECRET_KEY=sk_test_... python3 scripts/stripe/provision_test_catalog.
 The default command validates the candidate catalog and performs no network requests. `--apply` requires an `sk_test_` key; the API host is fixed to Stripe and redirects are not followed. It creates or reuses one Product per paid plan and one licensed recurring base Price per monthly/annual interval. Stable metadata keys are searched before creation, Stripe idempotency keys are supplied, and multiple matches or mismatched existing prices fail closed. Amounts are parsed from the candidate JSON and converted exactly to USD minor units; no amount or Stripe ID is hardcoded. The command prints the resulting test Price IDs for operator-managed test configuration.
 
 This is **not production price approval**. It deliberately provisions only the four candidate base-price slots for Gold and Premium. Free has no Stripe Price. It does not provision metered usage prices, change existing prices, archive superseded prices, or wire startup/runtime billing. A changed price requires a new catalog version/key; do not mutate an existing version in place. Do not use the generated IDs with live keys.
+
+
+### Hosted Checkout and Customer Portal adapter primitives (#147 partial)
+
+The Stripe client now exposes `create_checkout_session` and `create_portal_session` for a caller that already has a trusted, durable Stripe Customer mapping. Both methods:
+
+- Require a server-owned `ReturnUrlPolicy` built from exact HTTPS origins; return URLs with another origin, credentials or fragments are rejected before any Stripe request.
+- Accept a Stripe Customer ID only as a trusted server-side argument and validate its `cus_` shape. These methods must not be called with browser-supplied IDs.
+- Checkout selects a configured `PriceSlot`; callers cannot supply a raw Price ID, amount or currency. The selected Price ID comes from validated `StripeSettings`.
+- Require a stable idempotency key and send it as `Idempotency-Key`.
+- Require Stripe to return a valid `cs_` session and an HTTPS URL on the expected Stripe-hosted domain. Session URLs deliberately do not implement `Debug` to reduce accidental logging.
+
+**Explicitly not implemented:** authenticated HTTP routes, billing-admin/tenant authorization, tenant-to-Customer persistence or creation, local subscription state, webhook activation, portal feature configuration/policy, and runtime wiring. The adapter methods cannot establish tenant ownership. Do not expose them through a route until trusted tenant identity, billing-admin permission and durable Customer mapping are implemented and tested. Live mode remains refused while the catalog is unapproved; no production billing is enabled.
 
 ## What is not implemented (the rest of #139 and #141)
 
