@@ -210,3 +210,47 @@ pub async fn assess<D: FaceDetector, P: VisionProvider>(
     }
     result
 }
+
+
+/// Applies the conservative MVP calibration gate. Current quality thresholds are starting
+/// points only; until evaluated against a consented dataset, a nominal pass is unavailable.
+/// Explicit retake outcomes and detector failures retain their existing typed outcomes.
+pub fn conservative_result(mut result: FinalAssessment) -> FinalAssessment {
+    if result.suitability == SuitabilityStatus::AssessmentPassed {
+        result.suitability = SuitabilityStatus::AssessmentUnavailable;
+        result.reason_codes.clear();
+        result.guidance.clear();
+    }
+    result
+}
+
+#[cfg(test)]
+mod calibration_gate_tests {
+    use super::*;
+    use crate::advisory::AdvisoryStatus;
+
+    #[test]
+    fn uncalibrated_pass_is_reported_as_unavailable() {
+        let result = FinalAssessment {
+            suitability: SuitabilityStatus::AssessmentPassed,
+            reason_codes: Vec::new(),
+            guidance: Vec::new(),
+            advisory: AdvisoryStatus::Disabled,
+        };
+        let result = conservative_result(result);
+        assert_eq!(result.suitability, SuitabilityStatus::AssessmentUnavailable);
+    }
+
+    #[test]
+    fn retake_result_is_preserved_by_calibration_gate() {
+        let result = FinalAssessment {
+            suitability: SuitabilityStatus::RetakeRequired,
+            reason_codes: vec![ReasonCode::NoFaceDetected],
+            guidance: Vec::new(),
+            advisory: AdvisoryStatus::Disabled,
+        };
+        let result = conservative_result(result);
+        assert_eq!(result.suitability, SuitabilityStatus::RetakeRequired);
+        assert_eq!(result.reason_codes, vec![ReasonCode::NoFaceDetected]);
+    }
+}

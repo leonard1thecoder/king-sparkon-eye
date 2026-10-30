@@ -161,7 +161,7 @@ async fn post_upload(
 }
 
 #[tokio::test]
-async fn valid_image_is_decoded_but_not_reported_as_assessed() {
+async fn valid_image_enters_assessment_pipeline_and_returns_detector_outcome() {
     let body = multipart("eye-boundary", &png_fixture(), "misleading.jpg", "image/jpeg");
     let (status, json) = post_upload(
         &[],
@@ -169,9 +169,11 @@ async fn valid_image_is_decoded_but_not_reported_as_assessed() {
         body,
     )
     .await;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-    assert_eq!(json["code"], "ASSESSMENT_NOT_IMPLEMENTED");
-    assert!(json["message"].as_str().unwrap().contains("assessment"));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["suitability"], "RETAKE_REQUIRED");
+    assert_eq!(json["reasonCodes"][0], "NO_FACE_DETECTED");
+    assert_eq!(json["persistence"], "NOT_REQUESTED");
+    assert!(json["assessmentId"].as_str().is_some());
 }
 
 #[tokio::test]

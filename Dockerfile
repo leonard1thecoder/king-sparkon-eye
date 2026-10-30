@@ -24,7 +24,8 @@ COPY --from=build /src/target/release/king_sparkon_eye /usr/local/bin/king_spark
 COPY artifacts ./artifacts
 
 # The ONNX Runtime library is loaded dynamically (ort load-dynamic). Path matches the vendored artifact.
-ENV ORT_DYLIB_PATH=/opt/eye/artifacts/onnxruntime/1.31.1/linux-x86_64/libonnxruntime.so.1.31.1
+ENV ORT_DYLIB_PATH=/opt/eye/artifacts/onnxruntime/1.31.1/linux-x86_64/libonnxruntime.so.1.31.1 \
+    EYE_YUNET_MODEL_PATH=/opt/eye/artifacts/models/yunet-2023mar/face_detection_yunet_2023mar.onnx
 
 USER eye
 EXPOSE 8080

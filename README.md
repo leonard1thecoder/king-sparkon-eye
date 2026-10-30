@@ -91,12 +91,12 @@ Implementation is tracked in [Issue #31](https://github.com/leonard1thecoder/kin
 
 ## Buyer enrollment flow
 
-> **Current implementation boundary:** only multipart upload validation/normalization is live. A valid upload currently receives `501 ASSESSMENT_NOT_IMPLEMENTED`; the remaining steps below describe the target flow, not shipped behavior.
+> **Current implementation boundary:** multipart upload validation/normalization now enters the vendored YuNet detector and assessment pipeline. A nominal `ASSESSMENT_PASSED` is conservatively downgraded to `ASSESSMENT_UNAVAILABLE` until the quality thresholds are calibrated against a consented evaluation dataset. Enrollment persistence, event publication and admission remain separate, unwired steps.
 
 1. The buyer clicks **Use Face Recognition** and chooses/captures a photo.
 2. Next.js uploads the image directly to Rust over an authenticated request.
 3. Rust enforces byte/type/dimension limits and safely decodes the image before any model inference.
-4. Rust combines ONNX and deterministic image-quality checks with optional frontier-model visual guidance. The frontier model is supplementary and cannot override hard rules or verify identity by itself.
+4. Rust runs YuNet face detection and deterministic image-quality checks, with optional Muse Spark visual guidance. The frontier model is supplementary and cannot override hard rules or verify identity by itself. Current threshold-based passes are downgraded to `ASSESSMENT_UNAVAILABLE` pending consented calibration.
 5. Rust returns retake guidance if the photo is unsuitable. Provider outages are reported as service errors, not as bad photos.
 6. After a suitable image and the required explicit consent, Rust stores the original in private object storage when retention is required and creates a protected face template in the biometric index.
 7. Rust publishes a versioned event (for example, photo.enrolled.v1) through Kafka. The event includes an opaque storage key, enrollment/assessment IDs, authenticated subject ID, content hash, consent reference, model/policy versions and an idempotency key.

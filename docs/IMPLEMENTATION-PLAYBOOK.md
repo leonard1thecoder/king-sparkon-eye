@@ -325,3 +325,17 @@ Issue [#23](https://github.com/leonard1thecoder/king-sparkon-eye/issues/23) was 
 - README and OpenAPI status/format claims were synchronized. `AGENTS.md` and bootstrap lifecycle/configuration were reviewed; no reusable agent rule or bootstrap change was required for this route-level issue.
 
 CI and the full Rust test suite remain deferred until the MVP implementation batch is ready, per the owner-directed execution order. Do not close #23 until the branch has been built/tested and merged.
+
+
+### Issue #23 — HTTP upload boundary and conservative assessment wiring (2026-10-30)
+
+Branch: `issue/23-http-upload-boundary`.
+
+- The bounded multipart route validates and normalizes the image before model/provider work.
+- The route initializes the vendored YuNet ONNX Runtime/model once per process and calls the existing domain `assess()` pipeline.
+- Optional Muse Spark guidance uses the configured provider adapter; when disabled or unavailable, its status remains distinct from photo quality.
+- The conservative calibration gate converts every nominal `ASSESSMENT_PASSED` into `ASSESSMENT_UNAVAILABLE` until thresholds are evaluated against a consented dataset. Retake and detector failure outcomes retain their typed statuses.
+- Response reports `persistence: NOT_REQUESTED`; this route does not store/enroll the image, publish an event, perform identity matching, or make admission decisions.
+- Docker runtime explicitly configures the vendored model path and ONNX Runtime library path.
+- HTTP regression coverage now expects a real detector outcome for a valid upload; domain unit tests cover the calibration gate.
+- Verification status: not yet run in this environment; Rust toolchain availability and CI remain to be checked. CI stays deferred until the MVP implementation batch is ready.

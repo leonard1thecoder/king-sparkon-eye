@@ -3,7 +3,7 @@
   "info": {
     "title": "King Sparkon Eye API",
     "version": "0.1.0",
-    "description": "Wire contract for the Rust vision service. Image suitability, persistence and face-match outcome are separate fields. Nothing here represents final admission: only Spring Boot admits an attendee, after an authenticated worker approves entry. Health endpoints and the multipart upload-validation boundary are implemented; the assessment operation currently returns ASSESSMENT_NOT_IMPLEMENTED after successful validation until the assessment orchestrator is wired."
+    "description": "King Sparkon Eye Rust vision API. The service validates uploads and runs YuNet-backed photo assessment. Nominal passes are conservatively returned as ASSESSMENT_UNAVAILABLE until photo-quality thresholds are calibrated against a consented evaluation dataset. No result is an identity decision or admission."
   },
   "paths": {
     "/health/live": {
@@ -87,7 +87,7 @@
     "/v1/enrollment/photo-assessments": {
       "post": {
         "summary": "Assess a buyer enrollment photo",
-        "description": "Accepts multipart/form-data with one image part and optional clientRequestId. The HTTP boundary enforces a total request-body cap and exact image-byte cap, ignores client filename/MIME claims, and validates/normalizes JPEG or static PNG before any inference/provider call. Until the assessment orchestrator is wired, valid uploads return 501 ASSESSMENT_NOT_IMPLEMENTED and are never represented as assessed.",
+        "description": "Validates and normalizes an uploaded JPEG or static PNG, runs the YuNet-backed assessment pipeline, and returns structured suitability. Until quality thresholds are calibrated against a consented evaluation dataset, a nominal pass is downgraded to ASSESSMENT_UNAVAILABLE. Persistence is NOT_REQUESTED; this endpoint does not enroll or admit a person.",
         "operationId": "createPhotoAssessment",
         "requestBody": {
           "required": true,
@@ -114,7 +114,7 @@
         },
         "responses": {
           "200": {
-            "description": "Reserved for the future wired assessment flow. The current implementation does not return this response.",
+            "description": "Assessment pipeline completed. An uncalibrated nominal pass is returned as ASSESSMENT_UNAVAILABLE; a detector failure is also unavailable. This is not an identity decision or admission.",
             "content": {
               "application/json": {
                 "schema": {
@@ -175,20 +175,6 @@
           },
           "500": {
             "$ref": "#/components/responses/Internal"
-          },
-          "501": {
-            "description": "Image passed ingress validation, but assessment orchestration is not yet wired.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                },
-                "example": {
-                  "code": "ASSESSMENT_NOT_IMPLEMENTED",
-                  "message": "photo assessment is not available until the assessment pipeline is wired"
-                }
-              }
-            }
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
@@ -462,8 +448,7 @@
           "SERVICE_UNAVAILABLE",
           "IMAGE_MALFORMED",
           "IMAGE_DIMENSIONS_EXCEEDED",
-          "INTERNAL",
-          "ASSESSMENT_NOT_IMPLEMENTED"
+          "INTERNAL"
         ]
       },
       "ErrorBody": {

@@ -19,7 +19,6 @@ pub enum ErrorCode {
     ServiceUnavailable,
     ImageMalformed,
     ImageDimensionsExceeded,
-    AssessmentNotImplemented,
     Internal,
 }
 
@@ -34,7 +33,6 @@ impl ErrorCode {
         ErrorCode::ServiceUnavailable,
         ErrorCode::ImageMalformed,
         ErrorCode::ImageDimensionsExceeded,
-        ErrorCode::AssessmentNotImplemented,
         ErrorCode::Internal,
     ];
 }
@@ -76,8 +74,6 @@ pub enum ApiError {
     ImageDimensionsExceeded,
     #[error("image processing timed out")]
     ImageDecodeTimeout,
-    #[error("photo assessment is not available until the assessment pipeline is wired")]
-    AssessmentNotImplemented,
     /// Deliberately generic: internal causes are logged server-side, never returned.
     #[error("internal error")]
     Internal,
@@ -97,7 +93,6 @@ impl ApiError {
             }
             ApiError::ImageMalformed => ErrorCode::ImageMalformed,
             ApiError::ImageDimensionsExceeded => ErrorCode::ImageDimensionsExceeded,
-            ApiError::AssessmentNotImplemented => ErrorCode::AssessmentNotImplemented,
             ApiError::Internal => ErrorCode::Internal,
         }
     }
@@ -109,7 +104,6 @@ impl ApiError {
             }
             ApiError::ImageMalformed => StatusCode::BAD_REQUEST,
             ApiError::ImageDimensionsExceeded => StatusCode::UNPROCESSABLE_ENTITY,
-            ApiError::AssessmentNotImplemented => StatusCode::NOT_IMPLEMENTED,
             ApiError::NotFound => StatusCode::NOT_FOUND,
             ApiError::Validation(_) => StatusCode::BAD_REQUEST,
             ApiError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
