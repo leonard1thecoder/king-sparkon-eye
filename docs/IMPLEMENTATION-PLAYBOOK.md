@@ -432,6 +432,7 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 ### Issue #172 — landing-page pricing and original visuals (2026-11-05)
 
 **Branch:** `issue/172-landing-pricing-visuals`  
+**Draft PR:** [#173](https://github.com/leonard1thecoder/king-sparkon-eye/pull/173)  
 **Related:** #35 public information pages; #70 landing-page UX quality; #137/#138/#145/#154 candidate billing proposal.
 
 - Adds a Free / Gold / Premium comparison to the existing Axum-served landing page using the candidate USD base prices and included allowances from the billing roadmap.
