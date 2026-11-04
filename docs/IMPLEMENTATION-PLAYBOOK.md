@@ -150,7 +150,7 @@ This snapshot was taken from GitHub issue and PR state on 2026-10-29. It replace
 | Bug closed | #90 | `embedding_test` did not compile. Fixed in PR #91 so `cargo test --all-targets` runs again. |
 | Open decision blocker | #93 | Auth contract gap for #45: start route, handoff, cookie, callback allowlist, provider-link storage, discovery/JWKS failure behaviour. |
 | Blocked recognition path | #30 | Do not start until #58/#59 are verified (done), #55 supplies consented real-face fixtures, #61 evaluates thresholds, and event-scoped authorization is defined. |
-| Open prerequisites | #15, #38, #55, #60, #61, #64, #11, #12, #13, #14, #35, #48 | Consent record and policy (#15); model decision (#38); real-face fixtures (#55); Muse context (#60); threshold evaluation (#61); retrieval decision (#64, boundary doc merged in PR #65 but issue still open); privacy hardening (#11); evaluation (#12); CI and deployment (#13); integration docs (#14); public pages (#35); auth adversarial tests (#48). |
+| Open prerequisites | #15, #35, #38, #48, #55, #60, #61, #64, #11, #12, #13, #14, #172 | Consent record and policy (#15); public pages (#35); model decision (#38); auth adversarial tests (#48); real-face fixtures (#55); Muse context (#60); threshold evaluation (#61); retrieval decision (#64); privacy hardening (#11); evaluation (#12); CI and deployment (#13); integration docs (#14); landing pricing/visual follow-up (#172). |
 | Open P0 issues that overlap merged work | #2, #4, #5, #6, #7, #8, #9, #10 | Each overlaps a closed issue: #2 with #21, #4 with #23, #5/#6 with #25, #7/#8 with #24, #9 with #26, #10 with the existing test suite. Close or link as superseded according to repository policy. Do not re-implement. |
 | Epics (tracking only) | #1, #20, #41 | #41 remains open: auth routes (#45), #48 tests and #93 decision are still outstanding. |
 | Open, not in map | #3, #16, #17, #18, #19 | #3 contract partly covered by #22 and #28; #16 depends on #30; #17 threat model; #18 umbrella, split through #27/#28/#31; #19 cross-repo admission. |
@@ -169,7 +169,7 @@ This is a dated snapshot, not live issue state. Refresh GitHub issue/PR states a
 | Implemented in branch | #28, #31 | #28 in `issue/28-kafka-enrollment-events`. #31 private AWS S3 adapter in `issue/31-s3-private-storage`. |
 | Closed, with caveats | #24, #29 | #24: real-face fixtures (#55) and runtime wiring remain outstanding. #29: CI gates exist; run them against the integrated branch. |
 | Blocked recognition path | #30 | Do not start until #58/#59 establish and verify the embedding contract, #55 supplies licensed/consented real-face fixtures, #61 evaluates thresholds, and event-scoped authorization is defined. |
-| Open blockers outside the map | #15, #58, #59, #60, #61, #38, #41–#48, #55, #11, #13, #8, #35, #64, #71 | Consent record/policy; ONNX inventory and recognizer; Muse context; threshold evaluation; model decision; auth work; real-face fixtures; privacy hardening; deployment; threshold calibration; public pages; retrieval decision; playbook refresh. |
+| Open blockers outside the map | #15, #58, #59, #60, #61, #38, #41–#48, #55, #11, #13, #8, #35, #64, #71, #172 | Consent record/policy; ONNX inventory and recognizer; Muse context; threshold evaluation; model decision; auth work; real-face fixtures; privacy hardening; deployment; threshold calibration; public pages; retrieval decision; playbook refresh; landing pricing/visual follow-up. |
 | Decision pending | #64 | Open. PR #65 documents a boundary but does not provide the decision record required by #64. |
 | Documentation defect | #71 | Refreshes this playbook and the issue audit after PR #69. #67 is reopened to track the stale snapshot. |
 
@@ -418,7 +418,7 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 ### Issue #70 — evidence-led public landing page (2026-11-04)
 
 **Branch:** `issue/70-evidence-led-landing-page`  
-**Draft PR:** [#168](https://github.com/leonard1thecoder/king-sparkon-eye/pull/168)  
+**Merged PR:** [#168](https://github.com/leonard1thecoder/king-sparkon-eye/pull/168)  
 **Related public-pages scope:** #35
 
 - Adds a self-contained semantic landing page at `/` through the existing Axum router; no frontend framework or Cargo dependency is added.
@@ -427,4 +427,19 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - The workflow illustration is labelled as illustrative, not a live product status screen. The other #35 routes (`/api`, `/consent`, `/terms`, `/privacy`) remain planned and are not linked as live routes.
 - Added `docs/PUBLIC-LANDING-PAGE.md` to record audience, visual direction, section purpose and claim controls; README documents the root route.
 - Inspected the public Tracker README and AGENTS.md for frontend ownership. The private Spring Boot repository was not accessible; no endpoint, DTO, role or ticket-state details are claimed.
-- Verification remains incomplete: local Rust commands and rendered-browser review were not run in this session. GitHub CI run #152 is pending. The Vercel preview deployment for this commit reported a failed build, so no usable preview URL is available; diagnose the deployment project's build/runtime configuration or run the Axum service in a supported environment before rendered-browser QA. PR #168 remains draft; capture responsive/keyboard QA evidence before marking #70 complete.
+- PR #168 merged on 2026-11-04. Its associated GitHub CI run #153 completed with formatting/Clippy, dependency audit, and tests passing; the container image build failed. The PR body also recorded a failed Vercel preview build and no usable preview URL. The issue remains open until the container-build failure is understood and rendered responsive/keyboard QA is captured; do not describe the merged PR as draft or the issue as complete.
+
+### Issue #172 — landing-page pricing and original visuals (2026-11-05)
+
+**Branch:** `issue/172-landing-pricing-visuals`  
+**Draft PR:** [#173](https://github.com/leonard1thecoder/king-sparkon-eye/pull/173)  
+**Related:** #35 public information pages; #70 landing-page UX quality; #137/#138/#145/#154 candidate billing proposal.
+
+- Adds a Free / Gold / Premium comparison to the existing Axum-served landing page using the candidate USD base prices and included allowances from the billing roadmap.
+- All prices, allowances, overages and API throughput values are clearly marked unapproved and not available for purchase. The page states that runtime catalog loading, metering, quota enforcement, checkout and subscription management are not live.
+- Adds two inline SVG illustrations: an editorial venue entrance and an event-scoped candidate-flow diagram. They are conceptual assets, not camera feeds or product screenshots.
+- Higgsfield image generation was attempted but rejected by the connected service because the account requires a Basic plan or higher. No generated images or credits are claimed; the inline SVGs are the owned fallback.
+- Updates `README.md` and `docs/PUBLIC-LANDING-PAGE.md`; adds regression assertions in `src/api/mod.rs`.
+- `AGENTS.md` was reviewed and left unchanged because no reusable contributor rule changed. This playbook is updated here because the landing-page work and issue sequence changed.
+
+**Verification at branch preparation:** source-level checks confirmed the HTML document structure, mobile breakpoint, reduced-motion rule, both SVGs, all in-page anchors, pricing disclosures, and matching Rust regression assertions. Cargo formatting/tests and rendered-browser desktop/mobile/keyboard QA have not yet been run; report their exact status from the PR checks before considering the issue complete.
