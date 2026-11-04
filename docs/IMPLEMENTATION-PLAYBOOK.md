@@ -413,3 +413,18 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - Add a streamed HTTP regression test proving rejection occurs before the entire image part is buffered.
 - README, OpenAPI and this playbook must describe only verified behavior. The total-body cap and exact per-image cap must not be conflated.
 - Rust formatting, tests, Clippy and build remain scheduled for the final MVP verification pass, as directed by the repository owner.
+
+
+### Issue #70 — evidence-led public landing page (2026-11-04)
+
+**Branch:** `issue/70-evidence-led-landing-page`  
+**Draft PR:** [#168](https://github.com/leonard1thecoder/king-sparkon-eye/pull/168)  
+**Related public-pages scope:** #35
+
+- Adds a self-contained semantic landing page at `/` through the existing Axum router; no frontend framework or Cargo dependency is added.
+- The page explains the QR-free, event-scoped candidate flow and preserves the Next.js / Rust / Spring Boot ownership boundary. It explicitly states that a match is not proof of liveness or admission and that a worker must approve entry.
+- Current service behavior is separated from planned calibration, durable enrollment, Kafka delivery, event-scoped identification and end-to-end admission integration.
+- The workflow illustration is labelled as illustrative, not a live product status screen. The other #35 routes (`/api`, `/consent`, `/terms`, `/privacy`) remain planned and are not linked as live routes.
+- Added `docs/PUBLIC-LANDING-PAGE.md` to record audience, visual direction, section purpose and claim controls; README documents the root route.
+- Inspected the public Tracker README and AGENTS.md for frontend ownership. The private Spring Boot repository was not accessible; no endpoint, DTO, role or ticket-state details are claimed.
+- Verification remains incomplete: local Rust commands and rendered-browser review were not run in this session. PR #168 remains draft; run CI and capture responsive/keyboard QA evidence before marking #70 complete.
