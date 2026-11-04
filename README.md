@@ -335,7 +335,8 @@ Configuration (all optional):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `EYE_BIND_ADDR` | `0.0.0.0:8080` | Socket address to listen on |
+| `EYE_BIND_ADDR` | `0.0.0.0:8080` | Socket address to listen on. Takes precedence over `PORT`. |
+| `PORT` | unset | Port set by the hosting platform (for example Vercel). Used only when `EYE_BIND_ADDR` is unset; the server listens on `0.0.0.0:<PORT>`. |
 | `EYE_LOG_FILTER` | `info` | `tracing` filter directive |
 | `EYE_VISION_PROVIDER_ENABLED` | `false` | Enables the frontier vision provider (issue #25) |
 | `EYE_VISION_PROVIDER_API_KEY` | unset | Provider credential; required only when the provider is enabled. Never committed, never logged. |

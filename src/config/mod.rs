@@ -137,6 +137,8 @@ pub enum ConfigError {
 }
 
 pub const ENV_BIND_ADDR: &str = "EYE_BIND_ADDR";
+/// Port supplied by the hosting platform; used only when `EYE_BIND_ADDR` is unset.
+pub const ENV_PLATFORM_PORT: &str = "PORT";
 pub const ENV_LOG_FILTER: &str = "EYE_LOG_FILTER";
 pub const ENV_VISION_PROVIDER_ENABLED: &str = "EYE_VISION_PROVIDER_ENABLED";
 pub const ENV_VISION_PROVIDER_API_KEY: &str = "EYE_VISION_PROVIDER_API_KEY";
@@ -189,8 +191,21 @@ impl Config {
     where
         F: Fn(&str) -> Option<String>,
     {
-        let bind_raw =
-            non_empty(lookup(ENV_BIND_ADDR)).unwrap_or_else(|| DEFAULT_BIND_ADDR.to_owned());
+        // EYE_BIND_ADDR wins. Otherwise a platform-provided PORT (Vercel and similar
+        // hosts route to the port the process is given) selects 0.0.0.0:<PORT>.
+        let bind_raw = match non_empty(lookup(ENV_BIND_ADDR)) {
+            Some(addr) => addr,
+            None => match non_empty(lookup(ENV_PLATFORM_PORT)) {
+                Some(port) => {
+                    port.parse::<u16>().map_err(|_| ConfigError::Invalid {
+                        name: ENV_PLATFORM_PORT,
+                        reason: "expected a TCP port number from 1 to 65535".to_owned(),
+                    })?;
+                    format!("0.0.0.0:{port}")
+                }
+                None => DEFAULT_BIND_ADDR.to_owned(),
+            },
+        };
         let bind_addr: SocketAddr = bind_raw.parse().map_err(|_| ConfigError::Invalid {
             name: ENV_BIND_ADDR,
             reason: "expected a socket address such as 0.0.0.0:8080".to_owned(),

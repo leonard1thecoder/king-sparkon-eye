@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use king_sparkon_eye::config::{
-    Config, ConfigError, DEFAULT_BIND_ADDR, ENV_BIND_ADDR, ENV_VISION_PROVIDER_API_KEY,
-    ENV_VISION_PROVIDER_ENABLED, SecretString,
+    Config, ConfigError, DEFAULT_BIND_ADDR, ENV_BIND_ADDR, ENV_PLATFORM_PORT,
+    ENV_VISION_PROVIDER_API_KEY, ENV_VISION_PROVIDER_ENABLED, SecretString,
 };
 fn lookup(map: HashMap<&'static str, &'static str>) -> impl Fn(&str) -> Option<String> {
     move |name| map.get(name).map(|v| v.to_string())
@@ -22,6 +22,31 @@ fn blank_values_are_treated_as_unset() {
     let map = HashMap::from([(ENV_BIND_ADDR, "   ")]);
     let config = Config::from_lookup(lookup(map)).expect("blank means default");
     assert_eq!(config.bind_addr.to_string(), DEFAULT_BIND_ADDR);
+}
+
+#[test]
+fn platform_port_selects_listen_port_when_bind_addr_is_unset() {
+    let map = HashMap::from([(ENV_PLATFORM_PORT, "3000")]);
+    let config = Config::from_lookup(lookup(map)).expect("PORT is valid");
+    assert_eq!(config.bind_addr.to_string(), "0.0.0.0:3000");
+}
+
+#[test]
+fn explicit_bind_addr_takes_precedence_over_platform_port() {
+    let map = HashMap::from([
+        (ENV_BIND_ADDR, "127.0.0.1:9000"),
+        (ENV_PLATFORM_PORT, "3000"),
+    ]);
+    let config = Config::from_lookup(lookup(map)).expect("explicit bind is valid");
+    assert_eq!(config.bind_addr.to_string(), "127.0.0.1:9000");
+}
+
+#[test]
+fn invalid_platform_port_names_variable_only() {
+    let map = HashMap::from([(ENV_PLATFORM_PORT, "not-a-port")]);
+    let err = Config::from_lookup(lookup(map)).unwrap_err();
+    assert!(matches!(err, ConfigError::Invalid { name: "PORT", .. }));
+    assert!(!err.to_string().contains("not-a-port"));
 }
 
 #[test]
