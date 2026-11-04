@@ -483,6 +483,10 @@ mod landing_page_tests {
             "prefers-reduced-motion",
             "Skip to content",
             "openapi/eye.openapi.json",
+            "Commercial proposal · Not live",
+            "Proposed API throughput limits",
+            "1,000 / mo",
+            "The billing catalog is not loaded into runtime",
         ] {
             assert!(page.contains(expected), "landing page missing: {expected}");
         }
