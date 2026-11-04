@@ -398,7 +398,7 @@ Branch: `issue/23-http-upload-boundary`.
 - The endpoint does not call Muse Spark: the current response contract has no field for its guidance, so sending biometric images to the provider would produce unused output. Provider integration remains a separate contract-backed step.
 - The conservative calibration gate converts every nominal `ASSESSMENT_PASSED` into `ASSESSMENT_UNAVAILABLE` until thresholds are evaluated against a consented dataset. Retake and detector failure outcomes retain their typed statuses.
 - Response reports `persistence: NOT_REQUESTED`; this route does not store/enroll the image, publish an event, perform identity matching, or make admission decisions.
-- Docker runtime explicitly configures the vendored model path and ONNX Runtime library path.
+- Without an explicit override, the runtime resolves the vendored model path and ONNX Runtime library path relative to the source tree (`EYE_YUNET_MODEL_PATH` and `ORT_DYLIB_PATH` override them). The Docker image that used to set these was removed.
 - HTTP regression coverage now expects a real detector outcome for a valid upload; domain unit tests cover the calibration gate.
 - Verification status: Rust tests, formatting and Clippy have not run because this environment has no Rust toolchain. CI stays deferred until the MVP implementation batch is ready.
 
