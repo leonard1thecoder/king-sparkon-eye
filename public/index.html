@@ -57,6 +57,7 @@ h2{max-width:780px;margin-bottom:.9rem;font:500 clamp(2.5rem,4.8vw,4.3rem)/1.02 
 .step-panel+.step-panel{padding-left:1.2rem;border-left:1px solid var(--line)}
 .step-no{display:block;margin-bottom:2rem;color:var(--coral);font:10px var(--mono);letter-spacing:.1em}
 .step-panel h3{margin-bottom:.55rem;font-size:.98rem;letter-spacing:-.025em}
+.scope-illustration{margin:0 0 2.2rem;padding:1.1rem 1.2rem;border:1px solid var(--line);background:#fffefa8c}.scope-illustration svg{display:block;width:100%;height:auto}.scope-illustration figcaption{display:flex;justify-content:space-between;gap:1rem;margin-top:.55rem;color:var(--muted);font:9px var(--mono);letter-spacing:.08em;text-transform:uppercase}
 .step-panel p{max-width:230px;margin:0;color:var(--muted);font-size:.78rem;line-height:1.7}
 .boundary{background:var(--forest);color:var(--white)}
 .boundary .section-index{color:var(--acid)}
@@ -190,6 +191,35 @@ footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 <section class="section" id="workflow">
 <div class="shell">
 <div class="section-head"><p class="section-index">01 / The workflow</p><div><h2>One event. One scoped search. One human decision.</h2><p class="section-intro">The QR-free path starts with an authorized event context. The vision service finds a possible attendee; the ticket system and gate worker retain control of entry.</p></div></div>
+<figure class="scope-illustration" aria-labelledby="scope-caption">
+<svg viewBox="0 0 960 168" role="img" aria-labelledby="scope-title scope-desc" xmlns="http://www.w3.org/2000/svg">
+<title id="scope-title">Illustration of event-scoped candidate identification</title>
+<desc id="scope-desc">An authorized event context narrows a gallery to a candidate result. The diagram does not represent an admission decision.</desc>
+<rect x="1" y="1" width="958" height="166" fill="#f4f2eb" stroke="#d7d8ce"/>
+<rect x="22" y="26" width="215" height="116" fill="#18372d"/>
+<text x="42" y="53" fill="#d7f078" font-family="monospace" font-size="10" letter-spacing="1.2">EVENT CONTEXT</text>
+<text x="42" y="79" fill="#fffefa" font-family="Georgia,serif" font-size="21">Authorized scope</text>
+<text x="42" y="105" fill="#c1d0c7" font-family="monospace" font-size="9">ONE EVENT / ONE GALLERY</text>
+<path d="M250 84H306" stroke="#d96c50" stroke-width="2"/>
+<path d="M298 76L307 84L298 92" fill="none" stroke="#d96c50" stroke-width="2"/>
+<rect x="321" y="26" width="345" height="116" fill="#eae7dc" stroke="#c9c9bd"/>
+<text x="342" y="52" fill="#64716a" font-family="monospace" font-size="9" letter-spacing="1.1">ENROLLED EVENT GALLERY</text>
+<g fill="#aab4a6" stroke="#18372d" stroke-width="1.5">
+<circle cx="375" cy="86" r="13"/><path d="M352 125Q355 103 375 103Q395 103 398 125Z"/>
+<circle cx="451" cy="86" r="13"/><path d="M428 125Q431 103 451 103Q471 103 474 125Z"/>
+<circle cx="527" cy="86" r="13"/><path d="M504 125Q507 103 527 103Q547 103 550 125Z"/>
+<circle cx="603" cy="86" r="13"/><path d="M580 125Q583 103 603 103Q623 103 626 125Z"/>
+</g>
+<path d="M680 84H739" stroke="#d96c50" stroke-width="2"/>
+<path d="M731 76L740 84L731 92" fill="none" stroke="#d96c50" stroke-width="2"/>
+<rect x="755" y="26" width="183" height="116" fill="#f1d8cf" stroke="#d96c50"/>
+<text x="774" y="53" fill="#8c3f2d" font-family="monospace" font-size="9" letter-spacing="1">VISION OUTPUT</text>
+<text x="774" y="83" fill="#18372d" font-family="Georgia,serif" font-size="20">Candidate</text>
+<text x="774" y="105" fill="#64716a" font-family="monospace" font-size="9">REVIEW REQUIRED</text>
+<text x="774" y="123" fill="#64716a" font-family="monospace" font-size="8">NOT AN ADMISSION</text>
+</svg>
+<figcaption id="scope-caption"><span>Event-scoped processing, not global identification</span><span>Concept diagram · 02 / 02</span></figcaption>
+</figure>
 <div class="steps-grid">
 <article class="step-panel"><span class="step-no">01 — CONTEXT</span><h3>Set the event boundary</h3><p>An authorized worker selects the event or gate context before identification begins.</p></article>
 <article class="step-panel"><span class="step-no">02 — CAPTURE</span><h3>Capture at the gate</h3><p>The browser handles camera interaction and sends the capture with its scoped session reference.</p></article>
