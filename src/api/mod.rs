@@ -449,6 +449,7 @@ pub fn router(config: Config) -> Router {
         .route("/health/ready", get(ready))
         .route("/v1/enrollment/photo-assessments", post(upload_photo))
         .merge(OAuthRuntime::routes())
+        .merge(crate::auth::pages::routes())
         .fallback(not_found)
         .with_state(state)
         // Never log query strings: Google's callback query contains the provider code and state.

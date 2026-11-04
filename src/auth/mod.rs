@@ -28,6 +28,7 @@ pub mod guard;
 pub mod jwt;
 pub mod oauth_flow;
 pub mod oauth_runtime;
+pub mod pages;
 pub mod password;
 
 pub use apikey::*;
