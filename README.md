@@ -6,6 +6,12 @@ King Sparkon Eye is designed to let an authorized gate worker find an enrolled a
 
 > **Project status (2026-10-30):** This repository now contains a Rust codebase and mounted OAuth routes. PR #118 added a direct-SQLx Eye PostgreSQL persistence foundation for OAuth. The #113 branch adds a SQLx enrollment metadata/outbox repository and PostgreSQL migration with durable claim, retry, acknowledgement, dead-letter and replay operations; it is not yet merged or wired to the enrollment flow or a Kafka worker. The older PostgREST draft remains unexported. These integrations are **not production-ready**; verify CI and the open acceptance criteria before deployment.
 
+## Public information site
+
+The Axum service serves a public product landing page at `/`. It explains the intended QR-free, event-scoped identification workflow, the boundary between Rust vision results and Spring Boot admission authority, and the current implementation status. The workflow graphic is explanatory, not a live dashboard.
+
+The additional public information routes — `/api`, `/consent`, `/terms`, and `/privacy` — remain tracked separately in [issue #35](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35) and are not represented as live routes yet. The landing page links to the canonical repository and OpenAPI source instead of dead local routes. See [the landing-page design and claim brief](docs/PUBLIC-LANDING-PAGE.md).
+
 ## Agent source-of-truth repositories — required before planning
 
 **Coding agents must inspect both tracker repositories before planning or designing a King Sparkon Eye change.** Do not infer current contracts, ticket rules, data models, UI patterns, or authentication behavior from memory or from this README alone.
