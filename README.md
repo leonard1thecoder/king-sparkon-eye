@@ -8,9 +8,11 @@ King Sparkon Eye is designed to let an authorized gate worker find an enrolled a
 
 ## Public information site
 
-The Axum service serves a public product landing page at `/`. It explains the intended QR-free, event-scoped identification workflow, the boundary between Rust vision results and Spring Boot admission authority, and the current implementation status. The workflow graphic is explanatory, not a live dashboard.
+The Axum service serves a public product landing page at `/`. It explains the intended QR-free, event-scoped identification workflow, the boundary between Rust vision results and Spring Boot admission authority, and the current implementation status. The workflow diagram and embedded SVG venue illustration are explanatory artwork, not a live dashboard, camera feed, or product screenshot.
 
-The additional public information routes — `/api`, `/consent`, `/terms`, and `/privacy` — remain tracked separately in [issue #35](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35) and are not represented as live routes yet. The landing page links to the canonical repository and OpenAPI source instead of dead local routes. See [the landing-page design and claim brief](docs/PUBLIC-LANDING-PAGE.md).
+The landing page also presents the Free, Gold and Premium pricing/allowance proposal from the billing roadmap. Every amount and limit is explicitly labelled as unapproved and not live: the billing catalog is not loaded by the runtime, and checkout, durable usage metering, quota enforcement and subscription management are not available. Candidate prices are USD; do not treat them as a production offer. See [the landing-page design and claim brief](docs/PUBLIC-LANDING-PAGE.md) and [the billing plan domain](docs/BILLING_PLAN_DOMAIN.md).
+
+The additional public information routes — `/api`, `/consent`, `/terms`, and `/privacy` — remain tracked separately in [issue #35](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35) and are not represented as live routes yet. The landing page links to the canonical repository and OpenAPI source instead of dead local routes.
 
 ## Agent source-of-truth repositories — required before planning
 
