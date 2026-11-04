@@ -443,3 +443,14 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - `AGENTS.md` was reviewed and left unchanged because no reusable contributor rule changed. This playbook is updated here because the landing-page work and issue sequence changed.
 
 **Verification at branch preparation:** source-level checks confirmed the HTML document structure, mobile breakpoint, reduced-motion rule, both SVGs, all in-page anchors, pricing disclosures, and matching Rust regression assertions. Cargo formatting/tests and rendered-browser desktop/mobile/keyboard QA have not yet been run; report their exact status from the PR checks before considering the issue complete.
+
+
+### Issue #174 — rounded landing-page CTA buttons (2026-11-05)
+
+**Branch:** `issue/174-rounded-cta-buttons`  
+**Issue:** [#174](https://github.com/leonard1thecoder/king-sparkon-eye/issues/174)
+
+- Applies a fully rounded pill shape to the filled hero/closing CTAs and the outlined navigation API CTA.
+- Keeps secondary text links as text links and preserves the visible coral keyboard-focus outline, hover lift, responsive sizing and reduced-motion behavior.
+- Updates `docs/PUBLIC-LANDING-PAGE.md` with the CTA visual rule. `README.md` and `AGENTS.md` were reviewed and left unchanged: no project-level behavior or reusable agent instruction changed.
+- Source-level selector checks are the only validation recorded at this point; rendered desktop/mobile and keyboard QA plus CI remain to be checked before merge.

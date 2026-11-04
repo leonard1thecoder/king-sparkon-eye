@@ -1,6 +1,6 @@
 # Public landing page — design and claim brief
 
-**Issue:** [#172 — Add candidate pricing and original visuals to the public landing page](https://github.com/leonard1thecoder/king-sparkon-eye/issues/172)  
+**Issue:** [#172 — Add candidate pricing and original visuals to the public landing page](https://github.com/leonard1thecoder/king-sparkon-eye/issues/172)  \n**CTA polish:** [#174 — Use rounded pill styling for landing-page CTA buttons](https://github.com/leonard1thecoder/king-sparkon-eye/issues/174)  
 **Related design guidance:** [#70 — Prevent generic AI-generated landing page and verify UX quality](https://github.com/leonard1thecoder/king-sparkon-eye/issues/70)  
 **Related public-pages scope:** [#35 — Public landing, API, consent, terms and privacy pages](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35)
 
@@ -70,6 +70,6 @@ The page must state that the billing catalog is not loaded by the runtime and th
 - No frontend framework, external font, image CDN, JavaScript dependency, or new Cargo dependency.
 - Keep illustrations inline and self-contained; do not add remote image requests or unlicensed personal/biometric imagery.
 - All navigation targets are real in-page anchors or verified public GitHub resources.
-- Respect reduced motion, keyboard focus, mobile breakpoints, semantic landmarks, and descriptive metadata.
+- Use fully rounded pill styling for filled primary CTA buttons and the outlined navigation CTA; keep text links visually distinct. Preserve a visible keyboard-focus outline.\n- Respect reduced motion, keyboard focus, mobile breakpoints, semantic landmarks, and descriptive metadata.
 - Preserve existing API routes and request middleware.
 - Verify the root page's HTML content and responsive/accessibility rules with tests or reproducible browser evidence before declaring the work complete.
