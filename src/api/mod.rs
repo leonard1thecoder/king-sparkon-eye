@@ -9,7 +9,7 @@ use axum::http::{
     HeaderMap, HeaderName, Request, StatusCode,
     header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
 };
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
@@ -444,6 +444,7 @@ pub fn router(config: Config) -> Router {
         assessment,
     };
     Router::new()
+        .route("/", get(landing))
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/v1/enrollment/photo-assessments", post(upload_photo))
@@ -462,4 +463,30 @@ pub fn router(config: Config) -> Router {
         )
         .layer(PropagateRequestIdLayer::new(REQUEST_ID_HEADER))
         .layer(SetRequestIdLayer::new(REQUEST_ID_HEADER, MakeRequestUuid))
+}
+
+async fn landing() -> Html<&'static str> {
+    Html(include_str!("../../public/index.html"))
+}
+
+#[cfg(test)]
+mod landing_page_tests {
+    #[test]
+    fn landing_page_is_product_specific_and_uses_verified_claim_boundaries() {
+        let page = include_str!("../../public/index.html");
+        for expected in [
+            "<title>King Sparkon Eye",
+            "Identify clearly.",
+            "A face match is a candidate signal",
+            "event-scoped",
+            "Spring Boot",
+            "prefers-reduced-motion",
+            "Skip to content",
+            "openapi/eye.openapi.json",
+        ] {
+            assert!(page.contains(expected), "landing page missing: {expected}");
+        }
+        assert!(!page.contains("99.9%"));
+        assert!(!page.contains("trusted by"));
+    }
 }
