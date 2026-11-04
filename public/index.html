@@ -12,7 +12,7 @@
 html{scroll-behavior:smooth;scroll-padding-top:6rem}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
 a{color:inherit}
-a:focus-visible{outline:3px solid var(--coral);outline-offset:4px;border-radius:3px}
+a:focus-visible{outline:3px solid var(--coral);outline-offset:4px;border-radius:3px}\n.button:focus-visible,.nav-links .nav-cta:focus-visible{border-radius:999px}
 .shell{width:min(var(--content),calc(100% - 3rem));margin-inline:auto}
 .skip{position:absolute;top:.7rem;left:.7rem;z-index:20;padding:.8rem;background:var(--acid);transform:translateY(-180%)}
 .skip:focus{transform:translateY(0)}
@@ -26,7 +26,7 @@ a:focus-visible{outline:3px solid var(--coral);outline-offset:4px;border-radius:
 .nav-links{display:flex;align-items:center;gap:clamp(1rem,2.5vw,2.2rem)}
 .nav-links a{font-size:.8rem;font-weight:650;color:#48564f;text-decoration:none}
 .nav-links a:hover{color:var(--coral)}
-.nav-links .nav-cta{padding:.72rem .95rem;border:1px solid var(--ink);color:var(--ink)}
+.nav-links .nav-cta{padding:.72rem .95rem;border:1px solid var(--ink);border-radius:999px;color:var(--ink)}
 .hero{position:relative;overflow:hidden;padding:clamp(4rem,8vw,7.2rem) 0 5.4rem}
 .hero-grid{display:grid;grid-template-columns:minmax(0,.92fr) minmax(420px,1.08fr);gap:clamp(2rem,5vw,5.5rem);align-items:center}
 .eyebrow{display:inline-flex;align-items:center;gap:.65rem;margin:0 0 1.45rem;color:var(--forest-2);font:10px var(--mono);letter-spacing:.15em;text-transform:uppercase}
@@ -36,7 +36,7 @@ h1{max-width:650px;margin-bottom:1.45rem;font:500 clamp(3.5rem,6.7vw,6.35rem)/.9
 h1 em{color:var(--coral);font-weight:500}
 .hero-copy{max-width:500px;margin-bottom:1.9rem;color:#526058;font-size:clamp(1rem,1.3vw,1.1rem);line-height:1.8}
 .hero-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.8rem 1.25rem}
-.button{display:inline-flex;align-items:center;justify-content:center;gap:.7rem;min-height:50px;padding:0 1.2rem;border:1px solid var(--forest);background:var(--forest);color:var(--white);text-decoration:none;font-size:.82rem;font-weight:720;transition:background .2s,transform .2s}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:.7rem;min-height:50px;padding:0 1.35rem;border:1px solid var(--forest);border-radius:999px;background:var(--forest);color:var(--white);text-decoration:none;font-size:.82rem;font-weight:720;transition:background .2s,transform .2s}
 .button:hover{background:var(--forest-2);transform:translateY(-2px)}
 .text-link{font-size:.82rem;font-weight:700;text-underline-offset:4px}
 .hero-note{display:flex;align-items:flex-start;gap:.7rem;max-width:480px;margin-top:2rem;padding-top:1.15rem;border-top:1px solid var(--line);color:var(--muted);font-size:.75rem;line-height:1.65}
