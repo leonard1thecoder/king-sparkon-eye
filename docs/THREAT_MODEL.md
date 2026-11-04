@@ -123,7 +123,7 @@ Trust boundaries:
 - **Description:** Secrets or keys are committed, the service runs as root, or required models are missing and the service still reports success.
 - **Current state:** Partial. Config validation fails fast on missing required values (`src/config/mod.rs`). CI runs format, lint, tests and a dependency audit (`.github/workflows/ci.yml`). The audit could not be run locally (see PR #96). No container, no deploy health checks, no model-artifact verification at deploy (#13).
 - **Verification:** `tests/config_test.rs`. The audit gate is unverified.
-- **Open items:** Container and non-root image, deploy-time model verification, secret injection (#13).
+- **Open items:** Deployment packaging (the Docker image was removed, so the non-root runtime and model-path config need a new home), deploy-time model verification, secret injection (#13).
 - **Rating:** Medium.
 
 ---

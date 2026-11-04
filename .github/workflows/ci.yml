@@ -37,22 +37,6 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: eye_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d eye_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      EYE_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/eye_test
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.0
@@ -63,17 +47,6 @@ jobs:
         run: cargo test --all-features --locked
       - name: Run Stripe catalog provisioner tests
         run: python3 tests/test_stripe_catalog_provisioning.py
-
-  container-build:
-    name: Container image builds (no push)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build --tag king-sparkon-eye:ci .
-      - name: Run as non-root user
-        run: test "$(docker run --rm --entrypoint id king-sparkon-eye:ci -u)" = "10001"
 
   dependency-audit:
     name: Dependency audit
