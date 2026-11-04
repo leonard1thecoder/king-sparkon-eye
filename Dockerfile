@@ -8,6 +8,8 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY migrations ./migrations
+# Embedded at compile time by src/api/mod.rs (include_str!("../../public/index.html")).
+COPY public ./public
 RUN cargo build --release --locked --bin king_sparkon_eye
 
 # ---- runtime ----
