@@ -19,7 +19,9 @@ a:focus-visible{outline:3px solid var(--coral);outline-offset:4px;border-radius:
 .topbar{position:sticky;top:0;z-index:10;border-bottom:1px solid var(--line);background:#f4f2ebed;backdrop-filter:blur(14px)}
 .nav{min-height:78px;display:flex;align-items:center;justify-content:space-between;gap:2rem}
 .brand{display:flex;align-items:center;gap:.75rem;text-decoration:none}
-.brand-mark{width:38px;height:38px;display:grid;place-items:center;background:var(--forest);color:var(--acid);border-radius:50% 50% 50% 12px;font:700 1.35rem var(--serif)}
+.brand-mark{width:46px;height:32px;display:block;flex:0 0 auto;overflow:visible}
+.brand-mark path:first-child{filter:drop-shadow(0 0 3px #d99b0860)}
+.brand-mark circle{filter:drop-shadow(0 0 2px #f3b91b50)}
 .brand-copy{display:grid;gap:.12rem}
 .brand-name{font-size:.91rem;font-weight:760;letter-spacing:-.035em}
 .brand-kicker{color:var(--muted);font:9px var(--mono);letter-spacing:.15em;text-transform:uppercase}
@@ -42,10 +44,10 @@ h1 em{color:var(--coral);font-weight:500}
 .hero-note{display:flex;align-items:flex-start;gap:.7rem;max-width:480px;margin-top:2rem;padding-top:1.15rem;border-top:1px solid var(--line);color:var(--muted);font-size:.75rem;line-height:1.65}
 .note-mark{flex:0 0 19px;height:19px;display:grid;place-items:center;border-radius:50%;background:#f1d8cf;color:#8c3f2d;font:700 11px var(--mono)}
 .hero-art{position:relative;min-width:0}
-.hero-art-frame{position:relative;overflow:hidden;border:1px solid #17221e30;background:#e5e1d5;box-shadow:18px 20px 0 #17221e0d}
-.hero-art-frame svg{display:block;width:100%;height:auto}
-.art-caption{display:flex;justify-content:space-between;gap:1rem;padding:.8rem 1rem;background:var(--white);border-top:1px solid var(--line);font:9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-.art-caption strong{color:var(--forest)}
+.hero-art-frame{position:relative;display:grid;place-items:center;overflow:hidden;min-height:390px;padding:clamp(.8rem,2.5vw,1.8rem);border:1px solid #d9a91570;border-radius:1.15rem;background:radial-gradient(ellipse at 50% 43%,#282318 0%,#10100e 57%,#050505 100%);box-shadow:0 24px 65px #17221e20,0 0 0 7px #d9a9150d}
+.hero-art-frame .hero-logo{display:block;width:100%;max-width:650px;height:auto;max-height:470px}
+.art-caption{position:absolute;right:0;bottom:0;left:0;display:flex;justify-content:space-between;gap:1rem;padding:.75rem 1rem;background:#080909d9;border-top:1px solid #d9a91555;font:9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#d5c9a7}
+.art-caption strong{color:#f5c52c}
 .art-stamp{position:absolute;right:-1.1rem;top:1.4rem;z-index:2;padding:.75rem .9rem;background:var(--acid);color:var(--forest);font:9px var(--mono);letter-spacing:.1em;text-transform:uppercase;transform:rotate(3deg)}
 .section{padding:clamp(4.5rem,8vw,7.2rem) 0;border-top:1px solid var(--line)}
 .section-head{display:grid;grid-template-columns:.62fr 1.38fr;gap:2rem;align-items:start;margin-bottom:3rem}
@@ -114,12 +116,12 @@ h2{max-width:780px;margin-bottom:.9rem;font:500 clamp(2.5rem,4.8vw,4.3rem)/1.02 
 .closing p{max-width:560px;margin:0;color:var(--muted);font-size:.87rem;line-height:1.75}
 footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 .footer-row{display:flex;align-items:center;justify-content:space-between;gap:1rem}
-.footer-row p{margin:0;color:var(--muted);font-size:.7rem}
+.footer-row p{margin:0;color:var(--muted);font-size:.7rem}.footer-brand{display:flex;align-items:center;gap:.65rem}.footer-brand .brand-mark{width:36px;height:24px}
 .footer-links{display:flex;flex-wrap:wrap;gap:1.2rem}
 .footer-links a{color:#536159;font-size:.72rem;text-decoration:none}
 .footer-links a:hover{text-decoration:underline;text-underline-offset:3px}
 @media(max-width:900px){.hero-grid{grid-template-columns:1fr;gap:3rem}.hero-copy{max-width:650px}.hero-art{max-width:720px}.steps-grid{grid-template-columns:repeat(2,1fr)}.step-panel:nth-child(3){padding-left:0;border-left:0;border-top:1px solid var(--line)}.step-panel:nth-child(4){border-top:1px solid var(--line)}.boundary-grid{grid-template-columns:1fr}.boundary-item,.boundary-item+.boundary-item{padding:1.4rem 0;border-left:0;border-bottom:1px solid #ffffff33}.boundary-item span{margin-bottom:.8rem}.boundary-item:last-child{border:0}.plan-grid{grid-template-columns:1fr 1fr}.plan-card:last-child{grid-column:1/-1}.pricing-head{align-items:start;flex-direction:column}.pricing-notice{max-width:unset}}
-@media(max-width:620px){.shell{width:calc(100% - 2rem)}.nav{min-height:70px;flex-wrap:wrap;padding:.7rem 0;gap:.7rem}.nav-links{width:100%;justify-content:space-between;gap:.55rem;padding-bottom:.25rem}.nav-links a{font-size:.68rem}.nav-links .nav-cta{padding:.55rem .65rem}.hero{padding:3.4rem 0 4rem}h1{font-size:clamp(3.15rem,15vw,4.6rem)}.hero-art-frame{box-shadow:8px 10px 0 #17221e0d}.art-stamp{right:-.35rem;top:.8rem;font-size:8px}.section-head{grid-template-columns:1fr;gap:.7rem;margin-bottom:2rem}.section-index{padding:0}.steps-grid{grid-template-columns:1fr 1fr}.step-panel{min-height:190px;padding:1.1rem .7rem 1.1rem 0}.step-panel+.step-panel{padding-left:.7rem}.step-panel:nth-child(3){padding-left:0}.step-panel .step-no{margin-bottom:1.35rem}.status-grid{grid-template-columns:1fr}.plan-grid{grid-template-columns:1fr}.plan-card:last-child{grid-column:auto}.plan-description{min-height:0}.plan-price strong{font-size:3rem}.rate-limits{overflow-x:auto;padding:1rem}.rate-table{min-width:480px}.closing{grid-template-columns:1fr;align-items:start}.footer-row{align-items:flex-start;flex-direction:column}}
+@media(max-width:620px){.shell{width:calc(100% - 2rem)}.nav{min-height:70px;flex-wrap:wrap;padding:.7rem 0;gap:.7rem}.nav-links{width:100%;justify-content:space-between;gap:.55rem;padding-bottom:.25rem}.nav-links a{font-size:.68rem}.nav-links .nav-cta{padding:.55rem .65rem}.hero{padding:3.4rem 0 4rem}h1{font-size:clamp(3.15rem,15vw,4.6rem)}.hero-art-frame{min-height:0;padding:.55rem;border-radius:.85rem;box-shadow:0 12px 32px #17221e18}.art-stamp{right:-.35rem;top:.8rem;font-size:8px}.section-head{grid-template-columns:1fr;gap:.7rem;margin-bottom:2rem}.section-index{padding:0}.steps-grid{grid-template-columns:1fr 1fr}.step-panel{min-height:190px;padding:1.1rem .7rem 1.1rem 0}.step-panel+.step-panel{padding-left:.7rem}.step-panel:nth-child(3){padding-left:0}.step-panel .step-no{margin-bottom:1.35rem}.status-grid{grid-template-columns:1fr}.plan-grid{grid-template-columns:1fr}.plan-card:last-child{grid-column:auto}.plan-description{min-height:0}.plan-price strong{font-size:3rem}.rate-limits{overflow-x:auto;padding:1rem}.rate-table{min-width:480px}.closing{grid-template-columns:1fr;align-items:start}.footer-row{align-items:flex-start;flex-direction:column}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 </style>
 </head>
@@ -127,7 +129,14 @@ footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 <a class="skip" href="#main">Skip to content</a>
 <header class="topbar">
 <nav class="nav shell" aria-label="Main navigation">
-<a class="brand" href="/" aria-label="King Sparkon Eye home"><span class="brand-mark" aria-hidden="true">E</span><span class="brand-copy"><span class="brand-name">King Sparkon Eye</span><span class="brand-kicker">Vision service</span></span></a>
+<a class="brand" href="/" aria-label="King Sparkon Eye home">
+<svg class="brand-mark" viewBox="0 0 120 72" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+<path d="M5 36Q60 -4 115 36Q60 76 5 36Z" fill="#d99b08"/>
+<path d="M18 36Q60 8 102 36Q60 64 18 36Z" fill="#17221e"/>
+<circle cx="60" cy="36" r="20" fill="#303640" stroke="#f3b91b" stroke-width="3"/>
+<path d="M64 16L49 39H60L54 57L75 31H63L70 16Z" fill="#ffd23f"/>
+</svg>
+<span class="brand-copy"><span class="brand-name">King Sparkon Eye</span><span class="brand-kicker">Vision service</span></span></a>
 <div class="nav-links"><a href="#workflow">The flow</a><a href="#boundaries">Architecture</a><a href="#pricing">Pricing</a><a href="#status">Build status</a><a class="nav-cta" href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/openapi/eye.openapi.json" target="_blank" rel="noreferrer">API contract ↗</a></div>
 </nav>
 </header>
@@ -142,47 +151,54 @@ footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 <div class="hero-note"><span class="note-mark" aria-hidden="true">!</span><span>A face match is a candidate signal — not proof of liveness, ticket eligibility, or admission. An authorized worker must review and explicitly approve entry.</span></div>
 </div>
 <div class="hero-art">
-<span class="art-stamp">Event-scoped by design</span>
+<span class="art-stamp">King Sparkon Eye</span>
 <div class="hero-art-frame">
-<svg viewBox="0 0 720 520" role="img" aria-labelledby="hero-art-title hero-art-desc" xmlns="http://www.w3.org/2000/svg">
-<title id="hero-art-title">Illustrative event entrance scene</title>
-<desc id="hero-art-desc">A contemporary venue entrance with a staff member holding a tablet. The artwork is conceptual, not a product screenshot.</desc>
-<defs><pattern id="grain" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r=".7" fill="#18372d" opacity=".12"/><circle cx="12" cy="11" r=".55" fill="#18372d" opacity=".1"/></pattern></defs>
-<rect width="720" height="520" fill="#e7e2d5"/>
-<rect x="0" y="0" width="720" height="520" fill="url(#grain)"/>
-<circle cx="576" cy="110" r="66" fill="#d7f078" opacity=".72"/>
-<path d="M0 378H720V520H0Z" fill="#c7c4b7"/>
-<path d="M54 378V126Q54 76 104 76H484Q534 76 534 126V378Z" fill="#f8f6ed" stroke="#18372d" stroke-width="3"/>
-<path d="M90 378V154Q90 112 132 112H456Q498 112 498 154V378Z" fill="#d9ded2"/>
-<path d="M124 378V182Q124 146 160 146H428Q464 146 464 182V378Z" fill="#18372d"/>
-<path d="M160 378V203Q160 180 183 180H405Q428 180 428 203V378Z" fill="#315346"/>
-<path d="M294 180V378" stroke="#d7f078" stroke-width="2" opacity=".55"/>
-<path d="M160 278H428" stroke="#d7f078" stroke-width="1.5" opacity=".3"/>
-<path d="M28 378H566" stroke="#18372d" stroke-width="3"/>
-<path d="M570 378V230H672V378" fill="#f2eee3" stroke="#18372d" stroke-width="2"/>
-<path d="M584 378V249H658V378" fill="#d7d4c8"/>
-<path d="M600 378V269H644V378" fill="#18372d"/>
-<path d="M50 378L80 430H500L534 378" fill="#a5a99a" opacity=".5"/>
-<path d="M0 430H720" stroke="#18372d" stroke-width="2" opacity=".3"/>
-<path d="M0 460H720" stroke="#18372d" stroke-width="1" opacity=".15"/>
-<!-- Staff silhouette: deliberately no facial detail -->
-<path d="M484 380C488 340 500 306 526 296C551 286 578 302 586 328L602 380Z" fill="#d96c50"/>
-<path d="M510 304C508 278 516 258 538 250C562 242 581 257 583 281L578 300L560 310L530 309Z" fill="#bb8066"/>
-<path d="M508 288C505 263 517 240 541 237C565 234 582 253 581 277C565 266 546 263 529 270L516 290Z" fill="#18372d"/>
-<path d="M508 380L497 454H532L546 382" fill="#18372d"/>
-<path d="M563 380L575 454H610L589 380" fill="#18372d"/>
-<path d="M526 304L496 344L477 365" fill="none" stroke="#bb8066" stroke-width="17" stroke-linecap="round"/>
-<path d="M579 311L606 340L620 359" fill="none" stroke="#bb8066" stroke-width="16" stroke-linecap="round"/>
-<rect x="594" y="341" width="45" height="61" rx="5" fill="#17221e" transform="rotate(-8 594 341)"/>
-<rect x="599" y="347" width="35" height="48" rx="2" fill="#d7f078" transform="rotate(-8 599 347)"/>
-<path d="M607 362H626M606 370H623M605 378H618" stroke="#18372d" stroke-width="2" transform="rotate(-8 605 362)"/>
-<path d="M60 95H210" stroke="#d96c50" stroke-width="3"/>
-<text x="60" y="63" fill="#18372d" font-family="monospace" font-size="12" letter-spacing="2">A MORE CONSIDERED ARRIVAL</text>
-<text x="60" y="115" fill="#64716a" font-family="monospace" font-size="9" letter-spacing="1.5">ILLUSTRATIVE VENUE SCENE / NOT A LIVE UI</text>
-<rect x="60" y="445" width="174" height="40" fill="#18372d"/>
-<text x="78" y="470" fill="#d7f078" font-family="monospace" font-size="10" letter-spacing="1.3">HUMAN APPROVAL</text>
+<svg class="hero-logo" viewBox="0 0 900 680" role="img" aria-labelledby="hero-logo-title hero-logo-desc" xmlns="http://www.w3.org/2000/svg">
+<title id="hero-logo-title">King Sparkon Eye logo</title>
+<desc id="hero-logo-desc">A gold crown above a gold eye with a dark camera aperture and lightning bolt, followed by the King Sparkon Eye wordmark. The eye closes and opens in a slow, looping blink.</desc>
+<defs>
+<linearGradient id="logo-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff06a"/><stop offset=".42" stop-color="#ffc21a"/><stop offset="1" stop-color="#d98500"/></linearGradient>
+<linearGradient id="logo-silver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#bfc5ce"/></linearGradient>
+<radialGradient id="logo-iris"><stop offset="0" stop-color="#3b414c"/><stop offset="1" stop-color="#151a22"/></radialGradient>
+<filter id="logo-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<style>
+.eye-animation{transform-box:view-box;transform-origin:450px 292px;animation:eye-blink 4.8s cubic-bezier(.4,0,.2,1) infinite}
+.bolt{animation:bolt-flash 4.8s ease-in-out infinite}
+@keyframes eye-blink{0%,36%,54%,100%{transform:scaleY(1)}43%,48%{transform:scaleY(.025)}}
+@keyframes bolt-flash{0%,39%,53%,100%{opacity:1}44%,49%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.eye-animation,.bolt{animation:none!important}}
+</style>
+<g class="crown" filter="url(#logo-glow)">
+<path d="M286 177L240 70L344 132L450 18L556 132L660 70L614 177Z" fill="url(#logo-gold)" stroke="#f9c52c" stroke-width="5" stroke-linejoin="round"/>
+<path d="M285 176H615L590 205H310Z" fill="#e89b05"/>
+<path d="M450 18V177" stroke="#fff078" stroke-width="3" opacity=".65"/>
+</g>
+<g class="eye-animation">
+<path d="M78 292Q450 8 822 292Q450 576 78 292Z" fill="url(#logo-gold)" stroke="#ffd43b" stroke-width="5"/>
+<path d="M158 292Q450 76 742 292Q450 508 158 292Z" fill="#090b10" stroke="#f5b816" stroke-width="5"/>
+<circle cx="450" cy="292" r="150" fill="#080a0e" stroke="url(#logo-gold)" stroke-width="13"/>
+<circle cx="450" cy="292" r="132" fill="url(#logo-iris)" stroke="#3b414c" stroke-width="2"/>
+<g fill="#242a34" stroke="#090b10" stroke-width="4">
+<path d="M450 160Q510 162 548 202L465 280L430 267Z"/>
+<path d="M548 202Q590 246 582 305L475 298L465 280Z"/>
+<path d="M582 305Q565 365 513 397L462 311L475 298Z"/>
+<path d="M513 397Q458 430 402 408L442 310L462 311Z"/>
+<path d="M402 408Q345 380 323 326L431 291L442 310Z"/>
+<path d="M323 326Q305 267 342 217L438 283L431 291Z"/>
+<path d="M342 217Q385 166 450 160L430 267L438 283Z"/>
+</g>
+<circle cx="450" cy="292" r="18" fill="#0c1016" stroke="#f8bd1e" stroke-width="3"/>
+<path class="bolt" d="M466 190L382 307H442L411 395L525 268H460L489 190Z" fill="url(#logo-gold)" stroke="#ffe35a" stroke-width="5" stroke-linejoin="round" filter="url(#logo-glow)"/>
+</g>
+<g class="wordmark" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-weight="900">
+<text x="88" y="565" font-size="82" letter-spacing="-3" fill="url(#logo-silver)">KING</text>
+<text x="330" y="565" font-size="82" letter-spacing="-2" fill="url(#logo-gold)">SPARKON</text>
+<path d="M170 625H350M550 625H730" stroke="url(#logo-gold)" stroke-width="5" stroke-linecap="round"/>
+<text x="450" y="648" text-anchor="middle" font-size="48" letter-spacing="25" fill="url(#logo-silver)">EYE</text>
+</g>
 </svg>
-<div class="art-caption"><strong>Considered entry, from the first signal</strong><span>Concept artwork · 01 / 02</span></div>
+<div class="art-caption"><strong>King Sparkon Eye · Official brand mark</strong><span>Eye animation · 0.5×</span></div>
 </div>
 </div>
 </div>
@@ -303,6 +319,6 @@ footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 <a class="button" href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/openapi/eye.openapi.json" target="_blank" rel="noreferrer">Read the API contract ↗</a>
 </section>
 </main>
-<footer><div class="shell footer-row"><p>© King Sparkon Eye · Vision infrastructure for considered entry.</p><div class="footer-links"><a href="https://github.com/leonard1thecoder/king-sparkon-eye" target="_blank" rel="noreferrer">Source code ↗</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/README.md" target="_blank" rel="noreferrer">Project status ↗</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/openapi/eye.openapi.json" target="_blank" rel="noreferrer">API contract ↗</a></div></div></footer>
+<footer><div class="shell footer-row"><p class="footer-brand"><svg class="brand-mark" viewBox="0 0 120 72" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M5 36Q60 -4 115 36Q60 76 5 36Z" fill="#d99b08"/><path d="M18 36Q60 8 102 36Q60 64 18 36Z" fill="#17221e"/><circle cx="60" cy="36" r="20" fill="#303640" stroke="#f3b91b" stroke-width="3"/><path d="M64 16L49 39H60L54 57L75 31H63L70 16Z" fill="#ffd23f"/></svg><span>© King Sparkon Eye · Vision infrastructure for considered entry.</span></p><div class="footer-links"><a href="https://github.com/leonard1thecoder/king-sparkon-eye" target="_blank" rel="noreferrer">Source code ↗</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/README.md" target="_blank" rel="noreferrer">Project status ↗</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/openapi/eye.openapi.json" target="_blank" rel="noreferrer">API contract ↗</a></div></div></footer>
 </body>
 </html>
