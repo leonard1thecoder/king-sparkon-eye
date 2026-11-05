@@ -381,10 +381,12 @@ mod tests {
             render("t", "h", RESET_BODY, RESET_SCRIPT).0,
             render("t", "h", CALLBACK_BODY, CALLBACK_SCRIPT).0,
         ] {
-            assert!(html.contains("class=\\"auth-brand\\""));
+            assert!(html.contains("class=\"auth-brand\""));
             assert!(html.contains("King Sparkon Eye"));
             assert!(html.contains("auth-brand-mark"));
-            assert!(html.contains("aria-label=\\"King Sparkon Eye home\\""));
+            assert!(html.contains("aria-label=\"King Sparkon Eye home\""));
+            assert!(html.contains("color-scheme:light dark"));
+            assert!(html.contains("prefers-color-scheme:dark"));
         }
     }
 
