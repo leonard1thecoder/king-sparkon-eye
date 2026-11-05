@@ -486,6 +486,8 @@ mod landing_page_tests {
             "openapi/eye.openapi.json",
             "href=\"/auth/sign-in\"",
             "href=\"/auth/register\"",
+            "src=\"/assets/logo.gif\"",
+            "src=\"/assets/hero.jpg\"",
         ] {
             assert!(page.contains(expected), "landing page missing: {expected}");
         }

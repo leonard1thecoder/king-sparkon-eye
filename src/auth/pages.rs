@@ -7,13 +7,19 @@
 //! mounted report "not available on this server yet" rather than pretending to succeed.
 
 use axum::Router;
-use axum::response::Html;
+use axum::extract::Path;
+use axum::http::{StatusCode, header};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 
 use crate::api::AppState;
 
 /// Minimum password length. Matches `MIN_PASSWORD_LEN` in `auth/mod.rs`.
 const MIN_PASSWORD_LEN: usize = 10;
+
+/// Brand images for the landing page, compiled into the binary so the service stays one file.
+const LOGO_GIF: &[u8] = include_bytes!("../../public/assets/logo.gif");
+const HERO_JPG: &[u8] = include_bytes!("../../public/assets/hero.jpg");
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -22,6 +28,23 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/forgot-password", get(forgot_password))
         .route("/auth/reset-password", get(reset_password))
         .route("/auth/callback", get(callback))
+        .route("/assets/{name}", get(asset))
+}
+
+async fn asset(Path(name): Path<String>) -> Response {
+    let (content_type, bytes) = match name.as_str() {
+        "logo.gif" => ("image/gif", LOGO_GIF),
+        "hero.jpg" => ("image/jpeg", HERO_JPG),
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    (
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        bytes,
+    )
+        .into_response()
 }
 
 async fn sign_in() -> Html<String> {
