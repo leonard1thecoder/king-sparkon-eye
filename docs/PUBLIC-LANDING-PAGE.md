@@ -1,7 +1,7 @@
 # Public landing page — design and claim brief
 
 **Issue:** [#172 — Add candidate pricing and original visuals to the public landing page](https://github.com/leonard1thecoder/king-sparkon-eye/issues/172)  \n**CTA polish:** [#174 — Use rounded pill styling for landing-page CTA buttons](https://github.com/leonard1thecoder/king-sparkon-eye/issues/174)  
-**Branding:** [#177 — Replace hero artwork with animated King Sparkon Eye branding](https://github.com/leonard1thecoder/king-sparkon-eye/issues/177)  
+**Branding:** [#177 — Replace hero artwork with animated King Sparkon Eye branding](https://github.com/leonard1thecoder/king-sparkon-eye/issues/177), [#179 — Apply the logo to authentication screens](https://github.com/leonard1thecoder/king-sparkon-eye/issues/179)  
 **Related design guidance:** [#70 — Prevent generic AI-generated landing page and verify UX quality](https://github.com/leonard1thecoder/king-sparkon-eye/issues/70)  
 **Related public-pages scope:** [#35 — Public landing, API, consent, terms and privacy pages](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35)
 
