@@ -1,6 +1,7 @@
 # Public landing page — design and claim brief
 
 **Issue:** [#172 — Add candidate pricing and original visuals to the public landing page](https://github.com/leonard1thecoder/king-sparkon-eye/issues/172)  \n**CTA polish:** [#174 — Use rounded pill styling for landing-page CTA buttons](https://github.com/leonard1thecoder/king-sparkon-eye/issues/174)  
+**Branding:** [#177 — Replace hero artwork with animated King Sparkon Eye branding](https://github.com/leonard1thecoder/king-sparkon-eye/issues/177)  
 **Related design guidance:** [#70 — Prevent generic AI-generated landing page and verify UX quality](https://github.com/leonard1thecoder/king-sparkon-eye/issues/70)  
 **Related public-pages scope:** [#35 — Public landing, API, consent, terms and privacy pages](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35)
 
@@ -21,13 +22,15 @@ Use an editorial product-infrastructure direction rather than a generic SaaS tem
 
 - Warm paper canvas, deep forest ink, restrained coral signal, and a small acid-green accent.
 - Serif display typography paired with compact monospace system labels.
-- A concise product statement paired with original illustrative artwork and a four-step workflow.
+- A concise product statement paired with the official King Sparkon Eye crown/eye/lightning wordmark and a four-step workflow.
+- The hero logo uses a deliberately slow 4.8-second blink loop (0.5× pacing); the eye closes around the aperture/lightning and reopens. The SVG disables that animation when `prefers-reduced-motion: reduce` is active.
+- The compact eye mark is reused in the navigation and footer so the brand remains recognizable without repeating the full wordmark.
 - Thin rules, generous whitespace, and purposeful numbered steps instead of decorative metric cards or generic feature-card grids.
 - A dark responsibility section to make the ownership boundary memorable.
 - A pricing comparison with clear candidate/unapproved status, not an active checkout or implied offer.
 - Responsive layouts collapse columns without hiding important information.
 
-The hero SVG is conceptual venue artwork, not a product screenshot, customer image, camera feed, or live system status. Inline SVG keeps the page self-contained and avoids external image/CDN dependencies. It must not depict biometric overlays or imply that the recognition pipeline is deployed.
+The hero SVG is the King Sparkon Eye brand mark, not a product screenshot, customer image, camera feed, or live system status. The event-scope workflow diagram remains conceptual explanatory artwork. Inline SVG keeps both visuals self-contained and avoids external image/CDN dependencies. The logo animation is a visual brand treatment only; it does not represent a live recognition pipeline.
 
 ## Section purpose
 
