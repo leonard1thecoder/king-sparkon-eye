@@ -82,11 +82,11 @@ const TEMPLATE: &str = r##"<!doctype html>
 <meta name="robots" content="noindex">
 <title>{{TITLE}} · King Sparkon Eye</title>
 <style>
-:root{color-scheme:light dark;--bg:#f4f2eb;--fg:#1d1c19;--muted:#5b5850;--line:#c9c4b6;--accent:#2f5d50;--bad:#8a2b1f;--ok:#2f5d50}
+:root{color-scheme:light dark;--bg:#f4f2eb;--fg:#1d1c19;--muted:#5b5850;--line:#c9c4b6;--accent:#2f5d50;--bad:#8a2b1f;--ok:#2f5d50;--gold:#d99b08}
 @media (prefers-color-scheme:dark){:root{--bg:#171714;--fg:#ece9df;--muted:#aca89a;--line:#4a473e;--accent:#8ec5b1;--bad:#ff9b8a;--ok:#8ec5b1}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
 main{max-width:26rem;margin:3rem auto;padding:0 1rem}
-.auth-brand{display:inline-flex;align-items:center;gap:.7rem;margin:0 0 2rem;color:var(--fg);text-decoration:none}
+.auth-brand{display:inline-flex;align-items:center;gap:.7rem;margin:0 0 2rem;color:var(--fg);text-decoration:none}\n.auth-brand:focus-visible{outline:3px solid var(--gold);outline-offset:4px;border-radius:4px}
 .auth-brand-mark{display:block;flex:0 0 auto;width:46px;height:30px}
 .auth-brand-mark .eye-shell{fill:#d99b08}
 .auth-brand-mark .eye-core{fill:#17221e}
