@@ -86,6 +86,14 @@ const TEMPLATE: &str = r##"<!doctype html>
 @media (prefers-color-scheme:dark){:root{--bg:#171714;--fg:#ece9df;--muted:#aca89a;--line:#4a473e;--accent:#8ec5b1;--bad:#ff9b8a;--ok:#8ec5b1}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
 main{max-width:26rem;margin:3rem auto;padding:0 1rem}
+.auth-brand{display:inline-flex;align-items:center;gap:.7rem;margin:0 0 2rem;color:var(--fg);text-decoration:none}
+.auth-brand-mark{display:block;flex:0 0 auto;width:46px;height:30px}
+.auth-brand-mark .eye-shell{fill:#d99b08}
+.auth-brand-mark .eye-core{fill:#17221e}
+.auth-brand-mark .iris{fill:#303640;stroke:#f3b91b;stroke-width:3}
+.auth-brand-mark .bolt{fill:#ffd23f}
+.auth-brand-copy{display:grid;gap:.08rem;font-size:.86rem;font-weight:760;letter-spacing:-.025em}
+.auth-brand-kicker{color:var(--muted);font:9px monospace;letter-spacing:.14em;text-transform:uppercase}
 h1{font-size:1.5rem;margin:0 0 1rem}
 label{display:block;margin:1rem 0 .25rem;font-weight:600}
 input{width:100%;box-sizing:border-box;padding:.6rem;font:inherit;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit}
@@ -104,6 +112,15 @@ button[disabled]{opacity:.6;cursor:wait}
 </head>
 <body>
 <main>
+<a class="auth-brand" href="/" aria-label="King Sparkon Eye home">
+<svg class="auth-brand-mark" viewBox="0 0 120 72" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+<path class="eye-shell" d="M5 36Q60 -4 115 36Q60 76 5 36Z"/>
+<path class="eye-core" d="M18 36Q60 8 102 36Q60 64 18 36Z"/>
+<circle class="iris" cx="60" cy="36" r="20"/>
+<path class="bolt" d="M64 16L49 39H60L54 57L75 31H63L70 16Z"/>
+</svg>
+<span class="auth-brand-copy"><span>King Sparkon Eye</span><span class="auth-brand-kicker">Vision service</span></span>
+</a>
 <h1>{{HEADING}}</h1>
 {{BODY}}
 </main>
@@ -352,6 +369,22 @@ mod tests {
             render("t", "h", CALLBACK_BODY, CALLBACK_SCRIPT).0,
         ] {
             assert!(!html.contains("{{"), "unfilled placeholder in page");
+        }
+    }
+
+    #[test]
+    fn all_auth_pages_render_the_shared_eye_brand() {
+        for html in [
+            render("t", "h", SIGN_IN_BODY, SIGN_IN_SCRIPT).0,
+            render("t", "h", REGISTER_BODY, REGISTER_SCRIPT).0,
+            render("t", "h", FORGOT_BODY, FORGOT_SCRIPT).0,
+            render("t", "h", RESET_BODY, RESET_SCRIPT).0,
+            render("t", "h", CALLBACK_BODY, CALLBACK_SCRIPT).0,
+        ] {
+            assert!(html.contains("class=\\"auth-brand\\""));
+            assert!(html.contains("King Sparkon Eye"));
+            assert!(html.contains("auth-brand-mark"));
+            assert!(html.contains("aria-label=\\"King Sparkon Eye home\\""));
         }
     }
 
