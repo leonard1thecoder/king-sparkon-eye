@@ -24,7 +24,7 @@ Use an editorial product-infrastructure direction rather than a generic SaaS tem
 - Serif display typography paired with compact monospace system labels.
 - A concise product statement paired with the official King Sparkon Eye crown/eye/lightning wordmark and a four-step workflow.
 - The hero logo uses a deliberately slow 4.8-second blink loop (0.5× pacing); the eye closes around the aperture/lightning and reopens. The SVG disables that animation when `prefers-reduced-motion: reduce` is active.
-- The compact eye mark is reused in the navigation and footer so the brand remains recognizable without repeating the full wordmark.
+- The compact eye mark is reused in the public navigation, footer, and shared Eye authentication-page template so the brand remains recognizable without repeating the full wordmark.
 - Thin rules, generous whitespace, and purposeful numbered steps instead of decorative metric cards or generic feature-card grids.
 - A dark responsibility section to make the ownership boundary memorable.
 - A pricing comparison with clear candidate/unapproved status, not an active checkout or implied offer.
