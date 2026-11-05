@@ -468,3 +468,16 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - Updates `README.md`, `docs/PUBLIC-LANDING-PAGE.md`, and landing-page regression assertions in `src/api/mod.rs`. `AGENTS.md` was reviewed and left unchanged because no reusable contributor rule changed.
 
 **Verification at branch preparation:** HTML and regression-assertion source checks are being updated. Rust formatting/tests and rendered desktop/mobile/keyboard QA must be run and reported before merge; no browser rendering result is claimed here.
+
+
+### Issue #179 — shared authentication-page branding (2026-11-05)
+
+**Branch:** `issue/179-auth-logo-ui`  
+**Issue:** [#179](https://github.com/leonard1thecoder/king-sparkon-eye/issues/179)
+
+- Adds the compact crownless eye/aperture/lightning mark and King Sparkon Eye wordmark to the shared HTML template used by sign-in, registration, password recovery, reset, and OAuth callback pages.
+- Preserves the existing auth route handlers, form validation, API calls, and light/dark theme behavior.
+- Corrects the landing-page hero SVG viewBox and wordmark spacing so the eye no longer crowds the lettering.
+- Adds a shared-template branding regression test; updates README and the public landing-page design brief. `AGENTS.md` was reviewed and left unchanged because no reusable contributor rule changed.
+
+**Verification at branch preparation:** source assertions are present; run Rust formatting/tests and rendered browser review for light/dark themes and mobile widths before merge. No test or browser result is claimed until run.
