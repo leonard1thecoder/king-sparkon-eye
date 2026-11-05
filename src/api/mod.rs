@@ -484,6 +484,8 @@ mod landing_page_tests {
             "prefers-reduced-motion",
             "Skip to content",
             "openapi/eye.openapi.json",
+            "href=\"/auth/sign-in\"",
+            "href=\"/auth/register\"",
         ] {
             assert!(page.contains(expected), "landing page missing: {expected}");
         }

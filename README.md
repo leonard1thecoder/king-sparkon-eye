@@ -153,7 +153,7 @@ The registered Google redirect URL must be registered with Google exactly. Provi
 | `/auth/callback` | Shows success or failure only. A successful redirect carries a one-time `code`, but completing the session needs the BFF exchange (`POST /v1/auth/oauth/exchange`), so the page does not finish sign-in. |
 | Consent / authorization | **Not built.** The contract marks the legal consent wording and retention policy as unapproved. |
 
-Pages never render query-string values into markup. They are not yet covered by a rendered-browser review.
+The landing page header has **Sign in** (`/auth/sign-in`) and **Sign up** (`/auth/register`) links. Pages never render query-string values into markup. The landing header was checked in a headless browser at 1280px and 375px (no horizontal overflow); the auth pages have not had a rendered-browser review.
 
 The new database migration creates Eye-owned auth, identity-link, transaction, handoff, refresh-token, and rate-limit state. Apply it to a dedicated Eye database through the project migration workflow before enabling OAuth; this repository does not run Flyway or apply it automatically. The runtime uses PostgREST RPCs so the store functions execute their locking/consume-once semantics in PostgreSQL. Behind a reverse proxy, also apply edge rate limiting and configure trusted-proxy networking: the runtime rate limiter sees the direct TCP peer address and intentionally does not trust caller-supplied forwarded headers.
 
