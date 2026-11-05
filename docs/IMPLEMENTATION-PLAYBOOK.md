@@ -454,3 +454,17 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - Keeps secondary text links as text links and preserves the visible coral keyboard-focus outline, hover lift, responsive sizing and reduced-motion behavior.
 - Updates `docs/PUBLIC-LANDING-PAGE.md` with the CTA visual rule. `README.md` and `AGENTS.md` were reviewed and left unchanged: no project-level behavior or reusable agent instruction changed.
 - Source-level selector checks are the only validation recorded at this point; rendered desktop/mobile and keyboard QA plus CI remain to be checked before merge.
+
+
+### Issue #177 — animated King Sparkon Eye branding (2026-11-05)
+
+**Branch:** `issue/177-animated-eye-branding`  
+**Issue:** [#177](https://github.com/leonard1thecoder/king-sparkon-eye/issues/177)
+
+- Replaces the conceptual venue illustration in the landing-page hero with the King Sparkon Eye crown, eye, camera-aperture and lightning wordmark.
+- Adds a deliberately slow 4.8-second blink loop (0.5× pacing); the eye closes and reopens while the wordmark remains fixed. The SVG disables animation for `prefers-reduced-motion: reduce`.
+- Reuses a compact eye mark in the public navigation and footer. Keeps the event-scoped workflow diagram as the explanatory illustration.
+- The browser-auth pages are introduced on the still-open PR #176 and are not part of current `main`; their shared branding remains dependent on that PR being merged and is not copied into this branch.
+- Updates `README.md`, `docs/PUBLIC-LANDING-PAGE.md`, and landing-page regression assertions in `src/api/mod.rs`. `AGENTS.md` was reviewed and left unchanged because no reusable contributor rule changed.
+
+**Verification at branch preparation:** HTML and regression-assertion source checks are being updated. Rust formatting/tests and rendered desktop/mobile/keyboard QA must be run and reported before merge; no browser rendering result is claimed here.
