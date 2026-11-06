@@ -22,7 +22,7 @@ use crate::{
         },
     },
     persistence::usage_ledger::{
-        ClaimedUsageReport, MonthlyUsageAggregate, UsageLedgerStore, UsageStoreError,
+        ClaimedUsageReport, UsageLedgerStore, UsageStoreError,
     },
 };
 
@@ -285,9 +285,7 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
         for row in rows {
             // A permanent provider rejection must not loop indefinitely. The row is still
             // protected by its attempt token, so an expired/reclaimed lease cannot be overwritten.
-            let next = now
-                .checked_add_signed(Duration::zero())
-                .ok_or(WorkerError::InvalidConfiguration)?;
+            let next = now;
             let changed = self
                 .store
                 .schedule_retry(
@@ -301,7 +299,6 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
                 .await
                 .map_err(|_| WorkerError::Persistence)?;
             if changed {
-                result.retried_rows = result.retried_rows.saturating_sub(1);
                 result.dead_lettered_rows += 1;
             }
         }
