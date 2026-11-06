@@ -7,7 +7,7 @@
 use sqlx::{PgPool, Row};
 use thiserror::Error;
 
-use crate::billing::stripe::StripeMode;
+use crate::billing::stripe::{StripeClient, StripeMode};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum BillingAccountStoreError {
@@ -105,6 +105,49 @@ fn valid_customer_id(value: &str) -> bool {
         && value.len() <= 255
         && value.starts_with("cus_")
         && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+
+/// Return the existing mapping or provision and persist one Customer for this Eye account.
+/// Stripe's deterministic idempotency key makes concurrent calls converge on one Customer;
+/// the database uniqueness constraints remain the durable ownership boundary.
+pub async fn ensure_customer_mapping(
+    store: &BillingAccountStore,
+    stripe: &StripeClient,
+    eye_user_id: &str,
+) -> Result<String, BillingAccountProvisionError> {
+    validate_eye_user_id(eye_user_id).map_err(|_| BillingAccountProvisionError::InvalidOwner)?;
+    if let Some(customer_id) = store
+        .customer_for(eye_user_id, stripe.mode())
+        .await
+        .map_err(|_| BillingAccountProvisionError::Unavailable)?
+    {
+        return Ok(customer_id);
+    }
+    let customer_id = stripe
+        .create_customer(eye_user_id)
+        .await
+        .map_err(|_| BillingAccountProvisionError::StripeUnavailable)?;
+    store
+        .insert_customer_mapping(eye_user_id, stripe.mode(), &customer_id)
+        .await
+        .map_err(|error| match error {
+            BillingAccountStoreError::MappingConflict => BillingAccountProvisionError::MappingConflict,
+            BillingAccountStoreError::InvalidOwner => BillingAccountProvisionError::InvalidOwner,
+            BillingAccountStoreError::Unavailable => BillingAccountProvisionError::Unavailable,
+        })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum BillingAccountProvisionError {
+    #[error("billing account identifier is invalid")]
+    InvalidOwner,
+    #[error("Stripe Customer provisioning is temporarily unavailable")]
+    StripeUnavailable,
+    #[error("billing account mapping conflicts with an existing mapping")]
+    MappingConflict,
+    #[error("billing account storage is unavailable")]
+    Unavailable,
 }
 
 /// Usage reporting receives the Eye account ID as its opaque tenant reference. The lookup is
