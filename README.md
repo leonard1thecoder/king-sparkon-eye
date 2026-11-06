@@ -88,7 +88,7 @@ The distinction below is deliberate: a proposed API or repository abstraction is
 
 ### Important security and readiness blockers
 
-- [#132 — Google sign-in privilege escalation](https://github.com/leonard1thecoder/king-sparkon-eye/issues/132) is open. Verified Google sign-in currently grants `enrollment:write` to new verified accounts; do not interpret sign-in as tenant authorization or production enrollment approval.
+- [#132 — Google sign-in privilege escalation](https://github.com/leonard1thecoder/king-sparkon-eye/issues/132): least-privilege mitigation is implemented in PR #223 but is **not merged or deployed**. Apply `db/migrations/202611060001_google_oauth_least_privilege.sql` to the dedicated Eye database before treating the finding as mitigated. Google sign-in alone must not grant `enrollment:write`; no self-service enrollment-permission grant route exists yet.
 - [#95 — no consented real-face data or calibrated thresholds](https://github.com/leonard1thecoder/king-sparkon-eye/issues/95) remains open. Synthetic inputs do not establish real-world accuracy, false-acceptance rates, false-rejection rates or safe operating thresholds.
 - [#124 — incremental multipart image-part limits](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) remains open.
 - [#28 — Kafka producer and delivery](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28) remains open. The SQLx outbox repository work in [#113](https://github.com/leonard1thecoder/king-sparkon-eye/issues/113) does not by itself deliver Kafka messages.
