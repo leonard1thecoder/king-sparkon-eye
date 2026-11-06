@@ -349,6 +349,10 @@ pub fn router(config: Config) -> Router {
             }
         }
     });
+    let upload_body_limit = config
+        .image_limits
+        .max_upload_bytes
+        .saturating_add(MULTIPART_OVERHEAD_BYTES);
     let assessment = assessment_runtime();
     let state = AppState {
         config: Arc::new(config),
@@ -358,7 +362,10 @@ pub fn router(config: Config) -> Router {
     let non_indexable_routes = Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
-        .route("/v1/enrollment/photo-assessments", post(upload_photo))
+        .route(
+            "/v1/enrollment/photo-assessments",
+            post(upload_photo).layer(DefaultBodyLimit::max(upload_body_limit)),
+        )
         .merge(OAuthRuntime::routes())
         .merge(crate::auth::pages::routes())
         .route_layer(middleware::from_fn(add_noindex_header));
