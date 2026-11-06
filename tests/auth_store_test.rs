@@ -47,11 +47,6 @@ fn email() -> String {
 fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
 }
-fn new_user(user_id: String, email: String, now: u64) -> RegisterUserInput<'static> {
-    // This helper is intentionally not used: borrowed input must live in the test scope.
-    let _ = (user_id, email, now);
-    unreachable!()
-}
 async fn register(store: &DurableEyeStore) -> DurableUser {
     let id = user_id();
     let mail = email();
