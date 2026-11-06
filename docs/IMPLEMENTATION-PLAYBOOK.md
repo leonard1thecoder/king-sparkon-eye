@@ -4,6 +4,10 @@
 >
 > **Status:** This is an implementation guide, not proof that the planned service is already implemented. Always verify the current repository and issue state before starting work.
 
+## 0. Issue-first triage and dependency-aware execution
+
+Before recommending a task or beginning implementation, follow [docs/AGENT_ISSUE_WORKFLOW.md](AGENT_ISSUE_WORKFLOW.md): search for a matching existing issue, read its acceptance criteria/comments/dependencies, inspect related PRs, and recommend the narrowest correct issue. Create a correctly classified issue before implementing untracked work; do not create duplicates. An open PR is not automatically a blocker—continue independent work on its own branch. If a dependency genuinely blocks a task, record the exact evidence and affected acceptance criteria, identify safe parallel work, and move to the next unblocked issue. Do not silently wait or claim an unmerged prerequisite is complete.
+
 ## Current product direction (supersedes legacy integration descriptions)
 
 As of 6 November 2026, Eye's approved direction is a standalone, integration-agnostic, multi-tenant identity-verification platform. The older tracker/ticket/gate-admission workstream below is historical implementation context, not the current product boundary or a mandatory dependency for new work.
