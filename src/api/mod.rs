@@ -730,12 +730,12 @@ mod billing_route_auth_tests {
                 "https://eye.example.com/v1/auth/google/callback".to_owned(),
             ),
             (
-                "EYE_DATABASE_REST_URL",
-                "https://db.example.com/rest/v1".to_owned(),
+                "EYE_DATABASE_URL",
+                "postgres://eye:secret@db.example.com:5432/eye?sslmode=require".to_owned(),
             ),
             (
-                "EYE_DATABASE_SERVICE_ROLE_KEY",
-                "database-service-key".to_owned(),
+                "EYE_OAUTH_ENCRYPTION_KEY",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
             ),
             (
                 "EYE_OAUTH_CALLBACK_URLS",
