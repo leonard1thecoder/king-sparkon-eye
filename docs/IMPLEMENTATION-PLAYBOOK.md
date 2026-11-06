@@ -20,6 +20,16 @@ As of 6 November 2026, Eye's approved direction is a standalone, integration-agn
 - The README and #182/#186 are the current product/API direction. The existing OpenAPI and older sections in this playbook may still describe the legacy gate contract; do not treat them as a shipped standalone API.
 - The authoritative architecture record is [docs/IDENTITY_PLATFORM_ARCHITECTURE.md](IDENTITY_PLATFORM_ARCHITECTURE.md). It defines tenant trust boundaries, API compatibility principles, threat controls and legacy issue reconciliation.
 - Current platform execution order: **#182 architecture → #183 tenant persistence + #184 tenant credentials (coordinate interfaces) → #185 identity/enrollment → #186 scopes and verification sessions → #187 durable async lifecycle → #188 signed webhooks → #190 TypeScript SDK/conformance → #191 website and console**. #189 evidence/retention controls and #192 SEO are parallel workstreams; verify their issue dependencies before integration.
+
+## Billing feature workstream
+
+Billing remains a separate Rust-owned workstream under #137. The owner-recorded #138 decision checkpoint adopts hybrid billing: monthly/annual base subscription plus monthly-in-arrears usage for confirmed enrollments, active templates, retained original-photo storage and eligible completed identification. Candidate prices and allowances remain unapproved; live Stripe mode stays disabled.
+
+- #148 now has a PostgreSQL append-only tenant-scoped ledger and a leased transactional reporting-intent outbox. Flow events are idempotent by tenant/event key; reversals are explicit and retain the original period. Storage levels use daily UTC-midnight samples, latest sample per day, daily average over billable days, and GiB (2^30 bytes) with round-up.
+- #143 still owns Stripe Billing Meter delivery, monthly invoice aggregation, annual-subscriber collection design validation and reconciliation. Do not claim usage is being reported to Stripe until that work is implemented and verified.
+- #138 external gates remain: backend owner sign-off for trusted tenant/billing-admin identity and authoritative billable event boundaries, plus commercial/tax approval before production prices or live billing.
+- #140/#142 Checkout and Portal routes remain blocked until the trusted billing-account mapping and authorization contract are available. Hosted-session adapter primitives alone are not customer-facing billing.
+
 - #191 must use Eye's existing Axum/static HTML architecture and verified Rust contracts. Do not introduce a second frontend framework or mock production tenant data.
 
 ## Technical SEO implementation baseline (#192)
