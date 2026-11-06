@@ -234,6 +234,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn reporter_is_disabled_unless_explicitly_enabled() {
+        let config = StripeMeterConfig {
+            enabled: false,
+            secret_key: "not-a-key".into(),
+            customer_payload_key: "stripe_customer_id".into(),
+            event_names: MeterEventNames {
+                enrollments: "configured_enrollments".into(),
+                retained_photo_storage_gb: "configured_photos".into(),
+                active_templates: "configured_templates".into(),
+                identification_requests: "configured_identifications".into(),
+            },
+        };
+        assert_eq!(StripeMeterReporter::new(config).err(), Some(StripeMeterError::Disabled));
+    }
+
+    #[test]
+    fn live_secret_keys_are_rejected_until_catalog_and_billing_approval() {
+        let config = StripeMeterConfig {
+            enabled: true,
+            secret_key: "sk_live_not_for_this_slice".into(),
+            customer_payload_key: "stripe_customer_id".into(),
+            event_names: MeterEventNames {
+                enrollments: "configured_enrollments".into(),
+                retained_photo_storage_gb: "configured_photos".into(),
+                active_templates: "configured_templates".into(),
+                identification_requests: "configured_identifications".into(),
+            },
+        };
+        assert_eq!(
+            StripeMeterReporter::new(config).err(),
+            Some(StripeMeterError::InvalidConfiguration)
+        );
+    }
+
+    #[test]
     fn report_identifier_is_stable_and_scoped_to_meter_and_period() {
         let tenant = "tenant_opaque_123";
         let month = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
