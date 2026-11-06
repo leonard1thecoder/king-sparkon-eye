@@ -272,6 +272,10 @@ PostgreSQL-backed persistence tests require a test database when the relevant te
 | `tests/` | Unit, integration, API, persistence and artifact tests. |
 | `docs/` | Architecture, model, security, integration and implementation notes. |
 
+## Billing status
+
+Billing is a separate platform workstream tracked by [epic #137](https://github.com/leonard1thecoder/king-sparkon-eye/issues/137). The candidate Rust plan domain is merged in [PR #152](https://github.com/leonard1thecoder/king-sparkon-eye/pull/152); this does not mean quotas, durable usage accounting, subscription routes, or webhook processing are operational. The billing contract and unresolved release gates are documented in [docs/BILLING_CONTRACT.md](docs/BILLING_CONTRACT.md) and [issue #138](https://github.com/leonard1thecoder/king-sparkon-eye/issues/138). Candidate prices and allowances are not production-approved. Live Stripe billing remains disabled.
+
 ## Roadmap
 
 The standalone platform is tracked by [epic #181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181). The issue sequence is:
