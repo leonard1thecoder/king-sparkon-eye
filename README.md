@@ -151,7 +151,7 @@ The registered Google redirect URL must be registered with Google exactly. Provi
 | Page | Status |
 |---|---|
 | `/auth/sign-in` | Email/password form posts to `POST /v1/auth/login`. The Google button stays hidden until the script sets its URL to `GET /v1/auth/google/start` with `callback_url` set to this origin's `/auth/callback`, which must be in the callback allowlist. |
-| `/auth/register` | Shown as **unavailable**: the form is disabled and the page says so. Validation (email format, minimum 10 characters, matching confirmation) runs in the browser and is linked to each field's error. Targets `POST /v1/auth/register`, which is **not mounted yet**. |
+| `/auth/register` | Active email/password registration form posting to `POST /v1/auth/register`. Client-side validation (email format, minimum 10 characters, matching confirmation) is linked to field errors; server-side validates and creates user record with bcrypt password hashing. |
 | `/auth/forgot-password` | Shown as **unavailable**: the form is disabled. Targets `POST /v1/auth/password-reset/request`, which is **not mounted yet**, and needs an email delivery provider, which is not configured. |
 | `/auth/reset-password?token=…` | Shown as **unavailable**: the form is disabled. Targets `POST /v1/auth/password-reset/confirm`, which is **not mounted yet**. Without a token, the form is hidden and the page asks for a new link. |
 | `/auth/callback` | Shows success or failure only. A returned one-time `code` does not sign the user in: the page says so, because completing the session needs the BFF exchange (`POST /v1/auth/oauth/exchange`). |

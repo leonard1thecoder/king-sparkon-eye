@@ -139,6 +139,7 @@ impl OAuthRuntime {
             .route("/v1/auth/oauth/exchange", post(oauth_exchange))
             .route("/v1/auth/refresh", post(refresh_session))
             .route("/v1/auth/login", post(password_login))
+            .route("/v1/auth/register", post(register_account))
     }
 
     async fn rate_limit(
@@ -778,6 +779,13 @@ async fn oauth_exchange(
 /// Password login limits. The window is the same fixed 60-second window used by OAuth routes.
 const LOGIN_PEER_LIMIT: u32 = 10;
 const LOGIN_EMAIL_LIMIT: u32 = 5;
+const REGISTER_PEER_LIMIT: u32 = 5;
+
+#[derive(Deserialize)]
+struct RegisterRequest {
+    email: String,
+    password: String,
+}
 const LOGIN_MAX_PASSWORD_BYTES: usize = 1024;
 const LOGIN_MAX_EMAIL_BYTES: usize = 254;
 
@@ -899,6 +907,98 @@ async fn password_login(
     {
         Ok(pair) => Json(pair).into_response(),
         Err(err) => err.into_response(),
+    }
+}
+
+
+async fn register_account(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(request): Json<RegisterRequest>,
+) -> Response {
+    let Some(oauth) = state.oauth.as_ref() else {
+        return ApiError::ServiceUnavailable.into_response();
+    };
+    if let Err(err) = oauth
+        .rate_limit(peer, "register-account", REGISTER_PEER_LIMIT)
+        .await
+    {
+        return err.into_response();
+    }
+    let email = request.email.trim().to_ascii_lowercase();
+    if email.len() < 3
+        || email.len() > LOGIN_MAX_EMAIL_BYTES
+        || !email.contains('@')
+    {
+        return ApiError::Validation(ValidationError {
+            field: "email",
+            rule: "must be a valid email address",
+        })
+        .into_response();
+    }
+    if request.password.len() < 10 {
+        return ApiError::Validation(ValidationError {
+            field: "password",
+            rule: "must be at least 10 characters",
+        })
+        .into_response();
+    }
+    if request.password.len() > LOGIN_MAX_PASSWORD_BYTES {
+        return ApiError::Validation(ValidationError {
+            field: "password",
+            rule: "exceeds maximum password length",
+        })
+        .into_response();
+    }
+
+    match oauth.store.password_credentials_by_email(&email).await {
+        Ok(Some(_)) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(OAuthErrorBody {
+                    code: "USER_ALREADY_EXISTS",
+                    message: "An account with this email address already exists",
+                }),
+            )
+                .into_response();
+        }
+        Ok(None) => {}
+        Err(_) => return ApiError::ServiceUnavailable.into_response(),
+    }
+
+    let password = request.password;
+    let password_hash = match tokio::task::spawn_blocking(move || hash_password(&password)).await {
+        Ok(Ok(h)) => h,
+        _ => return ApiError::ServiceUnavailable.into_response(),
+    };
+
+    let user_id = format!("usr_{}", uuid::Uuid::new_v4().simple());
+    let salt = uuid::Uuid::new_v4().simple().to_string();
+    let now = now_ms();
+
+    match oauth
+        .store
+        .register_user(
+            &user_id,
+            &email,
+            &password_hash,
+            &salt,
+            crate::auth::UserRole::GateOperator,
+            &["enrollment:write".to_string()],
+            now,
+        )
+        .await
+    {
+        Ok(_) => StatusCode::CREATED.into_response(),
+        Err(crate::auth::durable_store::DurableStoreError::Rejected) => (
+            StatusCode::CONFLICT,
+            Json(OAuthErrorBody {
+                code: "USER_ALREADY_EXISTS",
+                message: "An account with this email address already exists",
+            }),
+        )
+            .into_response(),
+        Err(_) => ApiError::ServiceUnavailable.into_response(),
     }
 }
 
