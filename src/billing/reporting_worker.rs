@@ -17,13 +17,9 @@ use thiserror::Error;
 use crate::{
     billing::{
         AllowancePeriod, MeterId,
-        meter_reporting::{
-            MonthlyMeterAggregate, StripeMeterError, StripeMeterReporter,
-        },
+        meter_reporting::{MonthlyMeterAggregate, StripeMeterError, StripeMeterReporter},
     },
-    persistence::usage_ledger::{
-        ClaimedUsageReport, UsageLedgerStore, UsageStoreError,
-    },
+    persistence::usage_ledger::{ClaimedUsageReport, UsageLedgerStore, UsageStoreError},
 };
 
 /// Trusted lookup for a tenant's Stripe Customer mapping.
@@ -124,10 +120,7 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
     /// Rows are grouped by tenant/meter/month before sending. If a process crashes after Stripe
     /// accepts an event but before PostgreSQL acknowledgement, the same stable Stripe identifier
     /// is sent on replay. A stale lease cannot acknowledge a newer attempt.
-    pub async fn run_once(
-        &self,
-        now: DateTime<Utc>,
-    ) -> Result<WorkerBatchResult, WorkerError> {
+    pub async fn run_once(&self, now: DateTime<Utc>) -> Result<WorkerBatchResult, WorkerError> {
         let claimed = self
             .store
             .claim_due(now, self.config.lease, self.config.batch_size)
@@ -143,11 +136,7 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
 
         for ((tenant, meter, period_start), rows) in groups {
             let period = period_for(period_start).ok_or(WorkerError::Persistence)?;
-            let aggregate = match self
-                .store
-                .monthly_aggregate(&tenant, &period, now)
-                .await
-            {
+            let aggregate = match self.store.monthly_aggregate(&tenant, &period, now).await {
                 Ok(aggregate) => aggregate,
                 Err(error) => {
                     let category = aggregate_error_category(&error);
@@ -167,23 +156,13 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
             let customer_id = match self.customer_resolver.resolve_customer(&tenant).await {
                 Ok(Some(customer_id)) => customer_id,
                 Ok(None) => {
-                    self.retry_group(
-                        &rows,
-                        now,
-                        "customer_mapping_missing",
-                        &mut result,
-                    )
-                    .await?;
+                    self.retry_group(&rows, now, "customer_mapping_missing", &mut result)
+                        .await?;
                     continue;
                 }
                 Err(CustomerResolveError::Unavailable) => {
-                    self.retry_group(
-                        &rows,
-                        now,
-                        "customer_mapping_unavailable",
-                        &mut result,
-                    )
-                    .await?;
+                    self.retry_group(&rows, now, "customer_mapping_unavailable", &mut result)
+                        .await?;
                     continue;
                 }
             };
@@ -205,7 +184,8 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
                     if retryable {
                         self.retry_group(&rows, now, category, &mut result).await?;
                     } else {
-                        self.dead_letter_group(&rows, now, category, &mut result).await?;
+                        self.dead_letter_group(&rows, now, category, &mut result)
+                            .await?;
                     }
                 }
             }
@@ -349,7 +329,9 @@ fn stripe_error_category(error: StripeMeterError) -> (&'static str, bool) {
 }
 
 fn retry_delay(config: ReportingWorkerConfig, attempts: i32) -> Duration {
-    let exponent = u32::try_from(attempts.saturating_sub(1)).unwrap_or(u32::MAX).min(20);
+    let exponent = u32::try_from(attempts.saturating_sub(1))
+        .unwrap_or(u32::MAX)
+        .min(20);
     let factor = 1_i32.checked_shl(exponent).unwrap_or(i32::MAX);
     let seconds = config
         .retry_base
@@ -368,16 +350,58 @@ mod tests {
         let month = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
         let next_month = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
         let rows = vec![
-            ClaimedUsageReport { id: 1, tenant_id: "tenant_a".into(), meter: MeterId::Enrollments, period_start: month, attempts: 1 },
-            ClaimedUsageReport { id: 2, tenant_id: "tenant_a".into(), meter: MeterId::Enrollments, period_start: month, attempts: 2 },
-            ClaimedUsageReport { id: 3, tenant_id: "tenant_b".into(), meter: MeterId::Enrollments, period_start: month, attempts: 1 },
-            ClaimedUsageReport { id: 4, tenant_id: "tenant_a".into(), meter: MeterId::Enrollments, period_start: next_month, attempts: 1 },
-            ClaimedUsageReport { id: 5, tenant_id: "tenant_a".into(), meter: MeterId::IdentificationRequests, period_start: month, attempts: 1 },
+            ClaimedUsageReport {
+                id: 1,
+                tenant_id: "tenant_a".into(),
+                meter: MeterId::Enrollments,
+                period_start: month,
+                attempts: 1,
+            },
+            ClaimedUsageReport {
+                id: 2,
+                tenant_id: "tenant_a".into(),
+                meter: MeterId::Enrollments,
+                period_start: month,
+                attempts: 2,
+            },
+            ClaimedUsageReport {
+                id: 3,
+                tenant_id: "tenant_b".into(),
+                meter: MeterId::Enrollments,
+                period_start: month,
+                attempts: 1,
+            },
+            ClaimedUsageReport {
+                id: 4,
+                tenant_id: "tenant_a".into(),
+                meter: MeterId::Enrollments,
+                period_start: next_month,
+                attempts: 1,
+            },
+            ClaimedUsageReport {
+                id: 5,
+                tenant_id: "tenant_a".into(),
+                meter: MeterId::IdentificationRequests,
+                period_start: month,
+                attempts: 1,
+            },
         ];
         let groups = group_claimed_rows(rows);
         assert_eq!(groups.len(), 4);
-        assert_eq!(groups.get(&("tenant_a".into(), MeterId::Enrollments, month)).unwrap().len(), 2);
-        assert_eq!(groups.get(&("tenant_b".into(), MeterId::Enrollments, month)).unwrap().len(), 1);
+        assert_eq!(
+            groups
+                .get(&("tenant_a".into(), MeterId::Enrollments, month))
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            groups
+                .get(&("tenant_b".into(), MeterId::Enrollments, month))
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[test]

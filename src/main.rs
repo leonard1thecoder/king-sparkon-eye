@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
-use king_sparkon_eye::{api, config::Config, observability};
+use king_sparkon_eye::{api, billing::runtime::BillingRuntime, config::Config, observability};
 use tokio::signal;
 
 #[tokio::main]
@@ -15,8 +16,16 @@ async fn main() {
     };
 
     observability::init_tracing(&config.log_filter);
+    let billing = match BillingRuntime::from_env().await {
+        Ok(Some(runtime)) => Some(Arc::new(runtime)),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::error!(error = %error, "billing runtime initialization failed");
+            std::process::exit(2);
+        }
+    };
     let bind_addr = config.bind_addr;
-    let app = api::router(config);
+    let app = api::router_with_billing(config, billing.clone());
 
     let listener = match tokio::net::TcpListener::bind(bind_addr).await {
         Ok(listener) => listener,
@@ -36,6 +45,9 @@ async fn main() {
     {
         tracing::error!(error = %err, "server error");
         std::process::exit(1);
+    }
+    if let Some(runtime) = billing {
+        runtime.close().await;
     }
     tracing::info!("shutdown complete");
 }

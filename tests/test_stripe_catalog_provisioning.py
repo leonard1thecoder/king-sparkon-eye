@@ -49,7 +49,7 @@ class FakeStripe:
                      stripe_interval, amount, key):
         self.created_prices += 1
         item = {
-            "id": f"price_{key}",
+            "id": f"price_{key.replace('-', '_')}",
             "active": True,
             "livemode": False,
             "product": product_id,
@@ -60,6 +60,7 @@ class FakeStripe:
                 "eye_plan_id": plan_id,
                 "eye_plan_version": str(version),
                 "eye_billing_interval": interval_key,
+                "eye_price_key": key,
             },
         }
         self.prices[key] = [item]

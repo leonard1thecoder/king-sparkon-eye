@@ -119,23 +119,32 @@ impl ReportingRuntimeMetrics {
 
     fn record_success(&self, batch: WorkerBatchResult, elapsed: StdDuration) {
         self.batches_succeeded.fetch_add(1, Ordering::Relaxed);
-        self.claimed_rows.fetch_add(batch.claimed_rows as u64, Ordering::Relaxed);
-        self.reported_rows.fetch_add(batch.reported_rows as u64, Ordering::Relaxed);
-        self.retried_rows.fetch_add(batch.retried_rows as u64, Ordering::Relaxed);
-        self.dead_lettered_rows.fetch_add(batch.dead_lettered_rows as u64, Ordering::Relaxed);
-        self.lease_lost_rows.fetch_add(batch.lease_lost_rows as u64, Ordering::Relaxed);
+        self.claimed_rows
+            .fetch_add(batch.claimed_rows as u64, Ordering::Relaxed);
+        self.reported_rows
+            .fetch_add(batch.reported_rows as u64, Ordering::Relaxed);
+        self.retried_rows
+            .fetch_add(batch.retried_rows as u64, Ordering::Relaxed);
+        self.dead_lettered_rows
+            .fetch_add(batch.dead_lettered_rows as u64, Ordering::Relaxed);
+        self.lease_lost_rows
+            .fetch_add(batch.lease_lost_rows as u64, Ordering::Relaxed);
         self.consecutive_failures.store(0, Ordering::Relaxed);
         self.last_success_unix_seconds
             .store(Utc::now().timestamp().max(0) as u64, Ordering::Relaxed);
-        self.last_batch_duration_ms
-            .store(elapsed.as_millis().min(u128::from(u64::MAX)) as u64, Ordering::Relaxed);
+        self.last_batch_duration_ms.store(
+            elapsed.as_millis().min(u128::from(u64::MAX)) as u64,
+            Ordering::Relaxed,
+        );
     }
 
     fn record_failure(&self, elapsed: StdDuration) {
         self.batches_failed.fetch_add(1, Ordering::Relaxed);
         self.consecutive_failures.fetch_add(1, Ordering::Relaxed);
-        self.last_batch_duration_ms
-            .store(elapsed.as_millis().min(u128::from(u64::MAX)) as u64, Ordering::Relaxed);
+        self.last_batch_duration_ms.store(
+            elapsed.as_millis().min(u128::from(u64::MAX)) as u64,
+            Ordering::Relaxed,
+        );
     }
 }
 
@@ -214,7 +223,6 @@ where
 mod tests {
     use super::*;
 
-
     #[derive(Default)]
     struct TestProcessor {
         calls: AtomicU64,
@@ -243,8 +251,12 @@ mod tests {
         ));
 
         tokio::time::sleep(StdDuration::from_millis(30)).await;
-        shutdown_tx.send(true).expect("scheduler is still subscribed");
-        task.await.expect("scheduler task joins").expect("scheduler stops cleanly");
+        shutdown_tx
+            .send(true)
+            .expect("scheduler is still subscribed");
+        task.await
+            .expect("scheduler task joins")
+            .expect("scheduler stops cleanly");
 
         let calls = processor.calls.load(Ordering::Relaxed);
         let snapshot = metrics.snapshot();
@@ -256,11 +268,17 @@ mod tests {
     #[test]
     fn scheduler_rejects_zero_and_excessive_intervals() {
         assert_eq!(
-            ReportingRuntimeConfig { poll_interval: StdDuration::ZERO }.validate(),
+            ReportingRuntimeConfig {
+                poll_interval: StdDuration::ZERO
+            }
+            .validate(),
             Err(ReportingRuntimeError::InvalidConfiguration)
         );
         assert_eq!(
-            ReportingRuntimeConfig { poll_interval: StdDuration::from_secs(3601) }.validate(),
+            ReportingRuntimeConfig {
+                poll_interval: StdDuration::from_secs(3601)
+            }
+            .validate(),
             Err(ReportingRuntimeError::InvalidConfiguration)
         );
         assert!(ReportingRuntimeConfig::default().validate().is_ok());

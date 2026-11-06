@@ -290,6 +290,191 @@
           }
         }
       }
+    },
+    "/v1/billing/checkout": {
+      "post": {
+        "summary": "Create a subscription Checkout session for the authenticated Eye account",
+        "description": "Requires a verified Eye access token. The account owner is derived only from JWT sub. Accepts a configured paid plan and interval; Customer and Price IDs are resolved server-side. Return URLs must use a configured HTTPS origin. Billing runtime is test-mode only.",
+        "operationId": "createBillingCheckoutSession",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "plan",
+                  "interval",
+                  "successUrl",
+                  "cancelUrl"
+                ],
+                "properties": {
+                  "plan": {
+                    "type": "string",
+                    "enum": [
+                      "gold",
+                      "premium"
+                    ]
+                  },
+                  "interval": {
+                    "type": "string",
+                    "enum": [
+                      "monthly",
+                      "annual"
+                    ]
+                  },
+                  "successUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "cancelUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stripe-hosted billing session created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "url"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Short-lived Stripe-hosted session URL. Do not log or persist."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/billing/portal": {
+      "post": {
+        "summary": "Create a Customer Portal session for the authenticated Eye account",
+        "description": "Requires a verified Eye access token. The account owner and Stripe Customer are resolved server-side from JWT sub. The return URL must use a configured HTTPS origin. Billing runtime is test-mode only.",
+        "operationId": "createBillingPortalSession",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "returnUrl"
+                ],
+                "properties": {
+                  "returnUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stripe-hosted billing session created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "url"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Short-lived Stripe-hosted session URL. Do not log or persist."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
     }
   },
   "components": {

@@ -54,7 +54,7 @@ impl MeterEventNames {
         ] {
             if name.is_empty()
                 || name.len() > MAX_EVENT_NAME_LEN
-                || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' )
+                || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
             {
                 return Err(StripeMeterError::InvalidConfiguration);
             }
@@ -102,15 +102,19 @@ impl StripeMeterReporter {
         }
         if !config.secret_key.starts_with("sk_test_")
             || config.secret_key.len() <= "sk_test_".len()
-            || config.secret_key.bytes().any(|byte| byte.is_ascii_whitespace())
+            || config
+                .secret_key
+                .bytes()
+                .any(|byte| byte.is_ascii_whitespace())
         {
             return Err(StripeMeterError::InvalidConfiguration);
         }
         if config.customer_payload_key.is_empty()
             || config.customer_payload_key.len() > 64
-            || !config.customer_payload_key.bytes().all(|b| {
-                b.is_ascii_alphanumeric() || b == b'_'
-            })
+            || !config
+                .customer_payload_key
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
         {
             return Err(StripeMeterError::InvalidConfiguration);
         }
@@ -134,25 +138,23 @@ impl StripeMeterReporter {
         if aggregate.quantity == 0
             || tenant_reference.is_empty()
             || tenant_reference.len() > 128
-            || !tenant_reference.bytes().all(|b| {
-                b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':')
-            })
+            || !tenant_reference
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'))
             || !aggregate.stripe_customer_id.starts_with("cus_")
             || aggregate.stripe_customer_id.len() > 64
-            || !aggregate.stripe_customer_id.bytes().all(|b| {
-                b.is_ascii_alphanumeric() || b == b'_'
-            })
+            || !aggregate
+                .stripe_customer_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
             || aggregate.period_start.day() != 1
         {
             return Err(StripeMeterError::InvalidConfiguration);
         }
 
         let event_name = self.config.event_names.for_meter(aggregate.meter);
-        let identifier = report_identifier(
-            tenant_reference,
-            aggregate.meter,
-            aggregate.period_start,
-        );
+        let identifier =
+            report_identifier(tenant_reference, aggregate.meter, aggregate.period_start);
         // Attribute the aggregate to the final second of its UTC month so Stripe places
         // it inside the intended monthly window (not the following month).
         let month_end = aggregate
@@ -215,7 +217,10 @@ pub fn report_identifier(
     digest.update([0]);
     digest.update(period_start.format("%Y-%m-%d").to_string().as_bytes());
     let hash = digest.finalize();
-    let hex = hash.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let hex = hash
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     format!("eye_{hex}")
 }
 
@@ -245,7 +250,10 @@ mod tests {
                 identification_requests: "configured_identifications".into(),
             },
         };
-        assert_eq!(StripeMeterReporter::new(config).err(), Some(StripeMeterError::Disabled));
+        assert_eq!(
+            StripeMeterReporter::new(config).err(),
+            Some(StripeMeterError::Disabled)
+        );
     }
 
     #[test]
@@ -272,11 +280,21 @@ mod tests {
         let tenant = "tenant_opaque_123";
         let month = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
         let first = report_identifier(tenant, MeterId::Enrollments, month);
-        assert_eq!(first, report_identifier(tenant, MeterId::Enrollments, month));
-        assert_ne!(first, report_identifier(tenant, MeterId::IdentificationRequests, month));
+        assert_eq!(
+            first,
+            report_identifier(tenant, MeterId::Enrollments, month)
+        );
         assert_ne!(
             first,
-            report_identifier(tenant, MeterId::Enrollments, NaiveDate::from_ymd_opt(2026, 12, 1).unwrap())
+            report_identifier(tenant, MeterId::IdentificationRequests, month)
+        );
+        assert_ne!(
+            first,
+            report_identifier(
+                tenant,
+                MeterId::Enrollments,
+                NaiveDate::from_ymd_opt(2026, 12, 1).unwrap()
+            )
         );
         assert!(first.starts_with("eye_"));
         assert_eq!(first.len(), 68);
@@ -293,7 +311,10 @@ mod tests {
         assert!(names.validate().is_ok());
         let mut invalid = names;
         invalid.enrollments = "approved?no".into();
-        assert_eq!(invalid.validate(), Err(StripeMeterError::InvalidConfiguration));
+        assert_eq!(
+            invalid.validate(),
+            Err(StripeMeterError::InvalidConfiguration)
+        );
     }
 
     #[test]
@@ -304,6 +325,9 @@ mod tests {
             active_templates: "configured_templates".into(),
             identification_requests: "configured_identifications".into(),
         };
-        assert_eq!(names.for_meter(MeterId::ActiveTemplates), "configured_templates");
+        assert_eq!(
+            names.for_meter(MeterId::ActiveTemplates),
+            "configured_templates"
+        );
     }
 }
