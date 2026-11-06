@@ -355,7 +355,11 @@ impl DurableEyeStore {
                 }),
             )
             .await?;
-        Ok(rows.first().and_then(|r| r.get("email").and_then(|e| e.as_str()).map(|s| s.to_string())))
+        Ok(rows.first().and_then(|r| {
+            r.get("email")
+                .and_then(|e| e.as_str())
+                .map(|s| s.to_string())
+        }))
     }
 
     pub async fn consume_password_reset_token(
