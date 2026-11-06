@@ -559,14 +559,16 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 **Verification:** Playwright against a local server at 375px and 1280px: three `.plan-cta` buttons, each reading "Get started" with `href="/auth/register"`; no `.plan-link` remains; `#pricing-notes` is present; no horizontal overflow. The 375px pricing section screenshot was inspected. `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
 
 
-### Issue #209 — mobile landing header with a menu toggle (2026-11-06)
+### Issue #207 — Google badge on sign-in and Google button on register (2026-11-06)
 
-**Branch:** `issue/209-mobile-menu`  
-**Issue:** [#209](https://github.com/leonard1thecoder/king-sparkon-eye/issues/209)
+**Branch:** `issue/207-google-badge`  
+**Issue:** [#207](https://github.com/leonard1thecoder/king-sparkon-eye/issues/207)
 
-- At 700px and below, the five text navigation links (The flow, Architecture, Pricing, Build status, API contract) move into a menu toggle. Logo, Sign in and Get started stay in the header row.
-- The toggle is a visually hidden checkbox plus a label styled as a three-line button, so no JavaScript is added. The checkbox has an accessible name, and the label shows a focus ring.
-- Above 700px the header is unchanged. The mobile rules are the last block in the page's stylesheet, so they override earlier mobile rules.
-- `README.md` and `docs/PUBLIC-LANDING-PAGE.md` are updated. The brief's responsive rule no longer says nothing is hidden on narrow screens.
+- Sign-in: the Google button now shows an inline Google "G" mark and reads "Sign in with Google", styled for the dark theme (`#131314` background, `#e3e3e3` text, `#8e918f` border).
+- Register: adds a "Sign up with Google" button beside the form. It sits outside the disabled `<fieldset>`, so it is not dimmed with the form.
+- Both buttons stay hidden until the script sets their URL to `/v1/auth/google/start` with the `/auth/callback` return. The script is shared through `wireGoogle(id)`.
+- The Google mark is inline SVG, so no external image request is added.
+- Limitation: the code shows no account creation in the Google start path, and the callback still does not complete sign-in (`POST /v1/auth/oauth/exchange` is not implemented). The register button therefore starts the same flow without a confirmed account-creation outcome.
+- `README.md` and `docs/PUBLIC-LANDING-PAGE.md` are unchanged.
 
-**Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 479 passed, 0 failed. Playwright at 375px and 700px: links hidden by default, shown after the toggle is clicked, hidden again after a second click, with no horizontal overflow. At 701px and 1280px the toggle is hidden and the links are visible. The 375px open-menu screenshot was inspected.
+**Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 480 passed, 0 failed, including new `register_page_offers_google_sign_up` and the updated sign-in Google assertions. Playwright at 375px confirmed both buttons are visible, carry the mark (18px), point at the Google start route, and have no horizontal overflow. The register screenshot was inspected. The Google "G" path data was written from the standard Google mark and should be checked against Google's brand guidelines before release.
