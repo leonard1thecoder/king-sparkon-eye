@@ -6,6 +6,10 @@ King Sparkon Eye (Eye) is a Rust service and platform foundation for application
 
 > **Implementation status — 6 November 2026:** The repository contains a working Axum service, account/authentication routes, bounded image ingress, and a YuNet/ONNX face-detection assessment path. The standalone multi-tenant identity API described below is the approved product direction, not a shipped end-to-end capability. Tenant isolation, identity lifecycle, 1:1 matching, scoped 1:N identification, durable asynchronous verification sessions, and signed webhooks remain implementation work tracked by [epic #181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and [issues #182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182).
 
+## Security authorization status
+
+Public account creation and Google sign-in must not be treated as permission approval. The password-registration privilege escalation is tracked in [#226](https://github.com/leonard1thecoder/king-sparkon-eye/issues/226); its fix is not merged or deployed yet. The related Google OAuth issue is [#132](https://github.com/leonard1thecoder/king-sparkon-eye/issues/132), with a forward-only mitigation in PR #223 that also requires applying its database migration. Until these fixes are merged and deployed, do not expose the current registration/OAuth paths as a trusted biometric-enrollment authorization flow.
+
 ## Product boundary
 
 Eye is designed to provide reusable identity-verification primitives to unrelated applications.
