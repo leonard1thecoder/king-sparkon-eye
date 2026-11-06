@@ -7,8 +7,8 @@
 use std::time::Duration;
 
 use reqwest::Url;
-use sha2::{Digest, Sha256};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 use super::config::{PriceSlot, StripeMode, StripeSettings};
 use crate::billing::BillingInterval;
@@ -281,21 +281,25 @@ impl StripeClient {
     /// The Eye account ID is opaque, server-derived identity. It is the only metadata field;
     /// email and other profile data are deliberately omitted. A stable idempotency key makes
     /// concurrent/retried provisioning converge on one Stripe Customer.
-    pub async fn create_customer(
-        &self,
-        eye_user_id: &str,
-    ) -> Result<String, StripeError> {
+    pub async fn create_customer(&self, eye_user_id: &str) -> Result<String, StripeError> {
         if self.mode != StripeMode::Test {
-            return Err(StripeError::InvalidRequest { reason: "live billing is disabled" });
+            return Err(StripeError::InvalidRequest {
+                reason: "live billing is disabled",
+            });
         }
         let suffix = eye_user_id.strip_prefix("usr_").unwrap_or_default();
         if suffix.len() != 32 || !suffix.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err(StripeError::InvalidRequest { reason: "Eye account identifier is invalid" });
+            return Err(StripeError::InvalidRequest {
+                reason: "Eye account identifier is invalid",
+            });
         }
         let digest = Sha256::digest(format!("eye:{}:{}", self.mode, eye_user_id).as_bytes());
         let idempotency_key = format!(
             "eye-customer-{}",
-            digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+            digest
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
         );
         let response = self
             .http
@@ -320,6 +324,7 @@ impl StripeClient {
         }
         Ok(customer.id)
     }
+
     /// Retrieves one price. The identifier is validated by configuration before it reaches here.
     pub async fn retrieve_price(&self, price_id: &str) -> Result<PriceObject, StripeError> {
         let url = format!("{}/v1/prices/{}", self.base, price_id);
