@@ -69,12 +69,14 @@ pub async fn consume_transaction(
     .await?;
 
     Ok(row.map(
-        |(nonce_hash, nonce_enc, pkce_verifier_enc, callback_url, state_valid)| ConsumedTransaction {
-            nonce_hash,
-            nonce_enc,
-            pkce_verifier_enc,
-            callback_url,
-            state_valid,
+        |(nonce_hash, nonce_enc, pkce_verifier_enc, callback_url, state_valid)| {
+            ConsumedTransaction {
+                nonce_hash,
+                nonce_enc,
+                pkce_verifier_enc,
+                callback_url,
+                state_valid,
+            }
         },
     ))
 }
