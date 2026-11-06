@@ -242,13 +242,15 @@ async fn transaction_state_mismatch_burns_cookie_bound_record() {
     let cb = "https://eye.example.test/auth/callback";
     oauth::insert_transaction(
         &pool,
-        &cookie,
-        &state,
-        &nonce,
-        b"encrypted-nonce",
-        &verifier,
-        cb,
-        600,
+        oauth::NewTransaction {
+            cookie_hash: &cookie,
+            state_hash: &state,
+            nonce_hash: &nonce,
+            nonce_enc: b"encrypted-nonce",
+            pkce_verifier_enc: &verifier,
+            callback_url: cb,
+            ttl_secs: 600,
+        },
     )
     .await
     .unwrap();
@@ -275,13 +277,15 @@ async fn transaction_is_consumed_once_and_survives_reconnect() {
     let cb = "https://eye.example.test/auth/callback";
     oauth::insert_transaction(
         &pool,
-        &cookie,
-        &state,
-        &nonce,
-        b"encrypted-nonce",
-        &verifier,
-        cb,
-        600,
+        oauth::NewTransaction {
+            cookie_hash: &cookie,
+            state_hash: &state,
+            nonce_hash: &nonce,
+            nonce_enc: b"encrypted-nonce",
+            pkce_verifier_enc: &verifier,
+            callback_url: cb,
+            ttl_secs: 600,
+        },
     )
     .await
     .unwrap();
