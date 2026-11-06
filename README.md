@@ -78,7 +78,7 @@ The distinction below is deliberate: a proposed API or repository abstraction is
 | Evidence, audit, retention and deletion | **Partial foundation / planned platform controls** | Existing storage abstractions are not the complete tenant-scoped lifecycle in [#189](https://github.com/leonard1thecoder/king-sparkon-eye/issues/189). |
 | TypeScript SDK and conformance suite | **Planned** | [#190](https://github.com/leonard1thecoder/king-sparkon-eye/issues/190). |
 | Developer console and platform website | **Separate implementation issue** | [#191](https://github.com/leonard1thecoder/king-sparkon-eye/issues/191). Current landing/auth pages are not the developer console. |
-| Technical SEO | **Planned** | [#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/192). |
+| Technical SEO | **Partial** | [#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/192): homepage metadata, canonical/social tags, WebSite JSON-LD, robots, sitemap and non-indexable route headers are implemented in the issue branch. Expanded public docs pages and measured performance baselines remain outstanding. |
 
 ### Important security and readiness blockers
 
@@ -119,6 +119,8 @@ These are the relevant routes mounted by the current Rust service. They are not 
 | Method | Path | Current behavior |
 |---|---|---|
 | GET | `/` | Public product landing page. |
+| GET | `/robots.txt` | Public crawler policy and sitemap discovery. |
+| GET | `/sitemap.xml` | XML sitemap containing only the canonical public homepage. |
 | GET | `/health/live` | Process liveness response. |
 | GET | `/health/ready` | Readiness and dependency status. |
 | POST | `/v1/enrollment/photo-assessments` | Authenticated, synchronous photo assessment; no identity enrollment or persistence. |
@@ -135,6 +137,29 @@ These are the relevant routes mounted by the current Rust service. They are not 
 The current photo-assessment response is synchronous and includes an assessment identifier, request identifier, suitability, reason codes, persistence status, model version and policy version. It reports `persistence: NOT_REQUESTED`; it does not create an identity, save a face template, create an asynchronous verification session, or publish a result event.
 
 The existing [OpenAPI document](openapi/eye.openapi.json) describes the earlier photo-assessment / gate-identification contract. It is **not yet the canonical contract for the new standalone platform**. The architecture and API contract work is tracked by [#182](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182) and [#186](https://github.com/leonard1thecoder/king-sparkon-eye/issues/186). Until that contract is implemented and verified, this README intentionally does not provide a working identity-verification quick start or invent request/response examples.
+
+
+## Public-site SEO baseline
+
+The current deployed-site origin is configured as the repository homepage: https://king-sparkon-eye.vercel.app. src/seo.rs is the source of truth for that origin and the crawl-control endpoints.
+
+- The / route is currently the **only** public, indexable route. It is server-rendered as static HTML by Axum and is the only URL in /sitemap.xml.
+- /robots.txt allows public content and disallows /auth/, /v1/, /health/, and reserved private route classes such as /console/, /account/, /sessions/, /tenants/ and /verification/.
+- Account pages declare noindex,nofollow,noarchive; account, health and API route responses also send X-Robots-Tag: noindex, nofollow, noarchive.
+- The homepage has a unique title and description, an absolute canonical URL, Open Graph and Twitter/X metadata, a dedicated same-origin SVG favicon with the existing GIF logo as fallback, and a minimal WebSite JSON-LD object. Structured data intentionally contains no fabricated legal entity details, pricing, ratings, customers or availability.
+- The sitemap intentionally excludes authentication, health and API routes. It also excludes /api, /privacy, /terms, /consent, developer-console and session pages because those public product pages are not currently mounted. Do not add a route to the sitemap until it exists, is public, has crawlable content and has its own canonical metadata. The broader website/console work is tracked in [#191](https://github.com/leonard1thecoder/king-sparkon-eye/issues/191), and the legacy public-pages issue is [#35](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35).
+- The current API specification remains a legacy photo-assessment contract, not the canonical standalone identity API. The landing page links to implementation status rather than presenting that legacy OpenAPI document as the new platform contract.
+
+### Search launch checklist
+
+1. Verify ownership of https://king-sparkon-eye.vercel.app/ in Google Search Console and Bing Webmaster Tools using the provider's current verification flow.
+2. Submit https://king-sparkon-eye.vercel.app/sitemap.xml after ownership is verified.
+3. Inspect the homepage URL and rendered canonical/social metadata in each provider.
+4. Check that /auth/*, /v1/* and /health/* are excluded from indexing; robots exclusions are crawl guidance, while noindex headers/meta are the indexing controls.
+5. Re-submit the sitemap when additional public pages are implemented with their own canonical URLs.
+6. Measure mobile and desktop Core Web Vitals on the deployed production site before launch and after material changes. **No field-data or Lighthouse baseline has been measured in this repository yet.** Do not claim a score or passing Core Web Vitals until a measurement is recorded.
+
+The sitemap's single homepage entry is deliberate, not a placeholder for speculative routes. Search visibility for capabilities, API reference, security/privacy and contact pages depends on those real pages being delivered under #191/#35 and the canonical API contract work in #182/#186.
 
 ## Asynchronous lifecycle — target behavior
 
