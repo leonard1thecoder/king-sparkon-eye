@@ -83,9 +83,7 @@ async fn sitemap_is_valid_xml_and_contains_only_the_canonical_public_homepage() 
         Some("application/xml; charset=utf-8")
     );
     assert!(sitemap.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
-    assert!(sitemap.contains(
-        "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">"
-    ));
+    assert!(sitemap.contains("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">"));
     assert!(sitemap.contains(&format!("<loc>{PRODUCTION_ORIGIN}/</loc>")));
     assert_eq!(
         sitemap.matches("<url>").count(),
@@ -135,19 +133,13 @@ async fn account_pages_are_explicitly_non_indexable() {
     let page = String::from_utf8(body).unwrap();
 
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        robots.as_deref(),
-        Some("noindex, nofollow, noarchive")
-    );
-    assert!(page.contains(
-        "<meta name=\"robots\" content=\"noindex,nofollow,noarchive\">"
-    ));
+    assert_eq!(robots.as_deref(), Some("noindex, nofollow, noarchive"));
+    assert!(page.contains("<meta name=\"robots\" content=\"noindex,nofollow,noarchive\">"));
 }
 
 #[tokio::test]
 async fn public_share_image_remains_accessible_to_preview_crawlers() {
-    let (status, content_type, robots, body) =
-        request(Method::GET, "/assets/hero.jpg").await;
+    let (status, content_type, robots, body) = request(Method::GET, "/assets/hero.jpg").await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(content_type.as_deref(), Some("image/jpeg"));
@@ -157,8 +149,7 @@ async fn public_share_image_remains_accessible_to_preview_crawlers() {
 
 #[tokio::test]
 async fn branded_favicon_is_served_as_svg() {
-    let (status, content_type, robots, body) =
-        request(Method::GET, "/assets/favicon.svg").await;
+    let (status, content_type, robots, body) = request(Method::GET, "/assets/favicon.svg").await;
     let svg = String::from_utf8(body).unwrap();
 
     assert_eq!(status, StatusCode::OK);
@@ -185,11 +176,7 @@ async fn health_and_api_responses_are_non_indexable() {
         Some("noindex, nofollow, noarchive")
     );
 
-    let (api_status, _, api_robots, _) =
-        request(Method::POST, "/v1/enrollment/photo-assessments").await;
+    let (api_status, _, api_robots, _) = request(Method::POST, "/v1/enrollment/photo-assessments").await;
     assert_eq!(api_status, StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        api_robots.as_deref(),
-        Some("noindex, nofollow, noarchive")
-    );
+    assert_eq!(api_robots.as_deref(), Some("noindex, nofollow, noarchive"));
 }
