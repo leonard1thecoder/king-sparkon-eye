@@ -85,11 +85,7 @@ async fn seed_user(pool: &PgPool, email: &str) -> String {
     user_id
 }
 
-async fn post(
-    database_url: &str,
-    path: &str,
-    payload: Value,
-) -> (axum::http::StatusCode, Value) {
+async fn post(database_url: &str, path: &str, payload: Value) -> (axum::http::StatusCode, Value) {
     let app = api::router(config(database_url))
         .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41000))));
     let response = app
