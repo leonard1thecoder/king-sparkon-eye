@@ -14,7 +14,6 @@ use super::MeterId;
 
 const STRIPE_METER_EVENT_URL: &str = "https://api.stripe.com/v1/billing/meter_events";
 const MAX_EVENT_NAME_LEN: usize = 100;
-const MAX_IDENTIFIER_LEN: usize = 100;
 
 #[derive(Clone)]
 pub struct StripeMeterConfig {
