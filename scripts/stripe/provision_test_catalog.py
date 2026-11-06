@@ -151,6 +151,24 @@ class StripeApi:
         payload = self._request("GET", "/v1/prices/search", {"query": query, "limit": "10"})
         return self._search_data(payload)
 
+    def search_prices_for_slot(self, plan_id: str, interval_key: str) -> list[dict[str, Any]]:
+        query = (
+            "metadata['eye_plan_id']:'" + plan_id + "' AND "
+            "metadata['eye_billing_interval']:'" + interval_key + "'"
+        )
+        payload = self._request("GET", "/v1/prices/search", {"query": query, "limit": "100"})
+        return self._search_data(payload)
+
+    def archive_price(self, price_id: str) -> dict[str, Any]:
+        if not re.fullmatch(r"price_[A-Za-z0-9_]+", price_id):
+            raise ProvisionError("cannot archive an invalid Stripe Price identifier")
+        return self._request(
+            "POST",
+            "/v1/prices/" + price_id,
+            {"active": "false"},
+            "eye-archive-" + price_id,
+        )
+
     def create_price(self, product_id: str, plan_id: str, version: int,
                      interval_key: str, stripe_interval: str, amount: int,
                      price_key: str) -> dict[str, Any]:
@@ -188,27 +206,76 @@ def _one_or_create(items: list[dict[str, Any]], create: Any, label: str) -> dict
     return create()
 
 
-def provision_catalog(catalog: dict[str, Any], stripe: Any) -> list[tuple[str, str]]:
-    """Create or reuse exactly one product and four base prices per paid plan version."""
+def archive_superseded_prices(
+    stripe: Any,
+    product_id: str,
+    plan_id: str,
+    interval_key: str,
+    current_version: int,
+) -> None:
+    """Deactivate older test Prices only after the current catalog Price is verified."""
+    for price in stripe.search_prices_for_slot(plan_id, interval_key):
+        price_id = price.get("id")
+        metadata = price.get("metadata")
+        if (
+            not isinstance(price_id, str)
+            or not re.fullmatch(r"price_[A-Za-z0-9_]+", price_id)
+            or not isinstance(metadata, dict)
+            or metadata.get("eye_plan_id") != plan_id
+            or metadata.get("eye_billing_interval") != interval_key
+            or price.get("product") != product_id
+            or price.get("livemode") is not False
+        ):
+            raise ProvisionError("Stripe returned a mismatched Price while checking superseded catalog entries")
+        raw_version = metadata.get("eye_plan_version")
+        if not isinstance(raw_version, str) or not re.fullmatch(r"[1-9][0-9]*", raw_version):
+            raise ProvisionError("Stripe Price has an invalid catalog version")
+        version = int(raw_version)
+        # A future-dated catalog Price is not superseded by the current catalog.
+        if version >= current_version:
+            continue
+        if price.get("active") is False:
+            continue
+        if price.get("active") is not True:
+            raise ProvisionError("Stripe Price has an unexpected active state")
+        archived = stripe.archive_price(price_id)
+        if (
+            archived.get("id") != price_id
+            or archived.get("active") is not False
+            or archived.get("livemode") is not False
+            or archived.get("product") != product_id
+        ):
+            raise ProvisionError("Stripe did not confirm safe test Price archival")
+
+
+def provision_catalog(
+    catalog: dict[str, Any],
+    stripe: Any,
+    archive_superseded: bool = False,
+) -> list[tuple[str, str]]:
+    """Create/reuse candidate base prices; optionally archive older test prices."""
     output: list[tuple[str, str]] = []
+    products_by_plan: dict[str, str] = {}
     for plan_id in ("gold", "premium"):
         plan = next(item for item in catalog["plans"] if item["id"] == plan_id)
+        catalog_key = f"eye-plan-{plan_id}"
+        product = _one_or_create(
+            stripe.search_product(catalog_key),
+            lambda: stripe.create_product(plan_id, catalog_key),
+            catalog_key,
+        )
+        product_id = product.get("id")
+        if (
+            not isinstance(product_id, str)
+            or not product_id.startswith("prod_")
+            or product.get("active") is not True
+            or product.get("livemode") is not False
+        ):
+            raise ProvisionError("matched Stripe Product is invalid or inactive")
+        products_by_plan[plan_id] = product_id
+
         for version in plan["versions"]:
             version_number = int(version["version"])
-            catalog_key = f"eye-plan-{plan_id}"
-            product = _one_or_create(
-                stripe.search_product(catalog_key),
-                lambda: stripe.create_product(plan_id, catalog_key),
-                catalog_key,
-            )
-            product_id = product.get("id")
-            if (
-                not isinstance(product_id, str)
-                or not product_id.startswith("prod_")
-                or product.get("active") is not True
-                or product.get("livemode") is not False
-            ):
-                raise ProvisionError("matched Stripe Product is invalid or inactive")
             for interval_key, stripe_interval in INTERVALS:
                 price_key = f"{plan_id}-v{version_number}-{interval_key}"
                 amount = amount_to_minor_units(version["base"][interval_key])
@@ -237,26 +304,50 @@ def provision_catalog(catalog: dict[str, Any], stripe: Any) -> list[tuple[str, s
                 if version_number > 1:
                     env_name += f"_V{version_number}"
                 output.append((env_name, price["id"]))
-    return output
 
+    # Do not deactivate historical Prices until every current catalog Price was found,
+    # created and validated successfully. Existing subscriptions keep their historical
+    # Price; setting active=false only prevents new subscriptions from selecting it.
+    if archive_superseded:
+        for plan_id in ("gold", "premium"):
+            plan = next(item for item in catalog["plans"] if item["id"] == plan_id)
+            latest_version = max(int(version["version"]) for version in plan["versions"])
+            for interval_key, _ in INTERVALS:
+                archive_superseded_prices(
+                    stripe,
+                    products_by_plan[plan_id],
+                    plan_id,
+                    interval_key,
+                    latest_version,
+                )
+    return output
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalog", type=Path, default=CATALOG_PATH)
     parser.add_argument("--apply", action="store_true", help="create missing objects in Stripe test mode")
+    parser.add_argument(
+        "--archive-superseded",
+        action="store_true",
+        help="after successful provisioning, deactivate older test Prices for each plan/interval slot",
+    )
     args = parser.parse_args()
     try:
         catalog = load_catalog(args.catalog)
         if not args.apply:
             print("Validated candidate catalog. Dry run only; no Stripe requests were made.")
             print("Would provision Gold/Premium monthly and annual base prices in test mode.")
+            if args.archive_superseded:
+                print("With --apply, would also deactivate superseded test Prices after all current Prices verify.")
             return 0
         secret = os.environ.get("EYE_STRIPE_SECRET_KEY", "")
         stripe = StripeApi(secret)
-        results = provision_catalog(catalog, stripe)
+        results = provision_catalog(catalog, stripe, archive_superseded=args.archive_superseded)
         print("Stripe test catalog is present:")
         for name, price_id in results:
             print(f"{name}={price_id}")
+        if args.archive_superseded:
+            print("Superseded test Prices were deactivated where a newer catalog version exists; historical Prices were retained.")
         print("Candidate prices only. Do not copy these IDs into live configuration.")
         return 0
     except ProvisionError as error:
