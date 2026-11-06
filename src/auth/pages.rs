@@ -118,7 +118,7 @@ const TEMPLATE: &str = r##"<!doctype html>
 :root{color-scheme:dark;--paper:#000;--panel:#0c0c0a;--ink:#f5f3ec;--muted:#a4a59b;--line:#2a2b24;--gold:#e9ae22;--gold-2:#ffc94d;--on-accent:#0a0a08;--bad:#ff9b8a;--ok:#8ec5b1}
 body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:26rem;margin:0 auto;padding:2.5rem 1rem 3rem}
-.auth-brand{display:inline-block;margin:0 0 1.75rem;border-radius:10px}
+.auth-brand{display:flex;justify-content:center;margin:0 0 1.75rem;border-radius:10px}
 .auth-brand img{display:block;height:64px;width:auto}
 a{color:var(--gold-2)}
 a:focus-visible,button:focus-visible,input:focus-visible,.auth-brand:focus-visible{outline:3px solid var(--gold-2);outline-offset:3px}
@@ -135,7 +135,7 @@ button:disabled{cursor:not-allowed}
 .button.google{background:#131314;color:#e3e3e3;border:1px solid #8e918f;gap:.6rem;margin-top:.9rem}
 .button.google:hover{background:#1f1f21;border-color:#c4c7c5}
 .google-mark{width:18px;height:18px;flex:0 0 auto}
-.links{margin-top:1.5rem;font-size:.95rem;color:var(--muted)}
+.links{margin-top:1.5rem;font-size:.95rem;color:var(--muted);text-align:center}
 .hint{font-size:.9rem;color:var(--muted);margin:.3rem 0 0}
 .field-error{color:var(--bad);font-size:.9rem;margin:.35rem 0 0}
 .notice{margin-top:1.1rem;padding:.8rem 1rem;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
@@ -525,6 +525,15 @@ mod tests {
         let reset = render("t", "h", RESET_BODY, RESET_SCRIPT).0;
         assert!(reset.contains("placeholder=\"Choose a password\""));
         assert!(sign_in.contains("input::placeholder{color:var(--muted)"));
+    }
+
+    #[test]
+    fn logo_and_link_lines_are_centred() {
+        let html = render("t", "h", SIGN_IN_BODY, SIGN_IN_SCRIPT).0;
+        assert!(html.contains(".auth-brand{display:flex;justify-content:center;"));
+        assert!(html.contains(
+            ".links{margin-top:1.5rem;font-size:.95rem;color:var(--muted);text-align:center}"
+        ));
     }
 
     #[test]

@@ -572,3 +572,15 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - `README.md` and `docs/PUBLIC-LANDING-PAGE.md` are unchanged.
 
 **Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 480 passed, 0 failed, including new `register_page_offers_google_sign_up` and the updated sign-in Google assertions. Playwright at 375px confirmed both buttons are visible, carry the mark (18px), point at the Google start route, and have no horizontal overflow. The register screenshot was inspected. The Google "G" path data was written from the standard Google mark and should be checked against Google's brand guidelines before release.
+
+
+### Issue #211 — centered auth-page logo and link lines (2026-11-06)
+
+**Branch:** `issue/211-auth-center`  
+**Issue:** [#211](https://github.com/leonard1thecoder/king-sparkon-eye/issues/211)
+
+- The auth-page brand link is a centered flex row, so the logo sits in the middle of the page on every auth page.
+- The link lines below the forms (for example "Forgot password?", "Back to sign in", "Create an account") are centered with `text-align:center`. Form fields and labels stay left-aligned.
+- No markup or route changes. `README.md` and `docs/PUBLIC-LANDING-PAGE.md` do not describe alignment, so they are unchanged.
+
+**Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 481 passed, 0 failed, including the new `logo_and_link_lines_are_centred`. Playwright at 375px and 1280px on sign-in and forgot-password: logo and link-line centre offsets are 0px and there is no horizontal overflow. The 375px forgot-password screenshot was inspected.
