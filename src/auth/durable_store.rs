@@ -336,6 +336,50 @@ impl DurableEyeStore {
         rows.into_iter().next().ok_or(DurableStoreError::Rejected)
     }
 
+    pub async fn create_password_reset_token(
+        &self,
+        token_hash_hex: &str,
+        email: &str,
+        now_ms: u64,
+        ttl_ms: u64,
+    ) -> Result<Option<String>, DurableStoreError> {
+        let p_token_hash = format!("\\x{token_hash_hex}");
+        let rows: Vec<serde_json::Value> = self
+            .rpc(
+                "eye_create_password_reset_token",
+                json!({
+                    "p_token_hash": p_token_hash,
+                    "p_email": email,
+                    "p_now_ms": now_ms,
+                    "p_ttl_ms": ttl_ms,
+                }),
+            )
+            .await?;
+        Ok(rows.first().and_then(|r| r.get("email").and_then(|e| e.as_str()).map(|s| s.to_string())))
+    }
+
+    pub async fn consume_password_reset_token(
+        &self,
+        token_hash_hex: &str,
+        new_password_hash: &str,
+        new_salt: &str,
+        now_ms: u64,
+    ) -> Result<bool, DurableStoreError> {
+        let p_token_hash = format!("\\x{token_hash_hex}");
+        let rows: Vec<BooleanResult> = self
+            .rpc(
+                "eye_consume_password_reset_token",
+                json!({
+                    "p_token_hash": p_token_hash,
+                    "p_new_password_hash": new_password_hash,
+                    "p_new_salt": new_salt,
+                    "p_now_ms": now_ms,
+                }),
+            )
+            .await?;
+        Ok(rows.first().is_some_and(|row| row.ok))
+    }
+
     pub async fn issue_refresh_token(
         &self,
         token_hash: &str,

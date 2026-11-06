@@ -98,19 +98,19 @@ async fn callback_page_never_renders_query_values() {
 }
 
 #[tokio::test]
-async fn unmounted_routes_are_labelled_unavailable_with_disabled_forms() {
+async fn auth_forms_are_enabled_and_ready() {
     for path in [
         "/auth/forgot-password",
-        "/auth/reset-password",
+        "/auth/reset-password?token=mocktoken",
     ] {
         let (_, _, body) = get(path).await;
         assert!(
-            body.contains("not available on this server yet"),
-            "{path} explains the unavailable state"
+            !body.contains("not available on this server yet"),
+            "{path} should be available"
         );
         assert!(
-            body.contains("<fieldset disabled>"),
-            "{path} disables its form"
+            !body.contains("<fieldset disabled>"),
+            "{path} enables its form"
         );
     }
 }
