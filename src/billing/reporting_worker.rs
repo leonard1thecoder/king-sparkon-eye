@@ -138,14 +138,7 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
             claimed_rows: claimed.len(),
             ..WorkerBatchResult::default()
         };
-        let mut groups: BTreeMap<(String, MeterId, NaiveDate), Vec<ClaimedUsageReport>> =
-            BTreeMap::new();
-        for row in claimed {
-            groups
-                .entry((row.tenant_id.clone(), row.meter, row.period_start))
-                .or_default()
-                .push(row);
-        }
+        let groups = group_claimed_rows(claimed);
         result.report_groups = groups.len();
 
         for ((tenant, meter, period_start), rows) in groups {
@@ -316,6 +309,19 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
     }
 }
 
+fn group_claimed_rows(
+    rows: Vec<ClaimedUsageReport>,
+) -> BTreeMap<(String, MeterId, NaiveDate), Vec<ClaimedUsageReport>> {
+    let mut groups = BTreeMap::new();
+    for row in rows {
+        groups
+            .entry((row.tenant_id.clone(), row.meter, row.period_start))
+            .or_insert_with(Vec::new)
+            .push(row);
+    }
+    groups
+}
+
 fn period_for(start: NaiveDate) -> Option<AllowancePeriod> {
     if start.day() != 1 {
         return None;
@@ -359,6 +365,23 @@ fn retry_delay(config: ReportingWorkerConfig, attempts: i32) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claimed_rows_are_grouped_by_tenant_meter_and_period() {
+        let month = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
+        let next_month = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
+        let rows = vec![
+            ClaimedUsageReport { id: 1, tenant_id: "tenant_a".into(), meter: MeterId::Enrollments, period_start: month, attempts: 1 },
+            ClaimedUsageReport { id: 2, tenant_id: "tenant_a".into(), meter: MeterId::Enrollments, period_start: month, attempts: 2 },
+            ClaimedUsageReport { id: 3, tenant_id: "tenant_b".into(), meter: MeterId::Enrollments, period_start: month, attempts: 1 },
+            ClaimedUsageReport { id: 4, tenant_id: "tenant_a".into(), meter: MeterId::Enrollments, period_start: next_month, attempts: 1 },
+            ClaimedUsageReport { id: 5, tenant_id: "tenant_a".into(), meter: MeterId::IdentificationRequests, period_start: month, attempts: 1 },
+        ];
+        let groups = group_claimed_rows(rows);
+        assert_eq!(groups.len(), 4);
+        assert_eq!(groups.get(&("tenant_a".into(), MeterId::Enrollments, month)).unwrap().len(), 2);
+        assert_eq!(groups.get(&("tenant_b".into(), MeterId::Enrollments, month)).unwrap().len(), 1);
+    }
 
     #[test]
     fn retry_delay_grows_exponentially_and_is_capped() {
