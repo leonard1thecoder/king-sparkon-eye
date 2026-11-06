@@ -517,9 +517,10 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 **Branch:** `issue/199-center-nav-get-started`  
 **Issue:** [#199](https://github.com/leonard1thecoder/king-sparkon-eye/issues/199)
 
-- Centers the landing-page navigation links on wide screens. The header becomes a three-column grid (brand, links, empty) with the links in the centre column.
-- Below 1100px the brand and links stack, centered. At 620px and below the links wrap centered.
+- The header is a three-column grid: brand, links, actions. The five text links (The flow, Architecture, Pricing, Build status, API contract) sit centered in the middle column.
+- Sign in and Get started stay in the right-hand actions column, flush with the right edge of the header.
+- Below 1100px the brand and actions share the top row and the links sit centered below them. At 620px and below the links wrap, centered.
 - Renames the header's "Sign up" button to "Get started". It still links to `/auth/register`.
 - Updates `README.md` and `docs/PUBLIC-LANDING-PAGE.md`. `AGENTS.md` was reviewed and left unchanged.
 
-**Verification:** Playwright against a local server measured the links' centre against the viewport centre: offset 0px at 1280, 1101, 1024, 768 and 375px. The brand and links do not overlap at any of those widths, and there is no horizontal overflow. The button text is "Get started". `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
+**Verification:** Playwright against a local server, at 1280, 1101, 1024, 768 and 375px: the links' centre is 0px from the viewport centre; the actions end 0px from the header's right edge; no two header groups overlap; no horizontal overflow. The button text is "Get started". `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
