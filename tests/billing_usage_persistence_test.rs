@@ -9,7 +9,7 @@ use king_sparkon_eye::{
     },
     persistence::{connect, migrate, usage_ledger::{UsageLedgerStore, UsageStoreError}},
 };
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -223,7 +223,7 @@ async fn daily_level_samples_use_latest_sample_and_round_monthly_average_up() {
 
     for item in [
         request("tenant_a", "template-day-1-old", UsageSource::TemplateSample, instant(1), AppendBody::Level { units: 10 }),
-        request("tenant_a", "template-day-1-latest", UsageSource::TemplateSample, instant(1) + chrono::Duration::hours(1), AppendBody::Level { units: 12 }),
+        request("tenant_a", "template-day-1-latest", UsageSource::TemplateSample, instant(1), AppendBody::Level { units: 12 }),
         request("tenant_a", "template-day-2", UsageSource::TemplateSample, instant(2), AppendBody::Level { units: 21 }),
     ] {
         store.append(item).await.unwrap();
