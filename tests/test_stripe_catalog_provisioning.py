@@ -49,7 +49,7 @@ class FakeStripe:
                      stripe_interval, amount, key):
         self.created_prices += 1
         item = {
-            "id": f"price_{key}",
+            "id": f"price_{key.replace('-', '_')}",
             "active": True,
             "livemode": False,
             "product": product_id,
