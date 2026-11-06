@@ -463,7 +463,10 @@ mod tests {
     #[test]
     fn implemented_auth_pages_render_enabled_forms_and_live_status_regions() {
         for (html, form_id) in [
-            (render("t", "h", REGISTER_BODY, REGISTER_SCRIPT).0, "register"),
+            (
+                render("t", "h", REGISTER_BODY, REGISTER_SCRIPT).0,
+                "register",
+            ),
             (render("t", "h", FORGOT_BODY, FORGOT_SCRIPT).0, "forgot"),
             (render("t", "h", RESET_BODY, RESET_SCRIPT).0, "reset"),
         ] {
