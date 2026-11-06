@@ -60,6 +60,7 @@ class FakeStripe:
                 "eye_plan_id": plan_id,
                 "eye_plan_version": str(version),
                 "eye_billing_interval": interval_key,
+                "eye_price_key": key,
             },
         }
         self.prices[key] = [item]
