@@ -14,12 +14,14 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::Utc;
-use tokio::{sync::watch, time::{self, MissedTickBehavior}};
+use tokio::{
+    sync::watch,
+    time::{self, MissedTickBehavior},
+};
 use tracing::{error, info, warn};
 
 use super::reporting_worker::{
-    StripeCustomerResolver, UsageReportingWorker, WorkerBatchResult,
-    WorkerError,
+    StripeCustomerResolver, UsageReportingWorker, WorkerBatchResult, WorkerError,
 };
 
 /// Scheduling policy. A single run is executed at a time; missed ticks are skipped.
@@ -211,6 +213,45 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[derive(Default)]
+    struct TestProcessor {
+        calls: AtomicU64,
+    }
+
+    #[async_trait]
+    impl ReportingBatchProcessor for TestProcessor {
+        async fn run_reporting_batch(&self) -> Result<WorkerBatchResult, WorkerError> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            Ok(WorkerBatchResult::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn scheduler_runs_batches_and_stops_gracefully() {
+        let processor = Arc::new(TestProcessor::default());
+        let metrics = Arc::new(ReportingRuntimeMetrics::default());
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let task = tokio::spawn(run_reporting_scheduler(
+            processor.clone(),
+            ReportingRuntimeConfig {
+                poll_interval: StdDuration::from_millis(5),
+            },
+            metrics.clone(),
+            shutdown_rx,
+        ));
+
+        tokio::time::sleep(StdDuration::from_millis(30)).await;
+        shutdown_tx.send(true).expect("scheduler is still subscribed");
+        task.await.expect("scheduler task joins").expect("scheduler stops cleanly");
+
+        let calls = processor.calls.load(Ordering::Relaxed);
+        let snapshot = metrics.snapshot();
+        assert!(calls > 0);
+        assert_eq!(snapshot.batches_started, calls);
+        assert_eq!(snapshot.batches_succeeded, calls);
+    }
 
     #[test]
     fn scheduler_rejects_zero_and_excessive_intervals() {
