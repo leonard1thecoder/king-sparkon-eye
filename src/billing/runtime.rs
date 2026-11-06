@@ -40,15 +40,27 @@ impl BillingRuntime {
     /// configuration is a startup error rather than a silently disabled billing surface.
     pub async fn from_env() -> Result<Option<Self>, BillingRuntimeError> {
         let database_url = std::env::var(ENV_BILLING_DATABASE_URL).ok();
-        let stripe_mode = std::env::var(crate::billing::stripe::config::ENV_STRIPE_MODE).ok();
         let return_origins = std::env::var(ENV_BILLING_RETURN_URL_ORIGINS).ok();
+        let stripe_variables = [
+            crate::billing::stripe::config::ENV_STRIPE_MODE,
+            crate::billing::stripe::config::ENV_STRIPE_SECRET_KEY,
+            crate::billing::stripe::config::ENV_STRIPE_API_BASE,
+            crate::billing::stripe::config::ENV_STRIPE_PRICE_GOLD_MONTHLY,
+            crate::billing::stripe::config::ENV_STRIPE_PRICE_GOLD_ANNUAL,
+            crate::billing::stripe::config::ENV_STRIPE_PRICE_PREMIUM_MONTHLY,
+            crate::billing::stripe::config::ENV_STRIPE_PRICE_PREMIUM_ANNUAL,
+        ];
+        let stripe_config_present = stripe_variables
+            .iter()
+            .any(|name| std::env::var_os(name).is_some());
 
-        if database_url.is_none() && stripe_mode.is_none() && return_origins.is_none() {
+        if database_url.is_none() && !stripe_config_present && return_origins.is_none() {
             return Ok(None);
         }
 
         let database_url = database_url
-            .filter(|value| !value.trim().is_empty())
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
             .ok_or(BillingRuntimeError::InvalidConfiguration)?;
         let return_origins = return_origins
             .filter(|value| !value.trim().is_empty())
