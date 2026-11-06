@@ -166,7 +166,9 @@ async fn handoff_is_single_use_and_bound_to_callback() {
         .await
         .unwrap();
     assert_eq!(
-        oauth::consume_handoff(&pool, &valid_code, cb).await.unwrap(),
+        oauth::consume_handoff(&pool, &valid_code, cb)
+            .await
+            .unwrap(),
         Some(u.clone()),
         "first exchange succeeds"
     );
@@ -212,8 +214,11 @@ async fn expired_handoff_is_rejected() {
 #[tokio::test]
 async fn transaction_state_mismatch_burns_cookie_bound_record() {
     let Some(pool) = pool().await else { return };
-    let (cookie, state, wrong_state) =
-        (hash("cookie-mismatch"), hash("state-mismatch"), hash("wrong-state"));
+    let (cookie, state, wrong_state) = (
+        hash("cookie-mismatch"),
+        hash("state-mismatch"),
+        hash("wrong-state"),
+    );
     let (nonce, verifier) = (hash("nonce-mismatch"), b"encrypted-verifier".to_vec());
     let cb = "https://eye.example.test/auth/callback";
     oauth::insert_transaction(&pool, &cookie, &state, &nonce, &verifier, cb, 600)
@@ -226,7 +231,9 @@ async fn transaction_state_mismatch_burns_cookie_bound_record() {
         .expect("cookie binding locates the transaction");
     assert!(!consumed.state_valid);
     assert_eq!(
-        oauth::consume_transaction(&pool, &cookie, &state).await.unwrap(),
+        oauth::consume_transaction(&pool, &cookie, &state)
+            .await
+            .unwrap(),
         None,
         "wrong-state attempt consumes the transaction"
     );
@@ -256,7 +263,9 @@ async fn transaction_is_consumed_once_and_survives_reconnect() {
     assert_eq!(got.callback_url, cb);
     assert!(got.state_valid);
     assert_eq!(
-        oauth::consume_transaction(&fresh, &cookie, &state).await.unwrap(),
+        oauth::consume_transaction(&fresh, &cookie, &state)
+            .await
+            .unwrap(),
         None,
         "replay rejected"
     );
