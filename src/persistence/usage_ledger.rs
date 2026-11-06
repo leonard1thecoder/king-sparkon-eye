@@ -5,7 +5,7 @@
 //! attendee data, ticket identifiers or raw source payloads. Callers remain responsible for
 //! constructing requests only from authoritative billable boundaries agreed in #138.
 
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{DateTime, Duration, NaiveDate, NaiveTime, Utc};
 use sqlx::{PgPool, Row};
 use thiserror::Error;
 
@@ -62,7 +62,7 @@ impl UsageLedgerStore {
         request: AppendRequest,
     ) -> Result<AppendOutcome, UsageStoreError> {
         let (body_kind, quantity, reversal_key) = encode_body(&request.body)?;
-        validate_source_body(request.source, &request.body)?;
+        validate_source_body(request.source, request.occurred_at, &request.body)?;
         let meter = meter_name(request.source.meter());
         let source = source_name(request.source);
         let mut tx = self.pool.begin().await?;
@@ -296,7 +296,7 @@ fn encode_body(body: &AppendBody) -> Result<(&'static str, Option<i64>, Option<S
     }
 }
 
-fn validate_source_body(source: UsageSource, body: &AppendBody) -> Result<(), UsageStoreError> {
+fn validate_source_body(source: UsageSource, occurred_at: DateTime<Utc>, body: &AppendBody) -> Result<(), UsageStoreError> {
     let valid = matches!(
         (source, body),
         (UsageSource::ConfirmedEnrollment, AppendBody::Flow { .. } | AppendBody::Reversal { .. })
@@ -304,7 +304,12 @@ fn validate_source_body(source: UsageSource, body: &AppendBody) -> Result<(), Us
             | (UsageSource::TemplateSample, AppendBody::Level { .. })
             | (UsageSource::PhotoStorageSample, AppendBody::Level { .. })
     );
-    if valid { Ok(()) } else { Err(UsageStoreError::Invalid) }
+    let midnight = occurred_at.time() == NaiveTime::from_hms_opt(0, 0, 0).expect("valid midnight");
+    if valid && (matches!(body, AppendBody::Flow { .. } | AppendBody::Reversal { .. }) || midnight) {
+        Ok(())
+    } else {
+        Err(UsageStoreError::Invalid)
+    }
 }
 
 fn source_name(source: UsageSource) -> &'static str {
