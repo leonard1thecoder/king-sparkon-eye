@@ -77,9 +77,17 @@ python3 scripts/stripe/provision_test_catalog.py
 EYE_STRIPE_SECRET_KEY=sk_test_... python3 scripts/stripe/provision_test_catalog.py --apply
 ```
 
-The default command validates the candidate catalog and performs no network requests. `--apply` requires an `sk_test_` key; the API host is fixed to Stripe and redirects are not followed. It creates or reuses one Product per paid plan and one licensed recurring base Price per monthly/annual interval. Stable metadata keys are searched before creation, Stripe idempotency keys are supplied, and multiple matches or mismatched existing prices fail closed. Amounts are parsed from the candidate JSON and converted exactly to USD minor units; no amount or Stripe ID is hardcoded. The command prints the resulting test Price IDs for operator-managed test configuration.
+To deactivate superseded **test-mode** base Prices after every latest catalog Price has been created or verified, opt in explicitly:
 
-This is **not production price approval**. It deliberately provisions only the four candidate base-price slots for Gold and Premium. Free has no Stripe Price. It does not provision metered usage prices, change existing prices, archive superseded prices, or wire startup/runtime billing. A changed price requires a new catalog version/key; do not mutate an existing version in place. Do not use the generated IDs with live keys.
+```bash
+EYE_STRIPE_SECRET_KEY=sk_test_... python3 scripts/stripe/provision_test_catalog.py --apply --archive-superseded
+```
+
+Archival is never performed by default. The command searches only Prices tagged for the same Eye plan and billing interval, verifies the Stripe test-mode flag and owning Product, and deactivates only versions older than the latest **effective** version in the candidate catalog. A future-dated version is neither provisioned nor used to archive the currently effective Price. It retains old Price objects so existing subscriptions and historical invoices keep their references. The operation is idempotent; already-inactive historical Prices are left unchanged. Live keys are rejected by the script.
+
+The default command validates the candidate catalog and performs no network requests. `--apply` requires an `sk_test_` key; the API host is fixed to Stripe and redirects are not followed. It creates or reuses one Product per paid plan and the latest version's licensed recurring base Price for each monthly/annual interval. Stable metadata keys are searched before creation, Stripe idempotency keys are supplied, and multiple matches or mismatched existing prices fail closed. Optional superseded-Price archival is a separate explicit flag and runs only after all current catalog Prices have been verified. Amounts are parsed from the candidate JSON and converted exactly to USD minor units; no amount or Stripe ID is hardcoded. The command prints the resulting test Price IDs for operator-managed test configuration.
+
+This is **not production price approval**. It deliberately provisions only the four candidate base-price slots for Gold and Premium. Free has no Stripe Price. It does not provision metered usage prices or wire startup/runtime billing. Superseded test Prices can be deactivated only with the explicit `--archive-superseded` flag; historical Price objects are retained. A changed price requires a new catalog version/key; do not mutate an existing version in place. Do not use the generated IDs with live keys.
 
 
 ### Hosted Checkout and Customer Portal adapter primitives (#147 partial)
