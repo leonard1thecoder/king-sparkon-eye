@@ -19,17 +19,17 @@ jobs:
           ref: issue/124-streaming-multipart-limit
       - uses: dtolnay/rust-toolchain@1.97.0
         with:
-          components: rustfmt
-      - name: Format Rust sources and resolve the selected dependency features
+          components: rustfmt, clippy
+      - name: Format, resolve dependencies and run the full Rust suite
         run: |
           cargo fmt --all
-          cargo check --all-features
-      - name: Commit generated formatting and lockfile
+          cargo test --all-features
+      - name: Commit generated lockfile and formatted sources
         run: |
-          if ! git diff --quiet -- Cargo.lock src; then
+          if ! git diff --quiet -- Cargo.lock src tests; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Cargo.lock src
-            git commit -m "chore(upload): regenerate lockfile and format streaming ingress"
+            git add Cargo.lock src tests
+            git commit -m "test(upload): validate streamed multipart ingress"
             git push origin HEAD:issue/124-streaming-multipart-limit
           fi
