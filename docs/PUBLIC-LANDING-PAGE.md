@@ -1,11 +1,30 @@
 # Public landing page — design and claim brief
 
+
+> **Current product direction — 6 November 2026:** Eye is a standalone, integration-agnostic, tenant-isolated, face-only identity-verification platform. The earlier event/ticket/gate-admission content and candidate pricing described below are historical design context, not current product claims or public offers. The live landing-page copy was aligned with the current platform boundary as part of #192.
+
+## Current platform copy and SEO contract
+
+- Audience: developers and product teams evaluating face-based identity-verification infrastructure for their own applications.
+- Product statement: an integration-agnostic identity-verification platform foundation. The current Rust service provides bounded photo assessment and YuNet face detection; identity lifecycle, face embeddings, matching, scoped identification and asynchronous verification remain planned.
+- The integrating application owns users, permissions, purpose selection, consent capture and final business decisions. Eye does not own another application's business workflows.
+- Face similarity is probabilistic. Do not claim liveness detection, legal identity proof, calibrated accuracy, production readiness or authorization.
+- The public homepage is the only currently implemented indexable route. Its canonical origin is https://king-sparkon-eye.vercel.app/, matching the repository homepage configuration.
+- The homepage includes a unique title/description, canonical URL, Open Graph and Twitter/X preview metadata, a same-origin share image, a dedicated SVG favicon with a GIF fallback and minimal WebSite JSON-LD. No Organization legal details, product prices, ratings, customer counts or availability are fabricated.
+- /robots.txt permits the public homepage and disallows account, API, health and reserved private route classes. /sitemap.xml contains only the implemented canonical homepage.
+- Account pages are noindex; account, health and API responses send X-Robots-Tag noindex directives. No private route is added to the sitemap.
+- The current OpenAPI document is a legacy photo-assessment contract, not the canonical standalone identity API. Do not market it as the new platform API. The API/docs and developer-console surface depends on #182, #186, #190 and #191.
+- Capabilities, API reference, privacy/terms and contact pages are not mounted yet. Do not add speculative routes to the sitemap; deliver real pages under #191/#35 before indexing them.
+- Search Console/Bing ownership and sitemap submission are launch tasks, not claimed as completed. Core Web Vitals have not yet been measured; record field/lab data before asserting a baseline or passing score.
+
+## Historical event-access audience and primary action (superseded)
+
 **Issue:** [#172 — Add candidate pricing and original visuals to the public landing page](https://github.com/leonard1thecoder/king-sparkon-eye/issues/172)  \n**CTA polish:** [#174 — Use rounded pill styling for landing-page CTA buttons](https://github.com/leonard1thecoder/king-sparkon-eye/issues/174)  
 **Branding:** [#177 — Replace hero artwork with animated King Sparkon Eye branding](https://github.com/leonard1thecoder/king-sparkon-eye/issues/177) (animated hero overridden by [#194](https://github.com/leonard1thecoder/king-sparkon-eye/issues/194)), [#179 — Apply the logo to authentication screens](https://github.com/leonard1thecoder/king-sparkon-eye/issues/179) (merged in [#180](https://github.com/leonard1thecoder/king-sparkon-eye/pull/180))  
 **Related design guidance:** [#70 — Prevent generic AI-generated landing page and verify UX quality](https://github.com/leonard1thecoder/king-sparkon-eye/issues/70)  
 **Related public-pages scope:** [#35 — Public landing, API, consent, terms and privacy pages](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35)
 
-## Audience and primary action
+## Historical audience and primary action
 
 The page is for event operators, technical evaluators, and integration teams assessing whether King Sparkon Eye fits a QR-free gate workflow. It answers four questions:
 

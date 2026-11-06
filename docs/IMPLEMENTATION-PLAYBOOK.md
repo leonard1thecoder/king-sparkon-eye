@@ -15,6 +15,19 @@ As of 6 November 2026, Eye's approved direction is a standalone, integration-agn
 - The current implementation sequence is epic [#181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and task issues [#182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182). Read those issues before selecting work; reconcile legacy issues rather than duplicating them.
 - The README and #182/#186 are the current product/API direction. The existing OpenAPI and older sections in this playbook may still describe the legacy gate contract; do not treat them as a shipped standalone API.
 
+## Technical SEO implementation baseline (#192)
+
+The SEO baseline is implemented for the currently mounted public surface; it does not imply that the broader public website or developer console is complete.
+
+- The repository homepage setting identifies https://king-sparkon-eye.vercel.app as the canonical production origin. Keep the origin centralized in src/seo.rs; never infer a Vercel preview URL or introduce a second host.
+- Only the real homepage (/) belongs in the current sitemap. Add additional URLs only after the corresponding public page is implemented, crawlable without client interaction, and supplied with unique metadata and a canonical URL.
+- /robots.txt is crawl guidance. Account, API and health responses additionally send X-Robots-Tag: noindex, nofollow, noarchive; auth HTML also declares the same meta robots policy.
+- Homepage metadata includes canonical, Open Graph, Twitter/X and a minimal WebSite JSON-LD object. Structured data must match visible content and must not invent legal entity details, prices, ratings, customers, certifications, integrations or product availability.
+- Keep face-only probabilistic claim boundaries explicit. Do not claim liveness, legal identity proof, a verified accuracy rate or business authorization.
+- The legacy OpenAPI file is not the canonical standalone platform contract. Do not add it to public SEO navigation as the new API reference.
+- Search Console/Bing verification and sitemap submission are launch tasks. Core Web Vitals are not measured until a production field/lab report is captured; report unknown rather than inventing a baseline.
+- Current sitemap scope is intentionally limited because the expanded public site/API docs/security/privacy/contact pages are not mounted yet. Coordinate those routes with #35, #182, #186, #190 and #191 before indexing them.
+
 ## 1. Non-negotiable rules
 
 1. **One actionable issue = one branch = one pull request.** Use `issue/<number>-<short-slug>`, branch from the latest `main`, and never commit directly to `main`.

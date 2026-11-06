@@ -24,6 +24,7 @@ const MIN_PASSWORD_LEN: usize = 10;
 /// Landing-page images, compiled into the binary so the service stays one file.
 const LOGO_GIF: &[u8] = include_bytes!("../../public/assets/logo.gif");
 const HERO_JPG: &[u8] = include_bytes!("../../public/assets/hero.jpg");
+const FAVICON_SVG: &[u8] = include_bytes!("../../public/assets/favicon.svg");
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -32,13 +33,18 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/forgot-password", get(forgot_password))
         .route("/auth/reset-password", get(reset_password))
         .route("/auth/callback", get(callback))
-        .route("/assets/{name}", get(asset))
+}
+
+/// Public brand assets remain crawlable and usable by social-preview crawlers.
+pub fn asset_routes() -> Router<AppState> {
+    Router::new().route("/assets/{name}", get(asset))
 }
 
 async fn asset(Path(name): Path<String>) -> Response {
     let (content_type, bytes) = match name.as_str() {
         "logo.gif" => ("image/gif", LOGO_GIF),
         "hero.jpg" => ("image/jpeg", HERO_JPG),
+        "favicon.svg" => ("image/svg+xml", FAVICON_SVG),
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
     (
@@ -112,7 +118,7 @@ const TEMPLATE: &str = r##"<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex">
+<meta name="robots" content="noindex,nofollow,noarchive">
 <title>{{TITLE}} · King Sparkon Eye</title>
 <style>
 :root{color-scheme:dark;--paper:#000;--panel:#0c0c0a;--ink:#f5f3ec;--muted:#a4a59b;--line:#2a2b24;--gold:#e9ae22;--gold-2:#ffc94d;--on-accent:#0a0a08;--bad:#ff9b8a;--ok:#8ec5b1}
