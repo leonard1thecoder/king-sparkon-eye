@@ -1000,7 +1000,7 @@ async fn register_account(
             &password_hash,
             &salt,
             crate::auth::UserRole::GateOperator,
-            &["enrollment:write".to_string()],
+            &[],
             now,
         )
         .await
