@@ -21,7 +21,8 @@ use tokio::sync::RwLock;
 
 use crate::api::AppState;
 use crate::auth::durable_store::{
-    DurableEyeStore, DurableStoreError, DurableUser, PasswordCredentials, hash_hex, new_oauth_user,
+    DurableEyeStore, DurableStoreError, DurableUser, PasswordCredentials, RegisterUserInput,
+    hash_hex, new_oauth_user,
 };
 use crate::auth::google::{
     ExpectedIdToken, GoogleAuthError, Jwk, PkcePair, build_authorization_url, random_urlsafe,
@@ -996,15 +997,15 @@ async fn register_account(
 
     match oauth
         .store
-        .register_user(
-            &user_id,
-            &email,
-            &password_hash,
-            &salt,
-            crate::auth::UserRole::GateOperator,
-            &["enrollment:write".to_string()],
-            now,
-        )
+        .register_user(RegisterUserInput {
+            user_id: &user_id,
+            email: &email,
+            password_hash: &password_hash,
+            salt: &salt,
+            role: crate::auth::UserRole::GateOperator,
+            scopes: &["enrollment:write".to_string()],
+            now_ms: now,
+        })
         .await
     {
         Ok(_) => StatusCode::CREATED.into_response(),
