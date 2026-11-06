@@ -277,10 +277,22 @@ async fn refresh_rotation_replay_revokes_the_entire_family() {
 
 #[tokio::test]
 async fn rate_limit_counter_is_shared_and_enforces_the_limit() {
-    let Some((pool, store)) = store().await else { return };
+    let Some((pool, store)) = store().await else {
+        return;
+    };
     let bucket = hash_hex(&format!("bucket-{}", Uuid::new_v4()));
     let now = now_ms();
-    assert!(store.allow_oauth_attempt(&bucket, now, 60_000, 1).await.unwrap());
-    assert!(!store.allow_oauth_attempt(&bucket, now, 60_000, 1).await.unwrap());
+    assert!(
+        store
+            .allow_oauth_attempt(&bucket, now, 60_000, 1)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !store
+            .allow_oauth_attempt(&bucket, now, 60_000, 1)
+            .await
+            .unwrap()
+    );
     pool.close().await;
 }
