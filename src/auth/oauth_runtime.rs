@@ -17,8 +17,8 @@ use axum::{
 };
 use reqwest::Client;
 use serde::Deserialize;
-use tokio::sync::RwLock;
 use sqlx::postgres::PgPoolOptions;
+use tokio::sync::RwLock;
 
 use crate::api::AppState;
 use crate::auth::durable_store::{
