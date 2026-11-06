@@ -38,6 +38,19 @@ fn subject() -> String {
     format!("google-sub-{}", Uuid::new_v4().simple())
 }
 
+async fn seed_user(pool: &PgPool, user_id: &str) {
+    sqlx::query(
+        "INSERT INTO eye_auth_users
+            (user_id, email, password_hash, salt, role, scopes, is_active, created_at_ms)
+         VALUES ($1, $2, 'test-hash', 'test-salt', 'GateOperator', '{}'::text[], true, 1)",
+    )
+    .bind(user_id)
+    .bind(format!("{user_id}@example.test"))
+    .execute(pool)
+    .await
+    .expect("seed Eye test user");
+}
+
 #[tokio::test]
 async fn migrations_are_idempotent() {
     let Some(pool) = pool().await else { return };
@@ -48,6 +61,7 @@ async fn migrations_are_idempotent() {
 async fn subject_links_once_and_is_idempotent_for_same_user() {
     let Some(pool) = pool().await else { return };
     let (s, u) = (subject(), user());
+    seed_user(&pool, &u).await;
     assert_eq!(
         identity::link_google_identity(&pool, &s, &u, true)
             .await
@@ -70,6 +84,8 @@ async fn subject_links_once_and_is_idempotent_for_same_user() {
 async fn subject_cannot_be_reassigned_to_another_user() {
     let Some(pool) = pool().await else { return };
     let (s, u1, u2) = (subject(), user(), user());
+    seed_user(&pool, &u1).await;
+    seed_user(&pool, &u2).await;
     identity::link_google_identity(&pool, &s, &u1, true)
         .await
         .unwrap();
@@ -101,6 +117,7 @@ async fn unverified_email_cannot_create_a_provider_link() {
 async fn user_cannot_gain_a_second_google_subject() {
     let Some(pool) = pool().await else { return };
     let (s1, s2, u) = (subject(), subject(), user());
+    seed_user(&pool, &u).await;
     identity::link_google_identity(&pool, &s1, &u, true)
         .await
         .unwrap();
@@ -122,6 +139,8 @@ async fn concurrent_link_of_same_subject_has_one_winner() {
     let Some(pool) = pool().await else { return };
     let pool = Arc::new(pool);
     let (s, u1, u2) = (subject(), user(), user());
+    seed_user(&pool, &u1).await;
+    seed_user(&pool, &u2).await;
     let (p1, p2) = (pool.clone(), pool.clone());
     let (s1, s2) = (s.clone(), s.clone());
     let (a, b) = tokio::join!(
@@ -166,7 +185,9 @@ async fn handoff_is_single_use_and_bound_to_callback() {
         .await
         .unwrap();
     assert_eq!(
-        oauth::consume_handoff(&pool, &valid_code, cb).await.unwrap(),
+        oauth::consume_handoff(&pool, &valid_code, cb)
+            .await
+            .unwrap(),
         Some(u.clone()),
         "first exchange succeeds"
     );
@@ -212,13 +233,27 @@ async fn expired_handoff_is_rejected() {
 #[tokio::test]
 async fn transaction_state_mismatch_burns_cookie_bound_record() {
     let Some(pool) = pool().await else { return };
-    let (cookie, state, wrong_state) =
-        (hash("cookie-mismatch"), hash("state-mismatch"), hash("wrong-state"));
+    let (cookie, state, wrong_state) = (
+        hash("cookie-mismatch"),
+        hash("state-mismatch"),
+        hash("wrong-state"),
+    );
     let (nonce, verifier) = (hash("nonce-mismatch"), b"encrypted-verifier".to_vec());
     let cb = "https://eye.example.test/auth/callback";
-    oauth::insert_transaction(&pool, &cookie, &state, &nonce, &verifier, cb, 600)
-        .await
-        .unwrap();
+    oauth::insert_transaction(
+        &pool,
+        oauth::NewTransaction {
+            cookie_hash: &cookie,
+            state_hash: &state,
+            nonce_hash: &nonce,
+            nonce_enc: b"encrypted-nonce",
+            pkce_verifier_enc: &verifier,
+            callback_url: cb,
+            ttl_secs: 600,
+        },
+    )
+    .await
+    .unwrap();
 
     let consumed = oauth::consume_transaction(&pool, &cookie, &wrong_state)
         .await
@@ -226,7 +261,9 @@ async fn transaction_state_mismatch_burns_cookie_bound_record() {
         .expect("cookie binding locates the transaction");
     assert!(!consumed.state_valid);
     assert_eq!(
-        oauth::consume_transaction(&pool, &cookie, &state).await.unwrap(),
+        oauth::consume_transaction(&pool, &cookie, &state)
+            .await
+            .unwrap(),
         None,
         "wrong-state attempt consumes the transaction"
     );
@@ -238,9 +275,20 @@ async fn transaction_is_consumed_once_and_survives_reconnect() {
     let (cookie, state) = (hash("cookie"), hash("state"));
     let (nonce, verifier) = (hash("nonce"), b"encrypted-verifier".to_vec());
     let cb = "https://eye.example.test/auth/callback";
-    oauth::insert_transaction(&pool, &cookie, &state, &nonce, &verifier, cb, 600)
-        .await
-        .unwrap();
+    oauth::insert_transaction(
+        &pool,
+        oauth::NewTransaction {
+            cookie_hash: &cookie,
+            state_hash: &state,
+            nonce_hash: &nonce,
+            nonce_enc: b"encrypted-nonce",
+            pkce_verifier_enc: &verifier,
+            callback_url: cb,
+            ttl_secs: 600,
+        },
+    )
+    .await
+    .unwrap();
 
     // Simulate a restart: a fresh pool must see the same durable state.
     drop(pool);
@@ -252,11 +300,14 @@ async fn transaction_is_consumed_once_and_survives_reconnect() {
         .unwrap()
         .expect("present after restart");
     assert_eq!(got.nonce_hash, nonce.to_vec());
+    assert_eq!(got.nonce_enc, b"encrypted-nonce".to_vec());
     assert_eq!(got.pkce_verifier_enc, verifier);
     assert_eq!(got.callback_url, cb);
     assert!(got.state_valid);
     assert_eq!(
-        oauth::consume_transaction(&fresh, &cookie, &state).await.unwrap(),
+        oauth::consume_transaction(&fresh, &cookie, &state)
+            .await
+            .unwrap(),
         None,
         "replay rejected"
     );

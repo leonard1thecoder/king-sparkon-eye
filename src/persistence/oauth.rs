@@ -10,6 +10,7 @@ use sqlx::PgPool;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsumedTransaction {
     pub nonce_hash: Vec<u8>,
+    pub nonce_enc: Vec<u8>,
     pub pkce_verifier_enc: Vec<u8>,
     pub callback_url: String,
     /// False when the cookie was found but state mismatched or the transaction expired.
@@ -17,27 +18,36 @@ pub struct ConsumedTransaction {
     pub state_valid: bool,
 }
 
-/// Store an OAuth transaction that expires after `ttl_secs`.
+/// Input for creating a durable OAuth transaction.
+pub struct NewTransaction<'a> {
+    pub cookie_hash: &'a [u8; 32],
+    pub state_hash: &'a [u8; 32],
+    pub nonce_hash: &'a [u8; 32],
+    pub nonce_enc: &'a [u8],
+    pub pkce_verifier_enc: &'a [u8],
+    pub callback_url: &'a str,
+    pub ttl_secs: i64,
+}
+
+type ConsumedTransactionRow = (Vec<u8>, Vec<u8>, Vec<u8>, String, bool);
+
+/// Store an OAuth transaction with a bounded expiry.
 pub async fn insert_transaction(
     pool: &PgPool,
-    cookie_hash: &[u8; 32],
-    state_hash: &[u8; 32],
-    nonce_hash: &[u8; 32],
-    pkce_verifier_enc: &[u8],
-    callback_url: &str,
-    ttl_secs: i64,
+    input: NewTransaction<'_>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO oauth_transactions
-            (cookie_hash, state_hash, nonce_hash, pkce_verifier_enc, callback_url, expires_at)
-         VALUES ($1, $2, $3, $4, $5, now() + make_interval(secs => $6))",
+            (cookie_hash, state_hash, nonce_hash, nonce_enc, pkce_verifier_enc, callback_url, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(secs => $7))",
     )
-    .bind(&cookie_hash[..])
-    .bind(&state_hash[..])
-    .bind(&nonce_hash[..])
-    .bind(pkce_verifier_enc)
-    .bind(callback_url)
-    .bind(ttl_secs as f64)
+    .bind(&input.cookie_hash[..])
+    .bind(&input.state_hash[..])
+    .bind(&input.nonce_hash[..])
+    .bind(input.nonce_enc)
+    .bind(input.pkce_verifier_enc)
+    .bind(input.callback_url)
+    .bind(input.ttl_secs as f64)
     .execute(pool)
     .await?;
     Ok(())
@@ -52,12 +62,12 @@ pub async fn consume_transaction(
 ) -> Result<Option<ConsumedTransaction>, sqlx::Error> {
     // Consume by the HttpOnly cookie binding, not by caller-controlled state alone.
     // A found transaction is burned even when state mismatches or it has expired.
-    let row: Option<(Vec<u8>, Vec<u8>, String, bool)> = sqlx::query_as(
+    let row: Option<ConsumedTransactionRow> = sqlx::query_as(
         "UPDATE oauth_transactions
             SET consumed_at = now()
           WHERE cookie_hash = $1
             AND consumed_at IS NULL
-         RETURNING nonce_hash, pkce_verifier_enc, callback_url,
+         RETURNING nonce_hash, nonce_enc, pkce_verifier_enc, callback_url,
                    (state_hash = $2 AND expires_at > now())",
     )
     .bind(&cookie_hash[..])
@@ -66,11 +76,14 @@ pub async fn consume_transaction(
     .await?;
 
     Ok(row.map(
-        |(nonce_hash, pkce_verifier_enc, callback_url, state_valid)| ConsumedTransaction {
-            nonce_hash,
-            pkce_verifier_enc,
-            callback_url,
-            state_valid,
+        |(nonce_hash, nonce_enc, pkce_verifier_enc, callback_url, state_valid)| {
+            ConsumedTransaction {
+                nonce_hash,
+                nonce_enc,
+                pkce_verifier_enc,
+                callback_url,
+                state_valid,
+            }
         },
     ))
 }
@@ -103,7 +116,7 @@ pub async fn consume_handoff(
     code_hash: &[u8; 32],
     callback_url: &str,
 ) -> Result<Option<String>, sqlx::Error> {
-    let row: Option<(String,)> = sqlx::query_as(
+    let row: Option<(String, bool)> = sqlx::query_as(
         "UPDATE oauth_handoffs
             SET consumed_at = now()
           WHERE code_hash = $1
