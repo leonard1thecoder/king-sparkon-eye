@@ -273,9 +273,7 @@ byId('sign-in').addEventListener('submit', async (event) => {
 });
 "##;
 
-const REGISTER_BODY: &str = r##"<p class="notice unavailable">Account creation is not available on this server yet. This form is disabled and nothing is sent.</p>
-<form id="register" novalidate>
-<fieldset disabled>
+const REGISTER_BODY: &str = r##"<form id="register" novalidate>
 <label for="email">Email</label>
 <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required aria-describedby="email-error">
 <p id="email-error" class="field-error" hidden></p>
@@ -287,7 +285,6 @@ const REGISTER_BODY: &str = r##"<p class="notice unavailable">Account creation i
 <input id="confirm" name="confirm" type="password" autocomplete="new-password" placeholder="Repeat your password" required aria-describedby="confirm-error">
 <p id="confirm-error" class="field-error" hidden></p>
 <button type="submit">Create account</button>
-</fieldset>
 </form>
 <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 <a id="google-register" class="button google" href="#" hidden>{{GOOGLE_MARK}}<span>Sign up with Google</span></a>

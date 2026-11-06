@@ -100,7 +100,6 @@ async fn callback_page_never_renders_query_values() {
 #[tokio::test]
 async fn unmounted_routes_are_labelled_unavailable_with_disabled_forms() {
     for path in [
-        "/auth/register",
         "/auth/forgot-password",
         "/auth/reset-password",
     ] {

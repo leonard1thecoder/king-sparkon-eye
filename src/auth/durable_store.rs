@@ -309,6 +309,33 @@ impl DurableEyeStore {
         Ok(rows.into_iter().next())
     }
 
+    pub async fn register_user(
+        &self,
+        user_id: &str,
+        email: &str,
+        password_hash: &str,
+        salt: &str,
+        role: UserRole,
+        scopes: &[String],
+        now_ms: u64,
+    ) -> Result<DurableUser, DurableStoreError> {
+        let rows: Vec<DurableUser> = self
+            .rpc(
+                "eye_register_user",
+                json!({
+                    "p_user_id": user_id,
+                    "p_email": email,
+                    "p_password_hash": password_hash,
+                    "p_salt": salt,
+                    "p_role": role_name(role),
+                    "p_scopes": scopes,
+                    "p_now_ms": now_ms,
+                }),
+            )
+            .await?;
+        rows.into_iter().next().ok_or(DurableStoreError::Rejected)
+    }
+
     pub async fn issue_refresh_token(
         &self,
         token_hash: &str,
