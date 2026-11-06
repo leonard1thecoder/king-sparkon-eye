@@ -28,6 +28,23 @@ class FakeStripe:
     def search_price(self, key):
         return list(self.prices.get(key, []))
 
+    def search_prices_for_slot(self, plan_id, interval_key):
+        return [
+            item
+            for items in self.prices.values()
+            for item in items
+            if item.get("metadata", {}).get("eye_plan_id") == plan_id
+            and item.get("metadata", {}).get("eye_billing_interval") == interval_key
+        ]
+
+    def archive_price(self, price_id):
+        for items in self.prices.values():
+            for item in items:
+                if item["id"] == price_id:
+                    item["active"] = False
+                    return item
+        raise AssertionError("unknown fake Price")
+
     def create_price(self, product_id, plan_id, version, interval_key,
                      stripe_interval, amount, key):
         self.created_prices += 1
@@ -39,6 +56,11 @@ class FakeStripe:
             "currency": "usd",
             "unit_amount": amount,
             "recurring": {"interval": stripe_interval, "usage_type": "licensed"},
+            "metadata": {
+                "eye_plan_id": plan_id,
+                "eye_plan_version": str(version),
+                "eye_billing_interval": interval_key,
+            },
         }
         self.prices[key] = [item]
         return item
@@ -103,6 +125,72 @@ class ProvisioningTests(unittest.TestCase):
         stripe.prices["gold-v1-monthly"][0]["unit_amount"] = 1
         with self.assertRaises(MODULE.ProvisionError):
             MODULE.provision_catalog(candidate_catalog(), stripe)
+
+
+def candidate_catalog_with_two_versions():
+    catalog = candidate_catalog()
+    for plan in catalog["plans"]:
+        if plan["id"] == "free":
+            continue
+        first = plan["versions"][0]
+        second = {
+            "version": 2,
+            "base": {
+                "monthly": "109.00" if plan["id"] == "gold" else "329.00",
+                "annual": "1090.00" if plan["id"] == "gold" else "3290.00",
+            },
+        }
+        plan["versions"] = [first, second]
+    return catalog
+
+
+class SupersededPriceArchivalTests(unittest.TestCase):
+    def test_archival_is_opt_in_and_preserves_historical_price_objects(self):
+        stripe = FakeStripe()
+        catalog = candidate_catalog_with_two_versions()
+
+        MODULE.provision_catalog(catalog, stripe)
+        self.assertTrue(stripe.prices["gold-v1-monthly"][0]["active"])
+
+        MODULE.provision_catalog(catalog, stripe, archive_superseded=True)
+        old_price = stripe.prices["gold-v1-monthly"][0]
+        current_price = stripe.prices["gold-v2-monthly"][0]
+
+        self.assertFalse(old_price["active"])
+        self.assertTrue(current_price["active"])
+        self.assertIn("gold-v1-monthly", stripe.prices)
+        self.assertEqual(stripe.created_prices, 8)
+
+    def test_archival_is_idempotent_after_old_price_is_inactive(self):
+        stripe = FakeStripe()
+        catalog = candidate_catalog_with_two_versions()
+
+        first = MODULE.provision_catalog(catalog, stripe, archive_superseded=True)
+        created = stripe.created_prices
+        second = MODULE.provision_catalog(catalog, stripe, archive_superseded=True)
+
+        self.assertEqual(first, second)
+        self.assertEqual(stripe.created_prices, created)
+        self.assertFalse(stripe.prices["premium-v1-annual"][0]["active"])
+
+    def test_archival_fails_closed_for_live_or_mismatched_historical_price(self):
+        stripe = FakeStripe()
+        catalog = candidate_catalog_with_two_versions()
+        MODULE.provision_catalog(catalog, stripe)
+        stripe.prices["gold-v1-monthly"][0]["livemode"] = True
+
+        with self.assertRaises(MODULE.ProvisionError):
+            MODULE.archive_superseded_prices(
+                stripe, "prod_gold", "gold", "monthly", 2
+            )
+        self.assertTrue(stripe.prices["gold-v1-monthly"][0]["active"])
+
+    def test_default_provisioning_never_archives_historical_prices(self):
+        stripe = FakeStripe()
+        catalog = candidate_catalog_with_two_versions()
+
+        MODULE.provision_catalog(catalog, stripe)
+        self.assertTrue(stripe.prices["premium-v1-annual"][0]["active"])
 
 
 if __name__ == "__main__":
