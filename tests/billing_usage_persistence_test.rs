@@ -107,8 +107,9 @@ async fn append_is_durable_idempotent_and_creates_reporting_intent_atomically() 
         1
     );
 
+    let pool = fx.pool().await;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM eye_billing_usage_outbox")
-        .fetch_one(&fx.pool().await)
+        .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(count, 1);
