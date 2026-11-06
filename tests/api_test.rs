@@ -1,10 +1,11 @@
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use king_sparkon_eye::api::{
     self, DependencyState, ReadinessStatus, dependency_statuses, readiness,
 };
 use king_sparkon_eye::config::{Config, ENV_VISION_PROVIDER_API_KEY, ENV_VISION_PROVIDER_ENABLED};
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tower::ServiceExt;
 
 fn config(vars: &[(&str, &str)]) -> Config {
@@ -301,6 +302,43 @@ async fn per_file_byte_limit_is_enforced_before_decode() {
     .await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(json["code"], "PAYLOAD_TOO_LARGE");
+}
+
+#[tokio::test]
+async fn streamed_image_limit_stops_before_following_body_chunk_is_polled() {
+    let boundary = "eye-boundary";
+    let mut first = format!(
+        "--{boundary}\\r\\nContent-Disposition: form-data; name=\\\"image\\\"; filename=\\\"photo.png\\\"\\r\\nContent-Type: image/png\\r\\n\\r\\n"
+    ).into_bytes();
+    first.extend_from_slice(&[7u8; 1024]);
+    let second = format!("\\r\\n--{boundary}--\\r\\n").into_bytes();
+    let chunks = vec![first, second];
+    let polled = Arc::new(AtomicUsize::new(0));
+    let stream = futures_util::stream::unfold(
+        (chunks.into_iter(), Arc::clone(&polled)),
+        |(mut chunks, polled)| async move {
+            let chunk = chunks.next()?;
+            polled.fetch_add(1, Ordering::SeqCst);
+            Some((Ok::<Bytes, std::io::Error>(Bytes::from(chunk)), (chunks, polled)))
+        },
+    );
+    let token = enrollment_bearer();
+    let mut vars = oauth_env();
+    vars.push(("EYE_UPLOAD_MAX_BYTES", "32"));
+    let response = api::router(config(&vars))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/enrollment/photo-assessments")
+                .header("content-type", "multipart/form-data; boundary=eye-boundary")
+                .header("authorization", token)
+                .body(Body::from_stream(stream))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(polled.load(Ordering::SeqCst), 1, "the trailing multipart chunk must not be read");
 }
 
 #[tokio::test]

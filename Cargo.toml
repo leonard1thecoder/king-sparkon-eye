@@ -28,3 +28,4 @@ chrono = { version = "0.4", default-features = false }
 axum = "0.8"
 http-body-util = "0.1.5"
 tower = { version = "0.5.3", features = ["util"] }
+futures-util = "0.3"
