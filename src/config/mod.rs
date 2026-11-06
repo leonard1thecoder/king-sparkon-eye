@@ -393,12 +393,32 @@ where
         }
     }
 
-    let parsed_database_url = reqwest::Url::parse(&database_url).map_err(|_| ConfigError::Invalid { name: ENV_OAUTH_DATABASE_URL, reason: "expected a PostgreSQL connection URL".to_owned() })?;
-    if !matches!(parsed_database_url.scheme(), "postgres" | "postgresql") || parsed_database_url.host_str().is_none() || parsed_database_url.path().trim_matches('/').is_empty() {
-        return Err(ConfigError::Invalid { name: ENV_OAUTH_DATABASE_URL, reason: "expected postgres:// or postgresql:// with a database name".to_owned() });
+    let parsed_database_url =
+        reqwest::Url::parse(&database_url).map_err(|_| ConfigError::Invalid {
+            name: ENV_OAUTH_DATABASE_URL,
+            reason: "expected a PostgreSQL connection URL".to_owned(),
+        })?;
+    if !matches!(parsed_database_url.scheme(), "postgres" | "postgresql")
+        || parsed_database_url.host_str().is_none()
+        || parsed_database_url.path().trim_matches('/').is_empty()
+    {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_DATABASE_URL,
+            reason: "expected postgres:// or postgresql:// with a database name".to_owned(),
+        });
     }
-    let key_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &encryption_key).map_err(|_| ConfigError::Invalid { name: ENV_OAUTH_ENCRYPTION_KEY, reason: "must be base64-encoded 32-byte key material".to_owned() })?;
-    if key_bytes.len() != 32 { return Err(ConfigError::Invalid { name: ENV_OAUTH_ENCRYPTION_KEY, reason: "must decode to exactly 32 bytes".to_owned() }); }
+    let key_bytes =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &encryption_key)
+            .map_err(|_| ConfigError::Invalid {
+                name: ENV_OAUTH_ENCRYPTION_KEY,
+                reason: "must be base64-encoded 32-byte key material".to_owned(),
+            })?;
+    if key_bytes.len() != 32 {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_ENCRYPTION_KEY,
+            reason: "must decode to exactly 32 bytes".to_owned(),
+        });
+    }
 
     let mut seen_callbacks = std::collections::HashSet::new();
     let mut callback_count = 0usize;
