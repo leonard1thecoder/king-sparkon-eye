@@ -87,6 +87,17 @@ async fn subject_cannot_be_reassigned_to_another_user() {
 }
 
 #[tokio::test]
+async fn unverified_email_cannot_create_a_provider_link() {
+    let Some(pool) = pool().await else { return };
+    assert_eq!(
+        identity::link_google_identity(&pool, &subject(), &user(), false)
+            .await
+            .unwrap(),
+        LinkOutcome::UnverifiedEmail
+    );
+}
+
+#[tokio::test]
 async fn user_cannot_gain_a_second_google_subject() {
     let Some(pool) = pool().await else { return };
     let (s1, s2, u) = (subject(), subject(), user());
@@ -147,6 +158,15 @@ async fn handoff_is_single_use_and_bound_to_callback() {
     );
     assert_eq!(
         oauth::consume_handoff(&pool, &code, cb).await.unwrap(),
+        None,
+        "callback mismatch burns the handoff"
+    );
+    let valid_code = hash("handoff-valid");
+    oauth::insert_handoff(&pool, &valid_code, &u, cb, 60)
+        .await
+        .unwrap();
+    assert_eq!(
+        oauth::consume_handoff(&pool, &valid_code, cb).await.unwrap(),
         Some(u.clone()),
         "first exchange succeeds"
     );
@@ -190,12 +210,35 @@ async fn expired_handoff_is_rejected() {
 }
 
 #[tokio::test]
+async fn transaction_state_mismatch_burns_cookie_bound_record() {
+    let Some(pool) = pool().await else { return };
+    let (cookie, state, wrong_state) =
+        (hash("cookie-mismatch"), hash("state-mismatch"), hash("wrong-state"));
+    let (nonce, verifier) = (hash("nonce-mismatch"), b"encrypted-verifier".to_vec());
+    let cb = "https://eye.example.test/auth/callback";
+    oauth::insert_transaction(&pool, &cookie, &state, &nonce, &verifier, cb, 600)
+        .await
+        .unwrap();
+
+    let consumed = oauth::consume_transaction(&pool, &cookie, &wrong_state)
+        .await
+        .unwrap()
+        .expect("cookie binding locates the transaction");
+    assert!(!consumed.state_valid);
+    assert_eq!(
+        oauth::consume_transaction(&pool, &cookie, &state).await.unwrap(),
+        None,
+        "wrong-state attempt consumes the transaction"
+    );
+}
+
+#[tokio::test]
 async fn transaction_is_consumed_once_and_survives_reconnect() {
     let Some(pool) = pool().await else { return };
-    let state = hash("state");
+    let (cookie, state) = (hash("cookie"), hash("state"));
     let (nonce, verifier) = (hash("nonce"), b"encrypted-verifier".to_vec());
     let cb = "https://eye.example.test/auth/callback";
-    oauth::insert_transaction(&pool, &state, &nonce, &verifier, cb, 600)
+    oauth::insert_transaction(&pool, &cookie, &state, &nonce, &verifier, cb, 600)
         .await
         .unwrap();
 
@@ -204,15 +247,16 @@ async fn transaction_is_consumed_once_and_survives_reconnect() {
     let url = std::env::var("EYE_TEST_DATABASE_URL").unwrap();
     let fresh = connect(&url).await.unwrap();
 
-    let got = oauth::consume_transaction(&fresh, &state)
+    let got = oauth::consume_transaction(&fresh, &cookie, &state)
         .await
         .unwrap()
         .expect("present after restart");
     assert_eq!(got.nonce_hash, nonce.to_vec());
     assert_eq!(got.pkce_verifier_enc, verifier);
     assert_eq!(got.callback_url, cb);
+    assert!(got.state_valid);
     assert_eq!(
-        oauth::consume_transaction(&fresh, &state).await.unwrap(),
+        oauth::consume_transaction(&fresh, &cookie, &state).await.unwrap(),
         None,
         "replay rejected"
     );

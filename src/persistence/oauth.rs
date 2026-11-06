@@ -12,11 +12,15 @@ pub struct ConsumedTransaction {
     pub nonce_hash: Vec<u8>,
     pub pkce_verifier_enc: Vec<u8>,
     pub callback_url: String,
+    /// False when the cookie was found but state mismatched or the transaction expired.
+    /// The record is consumed regardless, preventing callback retries.
+    pub state_valid: bool,
 }
 
 /// Store an OAuth transaction that expires after `ttl_secs`.
 pub async fn insert_transaction(
     pool: &PgPool,
+    cookie_hash: &[u8; 32],
     state_hash: &[u8; 32],
     nonce_hash: &[u8; 32],
     pkce_verifier_enc: &[u8],
@@ -25,9 +29,10 @@ pub async fn insert_transaction(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO oauth_transactions
-            (state_hash, nonce_hash, pkce_verifier_enc, callback_url, expires_at)
-         VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5))",
+            (cookie_hash, state_hash, nonce_hash, pkce_verifier_enc, callback_url, expires_at)
+         VALUES ($1, $2, $3, $4, $5, now() + make_interval(secs => $6))",
     )
+    .bind(&cookie_hash[..])
     .bind(&state_hash[..])
     .bind(&nonce_hash[..])
     .bind(pkce_verifier_enc)
@@ -42,25 +47,30 @@ pub async fn insert_transaction(
 /// unknown, already consumed, or expired. In every case the row is never reused.
 pub async fn consume_transaction(
     pool: &PgPool,
+    cookie_hash: &[u8; 32],
     state_hash: &[u8; 32],
 ) -> Result<Option<ConsumedTransaction>, sqlx::Error> {
-    let row: Option<(Vec<u8>, Vec<u8>, String)> = sqlx::query_as(
+    // Consume by the HttpOnly cookie binding, not by caller-controlled state alone.
+    // A found transaction is burned even when state mismatches or it has expired.
+    let row: Option<(Vec<u8>, Vec<u8>, String, bool)> = sqlx::query_as(
         "UPDATE oauth_transactions
             SET consumed_at = now()
-          WHERE state_hash = $1
+          WHERE cookie_hash = $1
             AND consumed_at IS NULL
-            AND expires_at > now()
-         RETURNING nonce_hash, pkce_verifier_enc, callback_url",
+         RETURNING nonce_hash, pkce_verifier_enc, callback_url,
+                   (state_hash = $2 AND expires_at > now())",
     )
+    .bind(&cookie_hash[..])
     .bind(&state_hash[..])
     .fetch_optional(pool)
     .await?;
 
     Ok(row.map(
-        |(nonce_hash, pkce_verifier_enc, callback_url)| ConsumedTransaction {
+        |(nonce_hash, pkce_verifier_enc, callback_url, state_valid)| ConsumedTransaction {
             nonce_hash,
             pkce_verifier_enc,
             callback_url,
+            state_valid,
         },
     ))
 }
@@ -87,8 +97,7 @@ pub async fn insert_handoff(
 }
 
 /// Atomically consume a handoff code. Succeeds at most once per code.
-/// Returns the bound user ID only when the callback matches and the code is live.
-/// A callback mismatch does not consume the code.
+/// A callback mismatch or expiry still consumes the code, preventing retries.
 pub async fn consume_handoff(
     pool: &PgPool,
     code_hash: &[u8; 32],
@@ -98,14 +107,12 @@ pub async fn consume_handoff(
         "UPDATE oauth_handoffs
             SET consumed_at = now()
           WHERE code_hash = $1
-            AND callback_url = $2
             AND consumed_at IS NULL
-            AND expires_at > now()
-         RETURNING user_id",
+         RETURNING user_id, (callback_url = $2 AND expires_at > now())",
     )
     .bind(&code_hash[..])
     .bind(callback_url)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(u,)| u))
+    Ok(row.and_then(|(user_id, valid)| valid.then_some(user_id)))
 }

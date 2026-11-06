@@ -14,6 +14,8 @@ pub enum LinkOutcome {
     AlreadyLinked,
     /// The subject belongs to another user, or the user already has a different subject.
     Conflict,
+    /// Email-based linking was attempted without a verified provider email.
+    UnverifiedEmail,
 }
 
 /// Link a Google subject to an Eye user.
@@ -27,6 +29,10 @@ pub async fn link_google_identity(
     user_id: &str,
     email_verified: bool,
 ) -> Result<LinkOutcome, sqlx::Error> {
+    if !email_verified {
+        return Ok(LinkOutcome::UnverifiedEmail);
+    }
+
     // ON CONFLICT DO NOTHING absorbs both unique violations (subject, and the
     // user's existing provider link). We then read back to classify the outcome.
     let inserted = sqlx::query(
