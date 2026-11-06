@@ -14,6 +14,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -75,15 +76,27 @@ def load_catalog(path: Path) -> dict[str, Any]:
         versions = by_id[plan_id].get("versions")
         if not isinstance(versions, list) or not versions:
             raise ProvisionError("each paid plan must have at least one version")
-        for version in versions:
+        previous_effective: date | None = None
+        for index, version in enumerate(versions, start=1):
             try:
-                version_number = version["version"]
-                if isinstance(version_number, bool) or not isinstance(version_number, int) or version_number < 1:
+                if not isinstance(version, dict):
                     raise ValueError("invalid version")
+                version_number = version["version"]
+                if isinstance(version_number, bool) or not isinstance(version_number, int) or version_number != index:
+                    raise ValueError("versions must be consecutive")
+                effective_raw = version["effective_from"]
+                if not isinstance(effective_raw, str):
+                    raise ValueError("invalid effective date")
+                effective = date.fromisoformat(effective_raw)
+                if effective.isoformat() != effective_raw:
+                    raise ValueError("invalid effective date")
+                if previous_effective is not None and effective <= previous_effective:
+                    raise ValueError("effective dates must increase")
+                previous_effective = effective
                 for interval, _ in INTERVALS:
                     amount_to_minor_units(version["base"][interval])
             except (KeyError, TypeError, ValueError):
-                raise ProvisionError("paid plan version is missing a valid base price") from None
+                raise ProvisionError("paid plan version is missing a valid base price or ordered effective date") from None
     return catalog
 
 
@@ -269,8 +282,15 @@ def provision_catalog(
     latest_versions: dict[str, int] = {}
     for plan_id in ("gold", "premium"):
         plan = next(item for item in catalog["plans"] if item["id"] == plan_id)
-        latest_version = max(int(version["version"]) for version in plan["versions"])
-        version = next(item for item in plan["versions"] if int(item["version"]) == latest_version)
+        today_utc = datetime.now(timezone.utc).date()
+        effective_versions = [
+            item for item in plan["versions"]
+            if date.fromisoformat(item["effective_from"]) <= today_utc
+        ]
+        if not effective_versions:
+            raise ProvisionError("no paid plan version is effective as of today")
+        version = max(effective_versions, key=lambda item: int(item["version"]))
+        latest_version = int(version["version"])
         catalog_key = f"eye-plan-{plan_id}"
         product = _one_or_create(
             stripe.search_product(catalog_key),
