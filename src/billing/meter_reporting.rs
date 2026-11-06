@@ -193,9 +193,9 @@ impl StripeMeterReporter {
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED => Ok(()),
-            status if status.is_client_error() || status.is_server_error() => {
-                Err(StripeMeterError::Rejected)
-            }
+            StatusCode::TOO_MANY_REQUESTS => Err(StripeMeterError::Transport),
+            status if status.is_server_error() => Err(StripeMeterError::Transport),
+            status if status.is_client_error() => Err(StripeMeterError::Rejected),
             _ => Err(StripeMeterError::UnexpectedResponse),
         }
     }
