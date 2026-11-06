@@ -15,19 +15,21 @@ use sha2::{Digest, Sha256};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::auth::oauth_runtime::OAuthRuntime;
 use crate::auth::jwt::AccessTokenClaims;
+use crate::auth::oauth_runtime::OAuthRuntime;
+use crate::auth::{BoundaryError, CallerIdentity, RouteGuard, verify_access_token};
 use crate::billing::runtime::BillingRuntime;
 use crate::billing::stripe::{PriceSlot, StripeError};
 use crate::billing::{BillingInterval, PlanId};
-use crate::persistence::billing_accounts::{ensure_customer_mapping, validate_eye_user_id, BillingAccountProvisionError};
-use crate::auth::{BoundaryError, CallerIdentity, RouteGuard, verify_access_token};
 use crate::config::Config;
 use crate::contract::{PersistenceStatus, PhotoAssessmentResponse};
 use crate::domain::{AssessmentConfig, assess, conservative_result};
 use crate::error::{ApiError, ValidationError};
 use crate::inference::yunet::YunetDetector;
 use crate::ingress::ingest_with_timeout;
+use crate::persistence::billing_accounts::{
+    BillingAccountProvisionError, ensure_customer_mapping, validate_eye_user_id,
+};
 use crate::provider::DisabledProvider;
 
 pub const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
@@ -255,36 +257,64 @@ struct BillingSessionResponse {
     url: String,
 }
 
-fn authenticate_billing(config: &Config, headers: &HeaderMap) -> Result<AccessTokenClaims, ApiError> {
+fn authenticate_billing(
+    config: &Config,
+    headers: &HeaderMap,
+) -> Result<AccessTokenClaims, ApiError> {
     let oauth = config.oauth.as_ref().ok_or(ApiError::Unauthorized)?;
     let secret = oauth.jwt_signing_secret.expose();
     if secret.len() < MIN_JWT_SECRET_BYTES {
         return Err(ApiError::Unauthorized);
     }
-    let header = headers.get(AUTHORIZATION).and_then(|value| value.to_str().ok())
+    let header = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
         .ok_or(ApiError::Unauthorized)?;
-    let token = header.split_once(' ')
+    let token = header
+        .split_once(' ')
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
-        .map(|(_, token)| token.trim()).filter(|token| !token.is_empty())
+        .map(|(_, token)| token.trim())
+        .filter(|token| !token.is_empty())
         .ok_or(ApiError::Unauthorized)?;
-    let claims = verify_access_token(token, &oauth.jwt_kid, secret.as_bytes(), current_unix_seconds())
-        .map_err(|_| ApiError::Unauthorized)?;
+    let claims = verify_access_token(
+        token,
+        &oauth.jwt_kid,
+        secret.as_bytes(),
+        current_unix_seconds(),
+    )
+    .map_err(|_| ApiError::Unauthorized)?;
     validate_eye_user_id(&claims.sub).map_err(|_| ApiError::Unauthorized)?;
     Ok(claims)
 }
 
-fn billing_idempotency_key(owner_id: &str, headers: &HeaderMap, operation: &'static str) -> Result<String, ApiError> {
-    let supplied = headers.get("idempotency-key").and_then(|value| value.to_str().ok())
-        .ok_or(ApiError::Validation(ValidationError { field: "Idempotency-Key", rule: "header is required" }))?;
-    if supplied.is_empty() || supplied.len() > 255
-        || !supplied.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte)) {
+fn billing_idempotency_key(
+    owner_id: &str,
+    headers: &HeaderMap,
+    operation: &'static str,
+) -> Result<String, ApiError> {
+    let supplied = headers
+        .get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
+        .ok_or(ApiError::Validation(ValidationError {
+            field: "Idempotency-Key",
+            rule: "header is required",
+        }))?;
+    if supplied.is_empty()
+        || supplied.len() > 255
+        || !supplied
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+    {
         return Err(ApiError::Validation(ValidationError {
             field: "Idempotency-Key",
             rule: "must contain 1 to 255 ASCII letters, numbers, underscores or hyphens",
         }));
     }
     let digest = Sha256::digest(format!("eye:{owner_id}:{operation}:{supplied}").as_bytes());
-    let suffix = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let suffix = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     Ok(format!("eye-{operation}-{suffix}"))
 }
 
@@ -292,16 +322,22 @@ fn checkout_slot(plan: &str, interval: &str) -> Result<PriceSlot, ApiError> {
     let plan = match plan {
         "gold" => PlanId::Gold,
         "premium" => PlanId::Premium,
-        _ => return Err(ApiError::Validation(ValidationError {
-            field: "plan", rule: "must be one of the configured paid plans",
-        })),
+        _ => {
+            return Err(ApiError::Validation(ValidationError {
+                field: "plan",
+                rule: "must be one of the configured paid plans",
+            }));
+        }
     };
     let interval = match interval {
         "monthly" => BillingInterval::Monthly,
         "annual" => BillingInterval::Annual,
-        _ => return Err(ApiError::Validation(ValidationError {
-            field: "interval", rule: "must be monthly or annual",
-        })),
+        _ => {
+            return Err(ApiError::Validation(ValidationError {
+                field: "interval",
+                rule: "must be monthly or annual",
+            }));
+        }
     };
     Ok(PriceSlot { plan, interval })
 }
@@ -309,7 +345,8 @@ fn checkout_slot(plan: &str, interval: &str) -> Result<PriceSlot, ApiError> {
 fn map_billing_provision_error(error: BillingAccountProvisionError) -> ApiError {
     match error {
         BillingAccountProvisionError::InvalidOwner => ApiError::Unauthorized,
-        BillingAccountProvisionError::StripeUnavailable | BillingAccountProvisionError::MappingConflict
+        BillingAccountProvisionError::StripeUnavailable
+        | BillingAccountProvisionError::MappingConflict
         | BillingAccountProvisionError::Unavailable => ApiError::ServiceUnavailable,
     }
 }
@@ -317,9 +354,12 @@ fn map_billing_provision_error(error: BillingAccountProvisionError) -> ApiError 
 fn map_stripe_error(error: StripeError) -> ApiError {
     match error {
         StripeError::InvalidRequest { .. } => ApiError::Validation(ValidationError {
-            field: "billing", rule: "request or configured billing parameters are invalid",
+            field: "billing",
+            rule: "request or configured billing parameters are invalid",
         }),
-        StripeError::Unavailable | StripeError::Rejected { .. } | StripeError::UnexpectedResponse
+        StripeError::Unavailable
+        | StripeError::Rejected { .. }
+        | StripeError::UnexpectedResponse
         | StripeError::CatalogMismatch { .. } => ApiError::ServiceUnavailable,
     }
 }
@@ -330,9 +370,17 @@ async fn create_checkout(
 ) -> Result<Json<BillingSessionResponse>, ApiError> {
     let owner_id = authenticate_billing(&state.config, request.headers())?.sub;
     let idempotency_key = billing_idempotency_key(&owner_id, request.headers(), "checkout")?;
-    if !request.headers().get(axum::http::header::CONTENT_TYPE)
+    if !request
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.split(';').next().is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))) {
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
+        })
+    {
         return Err(ApiError::UnsupportedMediaType);
     }
     let body = to_bytes(request.into_body(), 16 * 1024)
@@ -346,18 +394,39 @@ async fn create_checkout(
     })?;
     let slot = checkout_slot(&request.plan, &request.interval)?;
     let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
-    runtime.return_urls.validate(&request.success_url).map_err(|_| ApiError::Validation(ValidationError {
-        field: "successUrl", rule: "must use a configured HTTPS return origin",
-    }))?;
-    runtime.return_urls.validate(&request.cancel_url).map_err(|_| ApiError::Validation(ValidationError {
-        field: "cancelUrl", rule: "must use a configured HTTPS return origin",
-    }))?;
+    runtime
+        .return_urls
+        .validate(&request.success_url)
+        .map_err(|_| {
+            ApiError::Validation(ValidationError {
+                field: "successUrl",
+                rule: "must use a configured HTTPS return origin",
+            })
+        })?;
+    runtime
+        .return_urls
+        .validate(&request.cancel_url)
+        .map_err(|_| {
+            ApiError::Validation(ValidationError {
+                field: "cancelUrl",
+                rule: "must use a configured HTTPS return origin",
+            })
+        })?;
     let customer_id = ensure_customer_mapping(&runtime.store, &runtime.stripe, &owner_id)
-        .await.map_err(map_billing_provision_error)?;
-    let session = runtime.stripe.create_checkout_session(
-        slot, &customer_id, &request.success_url, &request.cancel_url,
-        &runtime.return_urls, &idempotency_key,
-    ).await.map_err(map_stripe_error)?;
+        .await
+        .map_err(map_billing_provision_error)?;
+    let session = runtime
+        .stripe
+        .create_checkout_session(
+            slot,
+            &customer_id,
+            &request.success_url,
+            &request.cancel_url,
+            &runtime.return_urls,
+            &idempotency_key,
+        )
+        .await
+        .map_err(map_stripe_error)?;
     Ok(Json(BillingSessionResponse { url: session.url }))
 }
 
@@ -367,9 +436,17 @@ async fn create_customer_portal(
 ) -> Result<Json<BillingSessionResponse>, ApiError> {
     let owner_id = authenticate_billing(&state.config, request.headers())?.sub;
     let idempotency_key = billing_idempotency_key(&owner_id, request.headers(), "portal")?;
-    if !request.headers().get(axum::http::header::CONTENT_TYPE)
+    if !request
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.split(';').next().is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))) {
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
+        })
+    {
         return Err(ApiError::UnsupportedMediaType);
     }
     let body = to_bytes(request.into_body(), 16 * 1024)
@@ -382,14 +459,28 @@ async fn create_customer_portal(
         })
     })?;
     let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
-    runtime.return_urls.validate(&request.return_url).map_err(|_| ApiError::Validation(ValidationError {
-        field: "returnUrl", rule: "must use a configured HTTPS return origin",
-    }))?;
+    runtime
+        .return_urls
+        .validate(&request.return_url)
+        .map_err(|_| {
+            ApiError::Validation(ValidationError {
+                field: "returnUrl",
+                rule: "must use a configured HTTPS return origin",
+            })
+        })?;
     let customer_id = ensure_customer_mapping(&runtime.store, &runtime.stripe, &owner_id)
-        .await.map_err(map_billing_provision_error)?;
-    let session = runtime.stripe.create_portal_session(
-        &customer_id, &request.return_url, &runtime.return_urls, &idempotency_key,
-    ).await.map_err(map_stripe_error)?;
+        .await
+        .map_err(map_billing_provision_error)?;
+    let session = runtime
+        .stripe
+        .create_portal_session(
+            &customer_id,
+            &request.return_url,
+            &runtime.return_urls,
+            &idempotency_key,
+        )
+        .await
+        .map_err(map_stripe_error)?;
     Ok(Json(BillingSessionResponse { url: session.url }))
 }
 
@@ -414,17 +505,13 @@ async fn upload_photo(
             }
         })?;
     let mut image = None;
-    while let Some(mut field) = multipart
-        .next_field()
-        .await
-        .map_err(|error| {
-            if error.into_response().status() == StatusCode::PAYLOAD_TOO_LARGE {
-                ApiError::PayloadTooLarge
-            } else {
-                invalid_multipart()
-            }
-        })?
-    {
+    while let Some(mut field) = multipart.next_field().await.map_err(|error| {
+        if error.into_response().status() == StatusCode::PAYLOAD_TOO_LARGE {
+            ApiError::PayloadTooLarge
+        } else {
+            invalid_multipart()
+        }
+    })? {
         let field_name = field.name().unwrap_or_default().to_owned();
         match field_name.as_str() {
             "image" => {
@@ -611,7 +698,6 @@ mod landing_page_tests {
     }
 }
 
-
 #[cfg(test)]
 mod billing_route_auth_tests {
     use super::*;
@@ -627,9 +713,18 @@ mod billing_route_auth_tests {
                 "EYE_GOOGLE_REDIRECT_URL",
                 "https://eye.example.com/v1/auth/google/callback".to_owned(),
             ),
-            ("EYE_DATABASE_REST_URL", "https://db.example.com/rest/v1".to_owned()),
-            ("EYE_DATABASE_SERVICE_ROLE_KEY", "database-service-key".to_owned()),
-            ("EYE_OAUTH_CALLBACK_URLS", "https://eye.example.com/auth/callback".to_owned()),
+            (
+                "EYE_DATABASE_REST_URL",
+                "https://db.example.com/rest/v1".to_owned(),
+            ),
+            (
+                "EYE_DATABASE_SERVICE_ROLE_KEY",
+                "database-service-key".to_owned(),
+            ),
+            (
+                "EYE_OAUTH_CALLBACK_URLS",
+                "https://eye.example.com/auth/callback".to_owned(),
+            ),
             ("EYE_OAUTH_EXCHANGE_SECRET", "e".repeat(48)),
             ("EYE_JWT_SIGNING_SECRET", "j".repeat(48)),
             ("EYE_JWT_KID", "billing-test-kid".to_owned()),
@@ -705,7 +800,9 @@ mod billing_route_auth_tests {
                     .header("authorization", format!("Bearer {bearer}"))
                     .header("idempotency-key", "portal-request-1")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"returnUrl":"https://eye.example.com/account/billing"}"#))
+                    .body(Body::from(
+                        r#"{"returnUrl":"https://eye.example.com/account/billing"}"#,
+                    ))
                     .expect("request"),
             )
             .await
@@ -733,5 +830,4 @@ mod billing_route_auth_tests {
             .expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
-
 }
