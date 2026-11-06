@@ -7,7 +7,10 @@ use std::time::Duration;
 
 use king_sparkon_eye::{
     billing::stripe::StripeMode,
-    persistence::{MIGRATOR, billing_accounts::{BillingAccountStore, BillingAccountStoreError}},
+    persistence::{
+        MIGRATOR,
+        billing_accounts::{BillingAccountStore, BillingAccountStoreError},
+    },
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
@@ -15,16 +18,15 @@ async fn test_pool() -> Option<PgPool> {
     let database_url = match std::env::var("EYE_TEST_DATABASE_URL") {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
-            eprintln!("skipping billing PostgreSQL integration test: EYE_TEST_DATABASE_URL is unset");
+            eprintln!(
+                "skipping billing PostgreSQL integration test: EYE_TEST_DATABASE_URL is unset"
+            );
             return None;
         }
     };
     let parsed = reqwest::Url::parse(&database_url)
         .expect("EYE_TEST_DATABASE_URL must be a valid PostgreSQL URL");
-    let loopback = matches!(
-        parsed.host_str(),
-        Some("localhost" | "127.0.0.1" | "[::1]")
-    );
+    let loopback = matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
     let database_name = parsed.path().trim_matches('/').to_ascii_lowercase();
     assert!(
         loopback && database_name.contains("test"),
@@ -112,19 +114,31 @@ async fn concurrent_mapping_is_unique_and_accounts_and_modes_are_isolated() {
     );
 
     assert_eq!(
-        store.customer_for(&owner_a, StripeMode::Test).await.unwrap(),
+        store
+            .customer_for(&owner_a, StripeMode::Test)
+            .await
+            .unwrap(),
         Some(customer_a.clone())
     );
     assert_eq!(
-        store.customer_for(&owner_a, StripeMode::Live).await.unwrap(),
+        store
+            .customer_for(&owner_a, StripeMode::Live)
+            .await
+            .unwrap(),
         Some(customer_a_live)
     );
     assert_eq!(
-        store.customer_for(&owner_b, StripeMode::Test).await.unwrap(),
+        store
+            .customer_for(&owner_b, StripeMode::Test)
+            .await
+            .unwrap(),
         Some(customer_b)
     );
     assert_eq!(
-        store.customer_for(&owner_b, StripeMode::Live).await.unwrap(),
+        store
+            .customer_for(&owner_b, StripeMode::Live)
+            .await
+            .unwrap(),
         None,
         "one Eye account cannot resolve another account or mode's Customer"
     );
