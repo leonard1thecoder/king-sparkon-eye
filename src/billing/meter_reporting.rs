@@ -102,7 +102,8 @@ impl StripeMeterReporter {
             return Err(StripeMeterError::Disabled);
         }
         if !config.secret_key.starts_with("sk_test_")
-            && !config.secret_key.starts_with("sk_live_")
+            || config.secret_key.len() <= "sk_test_".len()
+            || config.secret_key.bytes().any(|byte| byte.is_ascii_whitespace())
         {
             return Err(StripeMeterError::InvalidConfiguration);
         }
@@ -117,6 +118,7 @@ impl StripeMeterReporter {
         config.event_names.validate()?;
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| StripeMeterError::Transport)?;
         Ok(Self { client, config })
@@ -184,6 +186,7 @@ impl StripeMeterReporter {
             .client
             .post(STRIPE_METER_EVENT_URL)
             .bearer_auth(&self.config.secret_key)
+            .header("Stripe-Version", super::stripe::STRIPE_API_VERSION)
             .form(&form)
             .send()
             .await
