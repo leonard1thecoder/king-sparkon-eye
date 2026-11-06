@@ -112,14 +112,8 @@ const TEMPLATE: &str = r##"<!doctype html>
 :root{color-scheme:dark;--paper:#000;--panel:#0c0c0a;--ink:#f5f3ec;--muted:#a4a59b;--line:#2a2b24;--gold:#e9ae22;--gold-2:#ffc94d;--on-accent:#0a0a08;--bad:#ff9b8a;--ok:#8ec5b1}
 body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:26rem;margin:0 auto;padding:2.5rem 1rem 3rem}
-.auth-brand{display:inline-flex;align-items:center;gap:.7rem;margin:0 0 2rem;color:var(--ink);text-decoration:none}
-.auth-brand-mark{display:block;flex:0 0 auto;width:46px;height:30px}
-.auth-brand-mark .eye-shell{fill:#d99b08}
-.auth-brand-mark .eye-core{fill:#17221e}
-.auth-brand-mark .iris{fill:#303640;stroke:#f3b91b;stroke-width:3}
-.auth-brand-mark .bolt{fill:#ffd23f}
-.auth-brand-copy{display:grid;gap:.08rem;font-size:.86rem;font-weight:760;letter-spacing:-.025em}
-.auth-brand-kicker{color:var(--muted);font:.7rem monospace;letter-spacing:.14em;text-transform:uppercase}
+.auth-brand{display:inline-block;margin:0 0 1.75rem;border-radius:10px}
+.auth-brand img{display:block;height:64px;width:auto}
 a{color:var(--gold-2)}
 a:focus-visible,button:focus-visible,input:focus-visible,.auth-brand:focus-visible{outline:3px solid var(--gold-2);outline-offset:3px}
 h1{font-size:1.6rem;line-height:1.2;margin:0 0 1.25rem}
@@ -145,15 +139,7 @@ button:disabled{cursor:not-allowed}
 </head>
 <body>
 <main>
-<a class="auth-brand" href="/" aria-label="King Sparkon Eye home">
-<svg class="auth-brand-mark" viewBox="0 0 120 72" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
-<path class="eye-shell" d="M5 36Q60 -4 115 36Q60 76 5 36Z"/>
-<path class="eye-core" d="M18 36Q60 8 102 36Q60 64 18 36Z"/>
-<circle class="iris" cx="60" cy="36" r="20"/>
-<path class="bolt" d="M64 16L49 39H60L54 57L75 31H63L70 16Z"/>
-</svg>
-<span class="auth-brand-copy"><span>King Sparkon Eye</span><span class="auth-brand-kicker">Vision service</span></span>
-</a>
+<a class="auth-brand" href="/" aria-label="King Sparkon Eye home"><img src="/assets/logo.gif" width="506" height="335" alt="King Sparkon Eye"></a>
 <h1>{{HEADING}}</h1>
 <noscript><p class="notice error">Turn on JavaScript to use this page.</p></noscript>
 {{BODY}}
@@ -455,7 +441,8 @@ mod tests {
         ] {
             assert!(html.contains("class=\"auth-brand\""));
             assert!(html.contains("King Sparkon Eye"));
-            assert!(html.contains("auth-brand-mark"));
+            assert!(html.contains("<img src=\"/assets/logo.gif\""));
+            assert!(!html.contains("auth-brand-mark"));
             assert!(html.contains("aria-label=\"King Sparkon Eye home\""));
             assert!(html.contains("color-scheme:dark"));
             assert!(html.contains("--gold:#e9ae22"));

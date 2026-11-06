@@ -497,15 +497,16 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 **Verification:** `cargo fmt --all --check` passed. `cargo clippy --all-targets --all-features -- -D warnings` passed. `cargo test --all-features --locked` gave 473 passed and 0 failed. Local runs used `RUSTUP_TOOLCHAIN=stable` because the sandbox cannot download the pinned 1.97.0 toolchain. Rendered 1280px and 375px checks were run earlier on this working copy and showed no horizontal overflow; the HTML has not changed since.
 ### Issue #196 — auth pages follow the product design guidance (2026-11-06)
 
-**Branch:** `issue/196-auth-pages-design`  
+**Branch:** `issue/196-auth-supplied-logo`  
 **Issue:** [#196](https://github.com/leonard1thecoder/king-sparkon-eye/issues/196)
 
 - Applies `.github/skills/product-design-intelligence` to sign-in, register, forgot password, reset password, and the OAuth callback.
-- Matches the landing page: one dark theme (`color-scheme: dark`), black canvas, gold accent, pill buttons, and one focus ring. The light theme is removed. Kicker text rises from 9px to `.7rem`.
+- Matches the landing page: one dark theme (`color-scheme: dark`), black canvas, gold accent, pill buttons, and one focus ring. The light theme is removed.
+- The auth-page header uses the supplied logo (`/assets/logo.gif`) in place of the compact SVG mark, so the auth pages match the landing page. This replaces the earlier auth-page PR #197 (rejected), which was branched before the landing-page merge and still showed the old logo and light landing page.
 - Register, password-reset request, and password-reset confirm are shown as unavailable. Their routes are not mounted, so the page explains this and disables the form in a `<fieldset disabled>`. Previously the forms submitted into 404 responses.
 - Each field is linked to its error message with `aria-describedby` and `aria-invalid`. The first invalid field receives focus on submit. Buttons show a progress label while a request runs.
 - The Google button stays hidden until the script sets its URL, so it is never a dead link. A `<noscript>` message says JavaScript is required.
 - The callback page says the user is not signed in after a Google code is returned.
 - Updates `README.md` (auth-page table) and this playbook. `docs/PUBLIC-LANDING-PAGE.md` is unaffected because it covers the landing page only.
 
-**Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 474 passed, 0 failed. Local runs used `RUSTUP_TOOLCHAIN=stable`. Playwright against a local server: no horizontal overflow at 375px or 1280px on all five pages; an empty sign-in submit focuses the email field and sets `aria-invalid`; the register form is disabled; the reset form is hidden without a token; the no-JavaScript message renders. The 375px screenshots were inspected.
+**Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed. The callback-page test now checks for the injected `<img src="x"` payload instead of any `<img`, because the page now has a real logo image. Local runs used `RUSTUP_TOOLCHAIN=stable`. Playwright against a local server: no horizontal overflow at 375px or 1280px on the landing page, sign-in, and the auth pages; the page background is `rgb(0, 0, 0)`; the logo renders at natural width 506px. Earlier checks: an empty sign-in submit focuses the email field and sets `aria-invalid`; the register form is disabled; the reset form is hidden without a token; the no-JavaScript message renders. The 375px sign-in screenshot was inspected.

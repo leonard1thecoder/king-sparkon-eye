@@ -8,7 +8,7 @@ King Sparkon Eye is designed to let an authorized gate worker find an enrolled a
 
 ## Public information site
 
-The browser authentication pages at `/auth/sign-in`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password`, and `/auth/callback` share a compact gold Eye mark and wordmark in their common template. The branding is presentation-only; the existing form/API/OAuth behavior is unchanged.
+The browser authentication pages at `/auth/sign-in`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password`, and `/auth/callback` share the supplied King Sparkon Eye logo (`/assets/logo.gif`) in their common template. The branding is presentation-only; the existing form/API/OAuth behavior is unchanged.
 
 The Axum service serves a public product landing page at `/`. It explains the intended QR-free, event-scoped identification workflow, the boundary between Rust vision results and Spring Boot admission authority, and the current implementation status. The page uses a black theme. The header shows the supplied King Sparkon Eye logo, with Sign in and Sign up buttons that link to the auth pages. The hero uses the supplied glowing-eye artwork as a static image. The event-scope workflow diagram remains explanatory artwork, not a live dashboard, camera feed, or product screenshot.
 

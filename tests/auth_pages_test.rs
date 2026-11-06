@@ -87,7 +87,7 @@ async fn callback_page_never_renders_query_values() {
     let (status, _, body) = get(&format!("/auth/callback?error={encoded}&code={encoded}")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
-        !body.contains("<img"),
+        !body.contains("<img src=\"x\""),
         "query text must not reach the markup"
     );
     assert!(

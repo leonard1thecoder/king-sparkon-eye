@@ -24,7 +24,7 @@ Use an editorial product-infrastructure direction rather than a generic SaaS tem
 - Serif display typography paired with compact monospace system labels.
 - A concise product statement paired with the supplied King Sparkon Eye logo in the header, the supplied glowing-eye hero image, and a four-step workflow.
 - The hero image (`/assets/hero.jpg`) is a static, edge-faded JPEG blended with `mix-blend-mode: screen`. It does not animate, so the hero needs no reduced-motion handling.
-- The header shows the supplied logo (`/assets/logo.gif`) with Sign in (`/auth/sign-in`) and Sign up (`/auth/register`) buttons. The footer and the shared Eye authentication-page template keep the compact inline SVG Eye mark, so the brand remains recognizable without repeating the full wordmark.
+- The header shows the supplied logo (`/assets/logo.gif`) with Sign in (`/auth/sign-in`) and Sign up (`/auth/register`) buttons. The footer keeps the compact inline SVG Eye mark, and the shared authentication-page template uses the supplied logo, so the brand remains recognizable without repeating the full wordmark.
 - Thin rules, generous whitespace, and purposeful numbered steps instead of decorative metric cards or generic feature-card grids.
 - A dark responsibility section to make the ownership boundary memorable.
 - A pricing comparison with clear candidate/unapproved status, not an active checkout or implied offer.
