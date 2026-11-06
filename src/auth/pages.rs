@@ -98,8 +98,14 @@ fn render(title: &str, heading: &str, body: &str, script: &str) -> Html<String> 
         .replace("{{HEADING}}", heading)
         .replace("{{BODY}}", body)
         .replace("{{SCRIPT}}", &script);
-    Html(html.replace("{{MIN_PASSWORD}}", &MIN_PASSWORD_LEN.to_string()))
+    Html(
+        html.replace("{{MIN_PASSWORD}}", &MIN_PASSWORD_LEN.to_string())
+            .replace("{{GOOGLE_MARK}}", GOOGLE_MARK),
+    )
 }
+
+/// The Google "G" mark, inline so the page adds no external image request.
+const GOOGLE_MARK: &str = r##"<svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>"##;
 
 const TEMPLATE: &str = r##"<!doctype html>
 <html lang="en">
@@ -126,8 +132,9 @@ input::placeholder{color:var(--muted);opacity:1}
 button,.button{display:flex;align-items:center;justify-content:center;width:100%;min-height:44px;margin-top:1.4rem;padding:.6rem 1.25rem;box-sizing:border-box;font:inherit;font-weight:700;border:1px solid var(--gold);border-radius:999px;background:var(--gold);color:var(--on-accent);text-decoration:none;cursor:pointer}
 button:hover{background:var(--gold-2);border-color:var(--gold-2)}
 button:disabled{cursor:not-allowed}
-.button.secondary{background:transparent;color:var(--gold-2);margin-top:.9rem}
-.button.secondary:hover{background:transparent;border-color:var(--gold-2)}
+.button.google{background:#131314;color:#e3e3e3;border:1px solid #8e918f;gap:.6rem;margin-top:.9rem}
+.button.google:hover{background:#1f1f21;border-color:#c4c7c5}
+.google-mark{width:18px;height:18px;flex:0 0 auto}
 .links{margin-top:1.5rem;font-size:.95rem;color:var(--muted)}
 .hint{font-size:.9rem;color:var(--muted);margin:.3rem 0 0}
 .field-error{color:var(--bad);font-size:.9rem;margin:.35rem 0 0}
@@ -204,6 +211,12 @@ function failureMessage(status) {
   if (status >= 500) return 'The service is temporarily unavailable. Please try again shortly.';
   return null;
 }
+function wireGoogle(id) {
+  const el = byId(id);
+  if (!el) return;
+  el.href = '/v1/auth/google/start?callback_url=' + encodeURIComponent(location.origin + '/auth/callback');
+  el.hidden = false;
+}
 function busy(button, value, label) {
   if (!button) return;
   if (value) {
@@ -225,14 +238,12 @@ const SIGN_IN_BODY: &str = r##"<form id="sign-in" novalidate>
 <p id="password-error" class="field-error" hidden></p>
 <button type="submit">Sign in</button>
 </form>
-<a id="google" class="button secondary" href="#" hidden>Continue with Google</a>
+<a id="google" class="button google" href="#" hidden>{{GOOGLE_MARK}}<span>Sign in with Google</span></a>
 <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 <p class="links"><a href="/auth/forgot-password">Forgot password?</a> · <a href="/auth/register">Create an account</a></p>"##;
 
 const SIGN_IN_SCRIPT: &str = r##"
-const google = byId('google');
-google.href = '/v1/auth/google/start?callback_url=' + encodeURIComponent(location.origin + '/auth/callback');
-google.hidden = false;
+wireGoogle('google');
 byId('sign-in').addEventListener('submit', async (event) => {
   event.preventDefault();
   const emailOk = checkEmail();
@@ -279,9 +290,11 @@ const REGISTER_BODY: &str = r##"<p class="notice unavailable">Account creation i
 </fieldset>
 </form>
 <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+<a id="google-register" class="button google" href="#" hidden>{{GOOGLE_MARK}}<span>Sign up with Google</span></a>
 <p class="links">Already have an account? <a href="/auth/sign-in">Sign in</a></p>"##;
 
 const REGISTER_SCRIPT: &str = r##"
+wireGoogle('google-register');
 byId('register').addEventListener('submit', async (event) => {
   event.preventDefault();
   const emailOk = checkEmail();
@@ -466,8 +479,20 @@ mod tests {
     #[test]
     fn sign_in_hides_google_until_its_url_is_set() {
         let html = render("t", "h", SIGN_IN_BODY, SIGN_IN_SCRIPT).0;
-        assert!(html.contains("id=\"google\" class=\"button secondary\" href=\"#\" hidden"));
-        assert!(html.contains("google.hidden = false;"));
+        assert!(html.contains("id=\"google\" class=\"button google\" href=\"#\" hidden"));
+        assert!(html.contains("wireGoogle('google');"));
+        assert!(html.contains("Sign in with Google"));
+        assert!(html.contains("class=\"google-mark\""));
+        assert!(!html.contains("{{GOOGLE_MARK}}"));
+    }
+
+    #[test]
+    fn register_page_offers_google_sign_up() {
+        let html = render("t", "h", REGISTER_BODY, REGISTER_SCRIPT).0;
+        assert!(html.contains("id=\"google-register\" class=\"button google\" href=\"#\" hidden"));
+        assert!(html.contains("Sign up with Google"));
+        assert!(html.contains("wireGoogle('google-register');"));
+        assert!(html.contains("class=\"google-mark\""));
     }
 
     #[test]
