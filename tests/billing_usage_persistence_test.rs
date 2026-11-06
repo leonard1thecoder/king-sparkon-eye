@@ -7,7 +7,10 @@ use king_sparkon_eye::{
         AllowancePeriod, MeterId,
         ledger::{AppendBody, AppendOutcome, AppendRequest, EventKey, TenantId, UsageSource},
     },
-    persistence::{connect, migrate, usage_ledger::{UsageLedgerStore, UsageStoreError}},
+    persistence::{
+        connect, migrate,
+        usage_ledger::{UsageLedgerStore, UsageStoreError},
+    },
 };
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -22,7 +25,9 @@ async fn fixture() -> Option<Fixture> {
     let url = match std::env::var("EYE_TEST_DATABASE_URL") {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
-            eprintln!("SKIPPED: EYE_TEST_DATABASE_URL not set; billing usage persistence tests not run");
+            eprintln!(
+                "SKIPPED: EYE_TEST_DATABASE_URL not set; billing usage persistence tests not run"
+            );
             return None;
         }
     };
@@ -119,38 +124,94 @@ async fn append_is_durable_idempotent_and_creates_reporting_intent_atomically() 
 async fn reporting_outbox_uses_leases_retries_and_acknowledgement() {
     let Some(fx) = fixture().await else { return };
     let store = fx.store().await;
-    store.append(request(
-        "tenant_a",
-        "reportable-identification",
-        UsageSource::EligibleIdentificationCompleted,
-        instant(3),
-        AppendBody::Flow { quantity: 1 },
-    )).await.unwrap();
+    store
+        .append(request(
+            "tenant_a",
+            "reportable-identification",
+            UsageSource::EligibleIdentificationCompleted,
+            instant(3),
+            AppendBody::Flow { quantity: 1 },
+        ))
+        .await
+        .unwrap();
 
     let now = instant(3) + chrono::Duration::seconds(1);
-    let claimed = store.claim_due(now, chrono::Duration::minutes(2), 10).await.unwrap();
+    let claimed = store
+        .claim_due(now, chrono::Duration::minutes(2), 10)
+        .await
+        .unwrap();
     assert_eq!(claimed.len(), 1);
     assert_eq!(claimed[0].tenant_id, "tenant_a");
     assert_eq!(claimed[0].meter, MeterId::IdentificationRequests);
     assert_eq!(claimed[0].attempts, 1);
 
-    assert!(store.schedule_retry(
-        claimed[0].id,
-        claimed[0].attempts,
-        now,
-        now + chrono::Duration::minutes(5),
-        "stripe_unavailable",
-        3,
-    ).await.unwrap());
+    assert!(
+        store
+            .schedule_retry(
+                claimed[0].id,
+                claimed[0].attempts,
+                now,
+                now + chrono::Duration::minutes(5),
+                "stripe_unavailable",
+                3,
+            )
+            .await
+            .unwrap()
+    );
 
-    assert!(store.claim_due(now + chrono::Duration::minutes(4), chrono::Duration::minutes(2), 10).await.unwrap().is_empty());
-    let retry = store.claim_due(now + chrono::Duration::minutes(6), chrono::Duration::minutes(2), 10).await.unwrap();
+    assert!(
+        store
+            .claim_due(
+                now + chrono::Duration::minutes(4),
+                chrono::Duration::minutes(2),
+                10
+            )
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let retry = store
+        .claim_due(
+            now + chrono::Duration::minutes(6),
+            chrono::Duration::minutes(2),
+            10,
+        )
+        .await
+        .unwrap();
     assert_eq!(retry.len(), 1);
     assert_eq!(retry[0].attempts, 2);
 
-    assert!(store.mark_reported(retry[0].id, retry[0].attempts, now + chrono::Duration::minutes(6)).await.unwrap());
-    assert!(!store.mark_reported(retry[0].id, retry[0].attempts, now + chrono::Duration::minutes(7)).await.unwrap());
-    assert!(store.claim_due(now + chrono::Duration::minutes(8), chrono::Duration::minutes(2), 10).await.unwrap().is_empty());
+    assert!(
+        store
+            .mark_reported(
+                retry[0].id,
+                retry[0].attempts,
+                now + chrono::Duration::minutes(6)
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        !store
+            .mark_reported(
+                retry[0].id,
+                retry[0].attempts,
+                now + chrono::Duration::minutes(7)
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        store
+            .claim_due(
+                now + chrono::Duration::minutes(8),
+                chrono::Duration::minutes(2),
+                10
+            )
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -201,7 +262,9 @@ async fn reversal_is_append_only_idempotent_and_booked_to_original_period() {
         "tenant_a",
         "enrollment-reverse-me",
         UsageSource::ConfirmedEnrollment,
-        Utc.with_ymd_and_hms(2026, 10, 31, 23, 59, 0).single().unwrap(),
+        Utc.with_ymd_and_hms(2026, 10, 31, 23, 59, 0)
+            .single()
+            .unwrap(),
         AppendBody::Flow { quantity: 3 },
     );
     store.append(original).await.unwrap();
@@ -225,15 +288,23 @@ async fn reversal_is_append_only_idempotent_and_booked_to_original_period() {
     ));
 
     let october = AllowancePeriod::containing(
-        Utc.with_ymd_and_hms(2026, 10, 31, 23, 59, 0).single().unwrap(),
+        Utc.with_ymd_and_hms(2026, 10, 31, 23, 59, 0)
+            .single()
+            .unwrap(),
     );
     let november = AllowancePeriod::containing(instant(2));
     assert_eq!(
-        store.flow_total("tenant_a", &october, MeterId::Enrollments).await.unwrap(),
+        store
+            .flow_total("tenant_a", &october, MeterId::Enrollments)
+            .await
+            .unwrap(),
         0
     );
     assert_eq!(
-        store.flow_total("tenant_a", &november, MeterId::Enrollments).await.unwrap(),
+        store
+            .flow_total("tenant_a", &november, MeterId::Enrollments)
+            .await
+            .unwrap(),
         0
     );
 
@@ -252,36 +323,72 @@ async fn reversal_is_append_only_idempotent_and_booked_to_original_period() {
     );
 }
 
-
 #[tokio::test]
 async fn monthly_aggregate_finalizes_all_meters_only_after_a_complete_month() {
     let Some(fx) = fixture().await else { return };
     let store = fx.store().await;
-    let october = Utc.with_ymd_and_hms(2026, 10, 15, 12, 0, 0).single().unwrap();
+    let october = Utc
+        .with_ymd_and_hms(2026, 10, 15, 12, 0, 0)
+        .single()
+        .unwrap();
     let period = AllowancePeriod::containing(october);
     let november_start = Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).single().unwrap();
 
     assert_eq!(
-        store.monthly_aggregate("tenant_a", &period, november_start - chrono::Duration::seconds(1)).await.unwrap_err(),
+        store
+            .monthly_aggregate(
+                "tenant_a",
+                &period,
+                november_start - chrono::Duration::seconds(1)
+            )
+            .await
+            .unwrap_err(),
         UsageStoreError::PeriodNotClosed
     );
 
     for (key, source, day, quantity) in [
         ("enroll-1", UsageSource::ConfirmedEnrollment, 3, 1),
         ("enroll-2", UsageSource::ConfirmedEnrollment, 4, 1),
-        ("identify-1", UsageSource::EligibleIdentificationCompleted, 5, 3),
-        ("identify-2", UsageSource::EligibleIdentificationCompleted, 6, 1),
+        (
+            "identify-1",
+            UsageSource::EligibleIdentificationCompleted,
+            5,
+            3,
+        ),
+        (
+            "identify-2",
+            UsageSource::EligibleIdentificationCompleted,
+            6,
+            1,
+        ),
     ] {
-        let at = Utc.with_ymd_and_hms(2026, 10, day, 0, 0, 0).single().unwrap();
-        store.append(request("tenant_a", key, source, at, AppendBody::Flow { quantity })).await.unwrap();
+        let at = Utc
+            .with_ymd_and_hms(2026, 10, day, 0, 0, 0)
+            .single()
+            .unwrap();
+        store
+            .append(request(
+                "tenant_a",
+                key,
+                source,
+                at,
+                AppendBody::Flow { quantity },
+            ))
+            .await
+            .unwrap();
     }
-    store.append(request(
-        "tenant_a",
-        "enroll-reversal",
-        UsageSource::ConfirmedEnrollment,
-        Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).single().unwrap(),
-        AppendBody::Reversal { reverses: EventKey::new("enroll-1").unwrap() },
-    )).await.unwrap();
+    store
+        .append(request(
+            "tenant_a",
+            "enroll-reversal",
+            UsageSource::ConfirmedEnrollment,
+            Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).single().unwrap(),
+            AppendBody::Reversal {
+                reverses: EventKey::new("enroll-1").unwrap(),
+            },
+        ))
+        .await
+        .unwrap();
 
     let gib = 1024_u64 * 1024 * 1024;
     let mut day = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
@@ -289,28 +396,42 @@ async fn monthly_aggregate_finalizes_all_meters_only_after_a_complete_month() {
     let mut n = 0;
     loop {
         let at = day.and_hms_opt(0, 0, 0).unwrap().and_utc();
-        store.append(request(
-            "tenant_a",
-            &format!("template-{n:02}"),
-            UsageSource::TemplateSample,
-            at,
-            AppendBody::Level { units: 20 },
-        )).await.unwrap();
-        store.append(request(
-            "tenant_a",
-            &format!("photo-{n:02}"),
-            UsageSource::PhotoStorageSample,
-            at,
-            AppendBody::Level { units: gib },
-        )).await.unwrap();
-        if day == last { break; }
+        store
+            .append(request(
+                "tenant_a",
+                &format!("template-{n:02}"),
+                UsageSource::TemplateSample,
+                at,
+                AppendBody::Level { units: 20 },
+            ))
+            .await
+            .unwrap();
+        store
+            .append(request(
+                "tenant_a",
+                &format!("photo-{n:02}"),
+                UsageSource::PhotoStorageSample,
+                at,
+                AppendBody::Level { units: gib },
+            ))
+            .await
+            .unwrap();
+        if day == last {
+            break;
+        }
         day = day.succ_opt().unwrap();
         n += 1;
     }
 
-    let aggregate = store.monthly_aggregate("tenant_a", &period, november_start).await.unwrap();
+    let aggregate = store
+        .monthly_aggregate("tenant_a", &period, november_start)
+        .await
+        .unwrap();
     assert_eq!(aggregate.tenant_id, "tenant_a");
-    assert_eq!(aggregate.period_start, NaiveDate::from_ymd_opt(2026, 10, 1).unwrap());
+    assert_eq!(
+        aggregate.period_start,
+        NaiveDate::from_ymd_opt(2026, 10, 1).unwrap()
+    );
     assert_eq!(aggregate.enrollments, 1);
     assert_eq!(aggregate.identification_requests, 4);
     assert_eq!(aggregate.active_templates, 20);
@@ -324,12 +445,17 @@ async fn monthly_aggregate_fails_closed_when_any_level_meter_day_is_missing() {
     let Some(fx) = fixture().await else { return };
     let store = fx.store().await;
     let period = AllowancePeriod::containing(
-        Utc.with_ymd_and_hms(2026, 10, 10, 0, 0, 0).single().unwrap(),
+        Utc.with_ymd_and_hms(2026, 10, 10, 0, 0, 0)
+            .single()
+            .unwrap(),
     );
     let closed = Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).single().unwrap();
 
     assert_eq!(
-        store.monthly_aggregate("tenant_a", &period, closed).await.unwrap_err(),
+        store
+            .monthly_aggregate("tenant_a", &period, closed)
+            .await
+            .unwrap_err(),
         UsageStoreError::MissingLevelSample
     );
 }
@@ -343,15 +469,36 @@ async fn daily_level_samples_use_latest_sample_and_round_monthly_average_up() {
     let second = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
 
     for item in [
-        request("tenant_a", "template-day-1-old", UsageSource::TemplateSample, instant(1), AppendBody::Level { units: 10 }),
-        request("tenant_a", "template-day-1-latest", UsageSource::TemplateSample, instant(1), AppendBody::Level { units: 12 }),
-        request("tenant_a", "template-day-2", UsageSource::TemplateSample, instant(2), AppendBody::Level { units: 21 }),
+        request(
+            "tenant_a",
+            "template-day-1-old",
+            UsageSource::TemplateSample,
+            instant(1),
+            AppendBody::Level { units: 10 },
+        ),
+        request(
+            "tenant_a",
+            "template-day-1-latest",
+            UsageSource::TemplateSample,
+            instant(1),
+            AppendBody::Level { units: 12 },
+        ),
+        request(
+            "tenant_a",
+            "template-day-2",
+            UsageSource::TemplateSample,
+            instant(2),
+            AppendBody::Level { units: 21 },
+        ),
     ] {
         store.append(item).await.unwrap();
     }
 
     assert_eq!(
-        store.level_billable_quantity("tenant_a", &period, MeterId::ActiveTemplates, first, second).await.unwrap(),
+        store
+            .level_billable_quantity("tenant_a", &period, MeterId::ActiveTemplates, first, second)
+            .await
+            .unwrap(),
         17
     );
 }
@@ -365,29 +512,53 @@ async fn photo_storage_average_uses_gibibytes_and_requires_every_day() {
     let second = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
     let gib = 1024_u64 * 1024 * 1024;
 
-    store.append(request(
-        "tenant_a",
-        "photo-day-1",
-        UsageSource::PhotoStorageSample,
-        instant(1),
-        AppendBody::Level { units: gib },
-    )).await.unwrap();
+    store
+        .append(request(
+            "tenant_a",
+            "photo-day-1",
+            UsageSource::PhotoStorageSample,
+            instant(1),
+            AppendBody::Level { units: gib },
+        ))
+        .await
+        .unwrap();
 
     assert_eq!(
-        store.level_billable_quantity("tenant_a", &period, MeterId::RetainedPhotoStorageGb, first, second).await.unwrap_err(),
+        store
+            .level_billable_quantity(
+                "tenant_a",
+                &period,
+                MeterId::RetainedPhotoStorageGb,
+                first,
+                second
+            )
+            .await
+            .unwrap_err(),
         UsageStoreError::MissingLevelSample
     );
 
-    store.append(request(
-        "tenant_a",
-        "photo-day-2",
-        UsageSource::PhotoStorageSample,
-        instant(2),
-        AppendBody::Level { units: gib * 2 },
-    )).await.unwrap();
+    store
+        .append(request(
+            "tenant_a",
+            "photo-day-2",
+            UsageSource::PhotoStorageSample,
+            instant(2),
+            AppendBody::Level { units: gib * 2 },
+        ))
+        .await
+        .unwrap();
 
     assert_eq!(
-        store.level_billable_quantity("tenant_a", &period, MeterId::RetainedPhotoStorageGb, first, second).await.unwrap(),
+        store
+            .level_billable_quantity(
+                "tenant_a",
+                &period,
+                MeterId::RetainedPhotoStorageGb,
+                first,
+                second
+            )
+            .await
+            .unwrap(),
         2
     );
 }
