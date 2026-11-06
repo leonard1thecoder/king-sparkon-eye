@@ -16,6 +16,32 @@ Related: [`BILLING_PLAN_DOMAIN.md`](BILLING_PLAN_DOMAIN.md) (plan and meter doma
 
 **Worker and scheduler foundation implemented; service activation remains gated.** `src/billing/reporting_worker.rs` claims leased outbox rows, groups them by tenant/meter/UTC month, computes the closed-month aggregate, resolves the Stripe Customer through an injected trusted resolver, and acknowledges only after successful Stripe acceptance. `src/billing/reporting_runtime.rs` provides a non-overlapping Tokio interval scheduler, graceful watch-channel shutdown, structured batch logs, and process-local counters/snapshot for success, failures, delivery, retries, dead letters, lease loss, last success and batch duration. Missed ticks are skipped; failed batches do not terminate the scheduler. The scheduler is intentionally not started by the HTTP service: the HTTP service still has no billing PostgreSQL pool/runtime wiring. `src/persistence/billing_accounts.rs` now provides the Eye-account mapping and a mode-scoped PostgreSQL resolver; test-mode Customer provisioning is idempotent. Live mode remains disabled. No invoice creation or Stripe reconciliation is implemented.
 
+
+## Mounted per-account self-service runtime (#245)
+
+The HTTP service can mount the account-owned billing API when the following server-only settings are configured:
+
+- `EYE_BILLING_DATABASE_URL`: native PostgreSQL connection string for Eye billing storage. This is deliberately separate from the OAuth `EYE_DATABASE_REST_URL` PostgREST endpoint.
+- `EYE_BILLING_RETURN_URL_ORIGINS`: comma-separated bare HTTPS origins, for example `https://app.example.com,https://eye.example.com`. Paths, credentials, query strings and fragments are not valid origin entries.
+- Existing test Stripe settings: `EYE_STRIPE_MODE=test`, `EYE_STRIPE_SECRET_KEY`, and the four configured paid-plan price IDs.
+
+When billing settings are entirely absent, billing routes remain mounted but fail closed with `503`. Partial or invalid billing configuration fails startup. Startup opens a bounded SQLx PostgreSQL pool and applies the embedded Eye migrations before mounting the runtime; graceful shutdown closes the pool. The native DSN is never inferred from or substituted with the OAuth PostgREST URL.
+
+Authenticated endpoints:
+
+- `POST /v1/billing/checkout` accepts `plan` (`gold` or `premium`), `interval` (`monthly` or `annual`), `successUrl`, and `cancelUrl`.
+- `POST /v1/billing/portal` accepts `returnUrl`.
+
+Both require a verified Eye bearer access token and an `Idempotency-Key` header. Account ownership is taken only from the verified token `sub`; no billing role or scope is required. Client-supplied account IDs, Stripe Customer IDs, price IDs, amounts and currencies are not accepted. Idempotency keys are hashed with the verified owner and operation to prevent cross-account key collisions. Responses contain only the hosted session URL; hosted URLs are not logged.
+
+The PostgreSQL integration test is opt-in via `EYE_TEST_DATABASE_URL` and refuses non-loopback hosts or database names that do not contain `test`. It covers concurrent same-account mapping writes, conflict rejection, distinct-account isolation and Stripe-mode isolation. Run it with:
+
+```sh
+EYE_TEST_DATABASE_URL=postgres://localhost/eye_test cargo test --test billing_accounts_postgres
+```
+
+Live Stripe mode remains disabled. These routes do not activate unapproved catalog pricing, tax handling, or usage-event billing.
+
 ## Registered Eye account billing ownership (#243)
 
 Every registered Eye account owns its own billing account. The trusted owner key is the immutable `usr_<uuid>` in the verified Eye access-token `sub` claim; Tracker tenant IDs and Tracker billing roles are not part of billing identity. Migration `0004_eye_billing_accounts.sql` enforces one Stripe Customer per `(eye_user_id, stripe_mode)` and prevents reusing a Customer within a mode. `BillingAccountStore` resolves only the exact owner/mode pair and refuses conflicting mappings. `ensure_customer_mapping` first reuses an existing mapping, otherwise provisions through `StripeClient::create_customer` and persists it. Stripe Customer creation is test-mode-only, omits email/profile PII, stores only the opaque Eye account ID in metadata, and uses a deterministic idempotency key. The PostgreSQL resolver implements the reporting worker's trusted resolver contract.
