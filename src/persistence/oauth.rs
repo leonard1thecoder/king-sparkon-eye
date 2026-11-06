@@ -103,7 +103,7 @@ pub async fn consume_handoff(
     code_hash: &[u8; 32],
     callback_url: &str,
 ) -> Result<Option<String>, sqlx::Error> {
-    let row: Option<(String,)> = sqlx::query_as(
+    let row: Option<(String, bool)> = sqlx::query_as(
         "UPDATE oauth_handoffs
             SET consumed_at = now()
           WHERE code_hash = $1
