@@ -5,7 +5,7 @@
 //! are explicit configuration; no candidate name, price, tenant ID, or production default is
 //! inferred here. Reporting is disabled unless explicitly enabled by deployment configuration.
 
-use chrono::{NaiveDate, Utc};
+use chrono::{Datelike, NaiveDate};
 use reqwest::{Client, StatusCode};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
