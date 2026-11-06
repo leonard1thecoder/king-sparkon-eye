@@ -382,6 +382,12 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
@@ -457,6 +463,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
