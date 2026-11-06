@@ -20,6 +20,8 @@ fn migration_revokes_existing_automatic_google_enrollment_grants() {
 
 #[test]
 fn oauth_identity_linking_keeps_existing_scope_state_for_other_users() {
-    assert!(MIGRATION.contains("RETURN QUERY SELECT v_user.user_id, v_user.email, v_user.role, v_user.scopes"));
+    assert!(MIGRATION.contains(
+        "RETURN QUERY SELECT v_user.user_id, v_user.email, v_user.role, v_user.scopes"
+    ));
     assert!(MIGRATION.contains("IF FOUND AND v_link.provider_subject <> p_provider_subject"));
 }
