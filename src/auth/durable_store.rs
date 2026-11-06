@@ -616,17 +616,34 @@ fn map_sqlx(error: sqlx::Error) -> DurableStoreError {
 
 pub fn hash_hex(value: &str) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(value.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
+    Sha256::digest(value.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 pub fn role_name(role: UserRole) -> &'static str {
-    match role { UserRole::GateOperator=>"GateOperator",UserRole::Admin=>"Admin",UserRole::Auditor=>"Auditor" }
+    match role {
+        UserRole::GateOperator => "GateOperator",
+        UserRole::Admin => "Admin",
+        UserRole::Auditor => "Auditor",
+    }
 }
 pub fn new_oauth_user(email: &str, now_ms: u64) -> Result<UserRecord, DurableStoreError> {
-    let salt=crate::auth::google::random_urlsafe(32).map_err(|_|DurableStoreError::Unavailable)?;
-    let password=crate::auth::google::random_urlsafe(32).map_err(|_|DurableStoreError::Unavailable)?;
+    let salt =
+        crate::auth::google::random_urlsafe(32).map_err(|_| DurableStoreError::Unavailable)?;
+    let password =
+        crate::auth::google::random_urlsafe(32).map_err(|_| DurableStoreError::Unavailable)?;
     Ok(UserRecord {
-        user_id:format!("usr_{}",crate::auth::google::random_urlsafe(16).map_err(|_|DurableStoreError::Unavailable)?),
-        email:email.to_owned(),password_hash:hash_password(&password,&salt),salt,role:UserRole::GateOperator,
-        scopes:Vec::new(),is_active:true,created_at_ms:now_ms,
+        user_id: format!(
+            "usr_{}",
+            crate::auth::google::random_urlsafe(16).map_err(|_| DurableStoreError::Unavailable)?
+        ),
+        email: email.to_owned(),
+        password_hash: hash_password(&password, &salt),
+        salt,
+        role: UserRole::GateOperator,
+        scopes: Vec::new(),
+        is_active: true,
+        created_at_ms: now_ms,
     })
 }
