@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use king_sparkon_eye::config::{
-    Config, ConfigError, DEFAULT_BIND_ADDR, ENV_BIND_ADDR, ENV_PLATFORM_PORT,
-    ENV_VISION_PROVIDER_API_KEY, ENV_VISION_PROVIDER_ENABLED, SecretString,
-    ENV_OAUTH_GOOGLE_CLIENT_ID, ENV_OAUTH_GOOGLE_CLIENT_SECRET, ENV_OAUTH_GOOGLE_REDIRECT_URL,
-    ENV_OAUTH_DATABASE_URL, ENV_OAUTH_ENCRYPTION_KEY, ENV_OAUTH_CALLBACK_URLS,
-    ENV_OAUTH_EXCHANGE_SECRET, ENV_JWT_SIGNING_SECRET,
+    Config, ConfigError, DEFAULT_BIND_ADDR, ENV_BIND_ADDR, ENV_JWT_SIGNING_SECRET,
+    ENV_OAUTH_CALLBACK_URLS, ENV_OAUTH_DATABASE_URL, ENV_OAUTH_ENCRYPTION_KEY,
+    ENV_OAUTH_EXCHANGE_SECRET, ENV_OAUTH_GOOGLE_CLIENT_ID, ENV_OAUTH_GOOGLE_CLIENT_SECRET,
+    ENV_OAUTH_GOOGLE_REDIRECT_URL, ENV_PLATFORM_PORT, ENV_VISION_PROVIDER_API_KEY,
+    ENV_VISION_PROVIDER_ENABLED, SecretString,
 };
 fn lookup(map: HashMap<&'static str, &'static str>) -> impl Fn(&str) -> Option<String> {
     move |name| map.get(name).map(|v| v.to_string())
@@ -155,7 +155,6 @@ fn zero_or_non_numeric_image_limit_is_rejected_by_name() {
         assert!(!err.to_string().contains(value));
     }
 }
-
 
 #[test]
 fn oauth_requires_direct_postgres_and_a_32_byte_encryption_key() {
