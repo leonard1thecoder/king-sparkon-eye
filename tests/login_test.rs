@@ -143,7 +143,9 @@ async fn legacy_password_login_returns_tokens_and_rehashes_in_postgres() {
 
 #[tokio::test]
 async fn bcrypt_login_does_not_rewrite_the_existing_hash() {
-    let Some((pool, url)) = database().await else { return };
+    let Some((pool, url)) = database().await else {
+        return;
+    };
     let email = format!("bcrypt-{}@example.test", Uuid::new_v4());
     let stored_hash = bcrypt::hash(PASSWORD, 4).unwrap();
     let user_id = seed_user(&pool, &email, &stored_hash, "", true).await;
@@ -162,7 +164,9 @@ async fn bcrypt_login_does_not_rewrite_the_existing_hash() {
 
 #[tokio::test]
 async fn unknown_wrong_password_and_disabled_account_have_uniform_errors() {
-    let Some((pool, url)) = database().await else { return };
+    let Some((pool, url)) = database().await else {
+        return;
+    };
     let email = format!("operator-{}@example.test", Uuid::new_v4());
     let disabled_email = format!("disabled-{}@example.test", Uuid::new_v4());
     seed_user(
@@ -201,7 +205,9 @@ async fn unknown_wrong_password_and_disabled_account_have_uniform_errors() {
 
 #[tokio::test]
 async fn malformed_credentials_are_rejected_before_database_lookup() {
-    let Some((pool, url)) = database().await else { return };
+    let Some((pool, url)) = database().await else {
+        return;
+    };
     let (status, body) = login(&url, "operator@example.test", "").await;
     assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "VALIDATION_FAILED");

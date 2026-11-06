@@ -1,215 +1,199 @@
-//! Tests for `POST /v1/auth/password-reset/request` and `POST /v1/auth/password-reset/confirm`
-//! against a mock PostgREST server.
+//! Password reset route tests against the Eye-owned SQLx PostgreSQL store.
+//!
+//! Requires EYE_TEST_DATABASE_URL pointing to a disposable PostgreSQL database.
+//! Tests skip explicitly when it is absent; skipped tests are not DB verification.
 
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::{collections::HashMap, net::SocketAddr};
 
-use axum::Json;
-use axum::Router;
-use axum::body::Body;
-use axum::extract::connect_info::MockConnectInfo;
-use axum::extract::{Path, State};
-use axum::http::{Request, StatusCode};
-use axum::routing::post;
+use axum::{body::Body, extract::connect_info::MockConnectInfo, http::Request};
 use http_body_util::BodyExt;
-use king_sparkon_eye::api;
-use king_sparkon_eye::auth::durable_store::hash_hex;
-use king_sparkon_eye::config::Config;
+use king_sparkon_eye::{
+    api,
+    auth::durable_store::hash_hex,
+    config::Config,
+    persistence::{connect, migrate},
+};
 use serde_json::{Value, json};
-use tokio::net::TcpListener;
+use sqlx::PgPool;
 use tower::ServiceExt;
+use uuid::Uuid;
 
-const EXISTING_EMAIL: &str = "existing@example.test";
-const VALID_TOKEN: &str = "test_valid_reset_token_123456789";
 const NEW_PASSWORD: &str = "brand-new-secure-password-2026";
-const JWT_SECRET: &str = "login-test-signing-secret-at-least-32-bytes";
-const KID: &str = "key-2026-v1";
+const ENCRYPTION_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
-#[derive(Clone)]
-struct MockDb {
-    created_tokens: Arc<Mutex<Vec<String>>>,
-}
-
-struct Mock {
-    base: String,
-}
-
-async fn rpc(
-    Path(name): Path<String>,
-    State(db): State<MockDb>,
-    Json(body): Json<Value>,
-) -> Json<Value> {
-    match name.as_str() {
-        // The rate-limit RPC returns `table(allowed boolean)` (202610290001).
-        "eye_allow_oauth_attempt" => Json(json!([{"allowed": true}])),
-        "eye_create_password_reset_token" => {
-            let email = body["p_email"].as_str().unwrap_or_default();
-            if email == EXISTING_EMAIL {
-                db.created_tokens
-                    .lock()
-                    .unwrap()
-                    .push(body["p_token_hash"].as_str().unwrap().to_string());
-                Json(json!([{
-                    "user_id": "usr_existing_123",
-                    "email": email,
-                }]))
-            } else {
-                Json(json!([]))
-            }
+async fn database() -> Option<(PgPool, String)> {
+    let url = match std::env::var("EYE_TEST_DATABASE_URL") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            eprintln!("SKIPPED: EYE_TEST_DATABASE_URL not set; password reset DB tests not run");
+            return None;
         }
-        "eye_consume_password_reset_token" => {
-            let token_hash = body["p_token_hash"].as_str().unwrap_or_default();
-            // The store sends `\x` + SHA-256(raw token) (bytea literal); only the valid token matches.
-            if token_hash == format!("\\x{}", hash_hex(VALID_TOKEN))
-                || db
-                    .created_tokens
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .any(|t| t == token_hash)
-            {
-                Json(json!([{"ok": true}]))
-            } else {
-                Json(json!([{"ok": false}]))
-            }
-        }
-        _ => Json(json!([])),
-    }
-}
-
-async fn spawn_mock() -> Mock {
-    let db = MockDb {
-        created_tokens: Arc::new(Mutex::new(Vec::new())),
     };
-    let app = Router::new()
-        .route("/rest/v1/rpc/{name}", post(rpc))
-        .with_state(db);
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    Mock {
-        base: format!("http://{addr}/rest/v1"),
-    }
+    let pool = connect(&url)
+        .await
+        .expect("connect to disposable PostgreSQL database");
+    migrate(&pool).await.expect("apply Eye SQLx migrations");
+    Some((pool, url))
 }
 
-fn app_with(mock: &Mock) -> Router {
-    // Mirrors the settings `Config` requires for the OAuth/database runtime
-    // (see tests/login_test.rs), pointed at the mock PostgREST server.
-    let vars = [
-        ("EYE_GOOGLE_CLIENT_ID", "test-client-id"),
-        ("EYE_GOOGLE_CLIENT_SECRET", "test-client-secret"),
+fn config(database_url: &str) -> Config {
+    let values = HashMap::from([
+        ("EYE_GOOGLE_CLIENT_ID", "test-client-id".to_owned()),
+        ("EYE_GOOGLE_CLIENT_SECRET", "test-client-secret".to_owned()),
         (
             "EYE_GOOGLE_REDIRECT_URL",
-            "http://127.0.0.1:9/v1/auth/google/callback",
+            "http://127.0.0.1:9/v1/auth/google/callback".to_owned(),
         ),
-        ("EYE_DATABASE_REST_URL", mock.base.as_str()),
-        ("EYE_DATABASE_SERVICE_ROLE_KEY", "test-service-role-key"),
+        ("EYE_DATABASE_URL", database_url.to_owned()),
+        ("EYE_OAUTH_ENCRYPTION_KEY", ENCRYPTION_KEY.to_owned()),
         (
             "EYE_OAUTH_CALLBACK_URLS",
-            "http://127.0.0.1:9/v1/auth/google/callback",
+            "http://127.0.0.1:9/v1/auth/google/callback".to_owned(),
         ),
         (
             "EYE_OAUTH_EXCHANGE_SECRET",
-            "exchange-secret-at-least-32-bytes-long",
+            "test-exchange-secret-at-least-32-bytes".to_owned(),
         ),
-        ("EYE_JWT_SIGNING_SECRET", JWT_SECRET),
-        ("EYE_JWT_KID", KID),
-        ("EYE_OAUTH_ALLOW_LOCALHOST_HTTP", "true"),
-    ];
-    let config = Config::from_lookup(|key| {
-        vars.iter()
-            .find(|(name, _)| *name == key)
-            .map(|(_, value)| (*value).to_owned())
-    })
-    .expect("config is valid");
-    api::router(config)
+        (
+            "EYE_JWT_SIGNING_SECRET",
+            "test-jwt-signing-secret-at-least-32-bytes".to_owned(),
+        ),
+        ("EYE_OAUTH_ALLOW_LOCALHOST_HTTP", "true".to_owned()),
+    ]);
+    Config::from_lookup(|name| values.get(name).cloned()).expect("valid SQLx auth config")
 }
 
-#[tokio::test]
-async fn request_password_reset_returns_ok_and_prevents_enumeration() {
-    let mock = spawn_mock().await;
-    let app = app_with(&mock);
-
-    let peer: SocketAddr = "192.0.2.10:1234".parse().unwrap();
-
-    // 1. Existing user
-    let body = serde_json::to_vec(&json!({
-        "email": EXISTING_EMAIL,
-    }))
-    .unwrap();
-    let req = Request::builder()
-        .uri("/v1/auth/password-reset/request")
-        .method("POST")
-        .header("content-type", "application/json")
-        .extension(MockConnectInfo(peer))
-        .body(Body::from(body))
-        .unwrap();
-    let response = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // 2. Non-existent user also returns OK (anti-enumeration)
-    let body = serde_json::to_vec(&json!({
-        "email": "unknown@example.test",
-    }))
-    .unwrap();
-    let req = Request::builder()
-        .uri("/v1/auth/password-reset/request")
-        .method("POST")
-        .header("content-type", "application/json")
-        .extension(MockConnectInfo(peer))
-        .body(Body::from(body))
-        .unwrap();
-    let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock")
+        .as_millis() as i64
 }
 
-#[tokio::test]
-async fn confirm_password_reset_with_valid_token_succeeds() {
-    let mock = spawn_mock().await;
-    let app = app_with(&mock);
-
-    let peer: SocketAddr = "192.0.2.11:1234".parse().unwrap();
-
-    let body = serde_json::to_vec(&json!({
-        "token": VALID_TOKEN,
-        "password": NEW_PASSWORD,
-    }))
-    .unwrap();
-    let req = Request::builder()
-        .uri("/v1/auth/password-reset/confirm")
-        .method("POST")
-        .header("content-type", "application/json")
-        .extension(MockConnectInfo(peer))
-        .body(Body::from(body))
-        .unwrap();
-
-    let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+async fn seed_user(pool: &PgPool, email: &str) -> String {
+    let user_id = format!("usr_{}", Uuid::new_v4().simple());
+    sqlx::query(
+        "INSERT INTO eye_auth_users(user_id,email,password_hash,salt,role,scopes,is_active,created_at_ms)
+         VALUES($1,lower($2),'old-password-hash','old-salt','GateOperator','{}',true,$3)",
+    )
+    .bind(&user_id)
+    .bind(email)
+    .bind(now_ms())
+    .execute(pool)
+    .await
+    .expect("seed password-reset user");
+    user_id
 }
 
-#[tokio::test]
-async fn confirm_password_reset_with_invalid_or_expired_token_fails() {
-    let mock = spawn_mock().await;
-    let app = app_with(&mock);
-
-    let peer: SocketAddr = "192.0.2.12:1234".parse().unwrap();
-
-    let body = serde_json::to_vec(&json!({
-        "token": "expired_or_invalid_token",
-        "password": NEW_PASSWORD,
-    }))
-    .unwrap();
-    let req = Request::builder()
-        .uri("/v1/auth/password-reset/confirm")
-        .method("POST")
-        .header("content-type", "application/json")
-        .extension(MockConnectInfo(peer))
-        .body(Body::from(body))
+async fn post(database_url: &str, path: &str, payload: Value) -> (axum::http::StatusCode, Value) {
+    let app = api::router(config(database_url))
+        .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41000))));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(path)
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
         .unwrap();
-
-    let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let status = response.status();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    let err: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(err["code"], "INVALID_OR_EXPIRED_TOKEN");
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn password_reset_request_prevents_account_enumeration() {
+    let Some((pool, url)) = database().await else {
+        return;
+    };
+    let email = format!("existing-{}@example.test", Uuid::new_v4());
+    seed_user(&pool, &email).await;
+
+    let existing = post(
+        &url,
+        "/v1/auth/password-reset/request",
+        json!({"email": email}),
+    )
+    .await;
+    let unknown = post(
+        &url,
+        "/v1/auth/password-reset/request",
+        json!({"email": format!("missing-{}@example.test", Uuid::new_v4())}),
+    )
+    .await;
+    assert_eq!(existing.0, axum::http::StatusCode::OK, "{:?}", existing.1);
+    assert_eq!(unknown.0, axum::http::StatusCode::OK, "{:?}", unknown.1);
+    assert_eq!(existing.1, unknown.1);
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn password_reset_confirm_consumes_token_and_updates_password() {
+    let Some((pool, url)) = database().await else {
+        return;
+    };
+    let email = format!("reset-{}@example.test", Uuid::new_v4());
+    let user_id = seed_user(&pool, &email).await;
+    let token = format!("reset-token-{}", Uuid::new_v4());
+    let token_hash = hash_hex(&token);
+    let now = now_ms();
+    sqlx::query(
+        "INSERT INTO eye_password_reset_tokens(token_hash,user_id,created_at_ms,expires_at_ms)
+         VALUES(decode($1,'hex'),$2,$3,$4)",
+    )
+    .bind(&token_hash)
+    .bind(&user_id)
+    .bind(now)
+    .bind(now + 60_000)
+    .execute(&pool)
+    .await
+    .expect("seed one-time reset token");
+
+    let result = post(
+        &url,
+        "/v1/auth/password-reset/confirm",
+        json!({"token": token, "password": NEW_PASSWORD}),
+    )
+    .await;
+    assert_eq!(result.0, axum::http::StatusCode::OK, "{:?}", result.1);
+
+    let consumed: Option<i64> = sqlx::query_scalar(
+        "SELECT consumed_at_ms FROM eye_password_reset_tokens WHERE token_hash=decode($1,'hex')",
+    )
+    .bind(&token_hash)
+    .fetch_one(&pool)
+    .await
+    .expect("read reset token");
+    assert!(consumed.is_some());
+
+    let password_hash: String =
+        sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
+            .bind(&user_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read updated password hash");
+    assert_ne!(password_hash, "old-password-hash");
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn invalid_or_expired_password_reset_token_is_rejected() {
+    let Some((pool, url)) = database().await else {
+        return;
+    };
+    let result = post(
+        &url,
+        "/v1/auth/password-reset/confirm",
+        json!({"token": format!("invalid-{}", Uuid::new_v4()), "password": NEW_PASSWORD}),
+    )
+    .await;
+    assert_eq!(result.0, axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(result.1["code"], "INVALID_OR_EXPIRED_TOKEN");
+    pool.close().await;
 }
