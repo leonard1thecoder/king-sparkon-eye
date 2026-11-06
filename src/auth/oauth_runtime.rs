@@ -18,6 +18,7 @@ use axum::{
 use reqwest::Client;
 use serde::Deserialize;
 use tokio::sync::RwLock;
+use sqlx::postgres::PgPoolOptions;
 
 use crate::api::AppState;
 use crate::auth::durable_store::{
@@ -124,7 +125,13 @@ impl OAuthRuntime {
             .build()
             .map_err(|_| ApiError::ServiceUnavailable)?;
         Ok(Self {
-            store: DurableEyeStore::new(&config),
+            store: {
+                let pool = PgPoolOptions::new()
+                    .max_connections(10)
+                    .connect_lazy(&config.database_url)
+                    .map_err(|_| ApiError::ServiceUnavailable)?;
+                DurableEyeStore::new(pool, &config).map_err(|_| ApiError::ServiceUnavailable)?
+            },
             config,
             allowlist,
             client,
