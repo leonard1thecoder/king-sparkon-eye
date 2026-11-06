@@ -4,6 +4,18 @@
 
 Related: [`BILLING_PLAN_DOMAIN.md`](BILLING_PLAN_DOMAIN.md) (plan and meter domain, #145), [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md) (sequencing).
 
+## Meter-event transport foundation (#143)
+
+`src/billing/meter_reporting.rs` adds a gated Stripe Billing Meter Event transport for one already-computed monthly aggregate:
+
+- Uses `POST /v1/billing/meter_events`, form-encoded payload values, and a stable digest-derived identifier scoped to tenant reference, meter and UTC month.
+- `UsageLedgerStore::monthly_aggregate` now finalizes all four meters for a completed UTC month: net flow totals (including reversals booked to their original period), latest daily level samples averaged across the full month, and fail-closed behavior when any daily sample is absent. It refuses to finalize a period before its exclusive end.
+- Requires explicit per-meter event names, the Stripe customer mapping payload key, an opaque trusted Stripe customer ID, and a configured secret key. No event names or customer mappings are guessed.
+- Attributes the aggregate to the final second of its UTC month and refuses timestamps outside Stripe's documented acceptance window.
+- Reporting is opt-in; the adapter cannot be constructed when disabled. It sends only the configured meter name, customer reference, quantity, timestamp and opaque report identifier.
+
+**This is transport only, not end-to-end metering.** It does not resolve tenant-to-customer mappings, calculate aggregates from the ledger, claim/complete outbox rows, schedule retries, create monthly invoices, or reconcile Stripe summaries. The live/reporting gate remains closed pending #138/#143 approvals. Do not enable it in a deployment yet.
+
 ## What is implemented
 
 Code: `src/billing/stripe/` (`config.rs`, `client.rs`, `mod.rs`). Tests: `tests/stripe_config_test.rs` (14 tests), `tests/stripe_catalog_test.rs` (16 tests).

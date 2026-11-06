@@ -17,8 +17,10 @@ This document describes the Rust plan, meter and allowance model in `src/billing
 | Candidate catalog file, tagged `candidate_unapproved` | Implemented |
 | Loading the catalog into the service `Config` or runtime | **Not implemented** (no runtime consumer yet) |
 | Usage ledger reference semantics (`src/billing/ledger.rs`) | Implemented as a storage-independent model; PostgreSQL adapter in `src/persistence/usage_ledger.rs` persists append, idempotency, reversal and aggregation semantics (#148) |
-| Durable PostgreSQL ledger and transactional reporting-intent outbox (migration `0003_billing_usage_ledger.sql`) | **Implemented in #148**; Stripe Meter delivery and reconciliation remain #143 |
+| Durable PostgreSQL ledger and transactional reporting-intent outbox (migration `0003_billing_usage_ledger.sql`) | **Implemented in #148**; monthly Stripe Meter transport and completed-month aggregation are partial foundations in #143; outbox worker, retry orchestration and reconciliation remain open |
 | Enforcing allowances (blocking, refusing, or tenant-scoped quotas) | **Planned**, issue #146 |
+| Stripe Billing Meter event transport (`src/billing/meter_reporting.rs`) | **Partial**: explicit-config, disabled-by-default transport; not wired to the outbox or runtime |
+| Completed-month aggregation (`UsageLedgerStore::monthly_aggregate`) | **Implemented as a persistence service**: net flow totals, daily level averages, full-month close guard and fail-closed missing-sample handling; not yet scheduled or delivered to Stripe |
 | Stripe products, prices, metered prices, Checkout, Customer Portal, webhooks | **Partial** for #139: base-price config/verification plus test-mode-only product/base-price provisioner; no metered prices or runtime wiring. **Partial** for #141: signature verification merged in PR #156; durable event processing remains blocked on #113. See `docs/STRIPE_INTEGRATION.md`. |
 | Billing-account and tenant mapping from API credentials | **Planned**, issue #138 contract |
 | Confirmed, billable enrollment source | **Blocked**, see [Blockers](#blockers-and-dependencies) |

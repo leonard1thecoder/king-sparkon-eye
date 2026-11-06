@@ -252,6 +252,88 @@ async fn reversal_is_append_only_idempotent_and_booked_to_original_period() {
     );
 }
 
+
+#[tokio::test]
+async fn monthly_aggregate_finalizes_all_meters_only_after_a_complete_month() {
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
+    let october = Utc.with_ymd_and_hms(2026, 10, 15, 12, 0, 0).single().unwrap();
+    let period = AllowancePeriod::containing(october);
+    let november_start = Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).single().unwrap();
+
+    assert_eq!(
+        store.monthly_aggregate("tenant_a", &period, november_start - chrono::Duration::seconds(1)).await.unwrap_err(),
+        UsageStoreError::PeriodNotClosed
+    );
+
+    for (key, source, day, quantity) in [
+        ("enroll-1", UsageSource::ConfirmedEnrollment, 3, 1),
+        ("enroll-2", UsageSource::ConfirmedEnrollment, 4, 1),
+        ("identify-1", UsageSource::EligibleIdentificationCompleted, 5, 3),
+        ("identify-2", UsageSource::EligibleIdentificationCompleted, 6, 1),
+    ] {
+        let at = Utc.with_ymd_and_hms(2026, 10, day, 0, 0, 0).single().unwrap();
+        store.append(request("tenant_a", key, source, at, AppendBody::Flow { quantity })).await.unwrap();
+    }
+    store.append(request(
+        "tenant_a",
+        "enroll-reversal",
+        UsageSource::ConfirmedEnrollment,
+        Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).single().unwrap(),
+        AppendBody::Reversal { reverses: EventKey::new("enroll-1").unwrap() },
+    )).await.unwrap();
+
+    let gib = 1024_u64 * 1024 * 1024;
+    let mut day = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+    let last = NaiveDate::from_ymd_opt(2026, 10, 31).unwrap();
+    let mut n = 0;
+    loop {
+        let at = day.and_hms_opt(0, 0, 0).unwrap().and_utc();
+        store.append(request(
+            "tenant_a",
+            &format!("template-{n:02}"),
+            UsageSource::TemplateSample,
+            at,
+            AppendBody::Level { units: 20 },
+        )).await.unwrap();
+        store.append(request(
+            "tenant_a",
+            &format!("photo-{n:02}"),
+            UsageSource::PhotoStorageSample,
+            at,
+            AppendBody::Level { units: gib },
+        )).await.unwrap();
+        if day == last { break; }
+        day = day.succ_opt().unwrap();
+        n += 1;
+    }
+
+    let aggregate = store.monthly_aggregate("tenant_a", &period, november_start).await.unwrap();
+    assert_eq!(aggregate.tenant_id, "tenant_a");
+    assert_eq!(aggregate.period_start, NaiveDate::from_ymd_opt(2026, 10, 1).unwrap());
+    assert_eq!(aggregate.enrollments, 1);
+    assert_eq!(aggregate.identification_requests, 4);
+    assert_eq!(aggregate.active_templates, 20);
+    assert_eq!(aggregate.retained_photo_storage_gb, 1);
+    assert_eq!(aggregate.quantity(MeterId::Enrollments), 1);
+    assert_eq!(aggregate.quantity(MeterId::RetainedPhotoStorageGb), 1);
+}
+
+#[tokio::test]
+async fn monthly_aggregate_fails_closed_when_any_level_meter_day_is_missing() {
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
+    let period = AllowancePeriod::containing(
+        Utc.with_ymd_and_hms(2026, 10, 10, 0, 0, 0).single().unwrap(),
+    );
+    let closed = Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).single().unwrap();
+
+    assert_eq!(
+        store.monthly_aggregate("tenant_a", &period, closed).await.unwrap_err(),
+        UsageStoreError::MissingLevelSample
+    );
+}
+
 #[tokio::test]
 async fn daily_level_samples_use_latest_sample_and_round_monthly_average_up() {
     let Some(fx) = fixture().await else { return };

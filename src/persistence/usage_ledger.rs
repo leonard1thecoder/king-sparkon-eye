@@ -34,6 +34,8 @@ pub enum UsageStoreError {
     ArithmeticOverflow,
     #[error("a daily storage sample is missing")]
     MissingLevelSample,
+    #[error("monthly usage cannot be finalized before the period has ended")]
+    PeriodNotClosed,
     #[error("usage measurement window is invalid")]
     InvalidWindow,
 }
@@ -52,6 +54,29 @@ pub struct ClaimedUsageReport {
     pub period_start: NaiveDate,
     pub attempts: i32,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MonthlyUsageAggregate {
+    /// Opaque internal tenant key. Never send this value to Stripe or expose it to clients.
+    pub tenant_id: String,
+    pub period_start: NaiveDate,
+    pub enrollments: u64,
+    pub identification_requests: u64,
+    pub active_templates: u64,
+    pub retained_photo_storage_gb: u64,
+}
+
+impl MonthlyUsageAggregate {
+    pub fn quantity(&self, meter: MeterId) -> u64 {
+        match meter {
+            MeterId::Enrollments => self.enrollments,
+            MeterId::IdentificationRequests => self.identification_requests,
+            MeterId::ActiveTemplates => self.active_templates,
+            MeterId::RetainedPhotoStorageGb => self.retained_photo_storage_gb,
+        }
+    }
+}
+
 
 #[derive(Clone)]
 pub struct UsageLedgerStore {
@@ -220,6 +245,63 @@ impl UsageLedgerStore {
         .fetch_one(&self.pool)
         .await?;
         total.parse::<u64>().map_err(|_| UsageStoreError::ArithmeticOverflow)
+    }
+
+    /// Finalize all four billable meter quantities for one completed UTC calendar month.
+    ///
+    /// `as_of` is explicit so callers and tests control the finalization boundary. Partial
+    /// months are never reported. Flow meters subtract reversals in their original period;
+    /// level meters use the latest UTC-midnight sample for every day and average across the
+    /// entire month (template count or GiB), rounded up. Missing daily samples fail the whole
+    /// aggregate rather than silently undercounting a level meter.
+    pub async fn monthly_aggregate(
+        &self,
+        tenant_id: &str,
+        period: &AllowancePeriod,
+        as_of: DateTime<Utc>,
+    ) -> Result<MonthlyUsageAggregate, UsageStoreError> {
+        let tenant = TenantId::new(tenant_id).map_err(|_| UsageStoreError::Invalid)?;
+        if period.end_exclusive_instant() > as_of {
+            return Err(UsageStoreError::PeriodNotClosed);
+        }
+        let last_day = period
+            .end_exclusive_date()
+            .pred_opt()
+            .ok_or(UsageStoreError::InvalidWindow)?;
+
+        let enrollments = self
+            .flow_total(tenant.as_str(), period, MeterId::Enrollments)
+            .await?;
+        let identification_requests = self
+            .flow_total(tenant.as_str(), period, MeterId::IdentificationRequests)
+            .await?;
+        let active_templates = self
+            .level_billable_quantity(
+                tenant.as_str(),
+                period,
+                MeterId::ActiveTemplates,
+                period.start_date(),
+                last_day,
+            )
+            .await?;
+        let retained_photo_storage_gb = self
+            .level_billable_quantity(
+                tenant.as_str(),
+                period,
+                MeterId::RetainedPhotoStorageGb,
+                period.start_date(),
+                last_day,
+            )
+            .await?;
+
+        Ok(MonthlyUsageAggregate {
+            tenant_id: tenant.as_str().to_owned(),
+            period_start: period.start_date(),
+            enrollments,
+            identification_requests,
+            active_templates,
+            retained_photo_storage_gb,
+        })
     }
 
     /// Claim due reporting-intent rows with crash-safe leases and SKIP LOCKED concurrency.
