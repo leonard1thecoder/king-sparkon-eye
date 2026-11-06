@@ -10,6 +10,7 @@
 
 pub mod catalog;
 pub mod ledger;
+pub mod meter_reporting;
 pub mod period;
 pub mod stripe;
 
