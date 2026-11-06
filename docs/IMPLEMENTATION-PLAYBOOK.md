@@ -4,6 +4,17 @@
 >
 > **Status:** This is an implementation guide, not proof that the planned service is already implemented. Always verify the current repository and issue state before starting work.
 
+## Current product direction (supersedes legacy integration descriptions)
+
+As of 6 November 2026, Eye's approved direction is a standalone, integration-agnostic, multi-tenant identity-verification platform. The older tracker/ticket/gate-admission workstream below is historical implementation context, not the current product boundary or a mandatory dependency for new work.
+
+- Eye owns tenant-isolated identities/templates, face-only inference, 1:1 match, tenant-scoped 1:N identify, asynchronous verification sessions/results, and platform controls defined by approved contracts.
+- Integrating applications own their business entities, permissions, consent capture and final business decisions. Eye does not own tickets, events, deliveries, orders or admission workflows.
+- No cross-tenant lookup or global face search. Face similarity is probabilistic and is not liveness, legal identity or authorization.
+- Asynchronous processing is the target default. Clearly distinguish current synchronous routes and partial foundations from planned platform capabilities.
+- The current implementation sequence is epic [#181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and task issues [#182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182). Read those issues before selecting work; reconcile legacy issues rather than duplicating them.
+- The README and #182/#186 are the current product/API direction. The existing OpenAPI and older sections in this playbook may still describe the legacy gate contract; do not treat them as a shipped standalone API.
+
 ## 1. Non-negotiable rules
 
 1. **One actionable issue = one branch = one pull request.** Use `issue/<number>-<short-slug>`, branch from the latest `main`, and never commit directly to `main`.

@@ -2,29 +2,25 @@
 
 These rules are mandatory for AI coding agents and contributors. For the full product plan and detailed architecture, read the README and the linked issue before starting work.
 
-## Canonical source repositories
+## Product and integration boundaries
 
-Before planning or designing any integration with King Sparkon Tracker, inspect both:
+King Sparkon Eye is a standalone, integration-agnostic, multi-tenant identity-verification platform. External applications integrate through Eye's versioned APIs; they retain ownership of their users, customers, employees, tickets, events, deliveries, orders, permissions and business workflows.
 
-1. **Frontend source of truth:** https://github.com/leonard1thecoder/king-sparkon-tracker  
-   Current Next.js app, Bun toolchain, route handlers, auth/session flows, API clients, TypeScript types, camera/scanner components, UI patterns and tests. Read its README and root AGENTS.md. When coding there, read the installed Next.js docs in node_modules/next/dist/docs/ first.
+Eye owns tenant-scoped identity references, face enrollment/templates, face-only inference, 1:1 matching, explicitly scoped tenant-local 1:N identification, verification sessions, results and the platform controls assigned to it by approved contracts.
 
-2. **Backend source of truth:** https://github.com/leonard1thecoder/king-sparkon-tracker-backend  
-   Private repository. Current Spring Boot controllers/DTOs/services/repositories, ticket and event models, authorization, ticket-state transitions, persistence, Flyway migrations, API behavior and tests. Read its README and verify contracts from source and tests.
+Non-negotiable invariants:
 
-If the private backend is inaccessible, stop and report the blocker. Do not guess endpoint paths, DTOs, status names, schema, role permissions or behavior. Ask for authorized access or the relevant source files.
+- Identity data, templates, scopes, sessions, results, evidence, credentials and audit access are isolated by tenant. Never implement cross-tenant lookup, template reuse, candidate search or global face search.
+- Verification is face-only in the current product scope. Do not add OTP or document verification without an explicit product decision.
+- Asynchronous processing is the target default. Do not describe synchronous photo assessment as an asynchronous verification session.
+- 1:1 `match` compares against one specified tenant-owned identity. 1:N `identify` searches only an explicit tenant-owned identity scope.
+- A face similarity result is probabilistic. It is not proof of legal identity, liveness, consent or business authorization.
+- The integrating application owns business entities, permissions, workflow state, consent capture and the final business decision.
+- Eye must not own ticket management, gate admission, event operations or another application's business workflow.
+- Never trust a caller-supplied tenant identifier as authorization. Resolve tenant context from validated credentials.
+- Do not invent model capabilities, API endpoints, schemas, database columns, event names or security guarantees. Verify repository source, tests and approved contracts; label proposals as proposed.
 
-These tracker repositories define existing behavior. This Eye repository and its product issues define the new Rust vision capabilities. Do not duplicate ticket-management logic in Rust or change either tracker repository as a side effect of an Eye issue.
-
-## Product invariants
-
-- Main gate flow is QR-free: a worker selects an authorized event/gate context and Rust performs event-scoped 1:N identification against enrolled attendees.
-- Spring Boot remains authoritative for event/ticket eligibility, worker authorization, persistence and final admission status.
-- A face-match result or Kafka event never admits a ticket automatically. An authenticated worker must explicitly approve through Spring Boot.
-- ONNX face detection/landmarks and image-suitability checks are not proof of identity or liveness.
-- Retained original photos go to private AWS S3 only after image validation, ONNX/deterministic suitability policy passes, and required authorization/consent checks succeed.
-- Kafka carries versioned references and result metadata by default, not raw image binaries, live captures, face embeddings, secrets or public signed URLs.
-- Do not invent model capabilities, API endpoints, schema fields, table columns or event names. Verify current official provider docs and repository source; label proposed contracts until implemented.
+Tracker repositories are **not mandatory source-of-truth dependencies** for ordinary Eye work. Inspect another repository only when a separately approved integration issue requires compatibility with that specific provider or consumer. Such cross-repository work must have its own linked issue, branch and PR in each affected repository. Do not infer private contracts or change another repository as a side effect of an Eye issue.
 
 ## One issue = one branch = one PR
 
@@ -64,7 +60,7 @@ If an urgent production mitigation must happen before a normal issue can be crea
 ## Required workflow before implementation
 
 1. Read this file, README, the issue, related parent/task issues, and relevant recent PRs.
-2. Inspect source code, tests, contracts, migrations and configuration in both tracker source repositories before planning any integration.
+2. Inspect Eye source code, tests, contracts, migrations and configuration. Inspect another repository only when the issue explicitly requires a separately approved integration.
 3. Add current-state evidence to the issue/PR: what files/contracts were inspected and what compatibility must be preserved.
 4. Implement the smallest reviewable change and add/update tests.
 5. If implementation reveals a conflict with the intended architecture, stop and document the evidence/trade-offs; update the parent issue/README before changing architecture.
