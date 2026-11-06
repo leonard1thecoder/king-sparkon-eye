@@ -54,6 +54,8 @@ flowchart LR
 
 Logical modules do not require separate microservice deployments. The platform is intended to expose versioned REST/JSON APIs, multipart capture upload, asynchronous status/result retrieval, and signed webhooks. The integrating application remains authoritative for its own business decisions.
 
+The detailed responsibility matrix, trust boundaries, threat model, API compatibility rules and legacy-issue reconciliation are recorded in the [identity platform architecture decision record](docs/IDENTITY_PLATFORM_ARCHITECTURE.md). This record defines the target design; it does not turn planned APIs into shipped behavior.
+
 ## Capability and implementation status
 
 The distinction below is deliberate: a proposed API or repository abstraction is not a shipped end-to-end feature.
