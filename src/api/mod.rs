@@ -5,7 +5,7 @@ use std::sync::{Arc, OnceLock};
 
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, FromRequest, Multipart, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode, header::AUTHORIZATION};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode, header::{AUTHORIZATION, CONTENT_LENGTH}};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -232,6 +232,20 @@ async fn upload_photo(
     request: Request<Body>,
 ) -> Result<Response, ApiError> {
     authenticate_enrollment(&state.config, request.headers())?;
+    let body_limit = state
+        .config
+        .image_limits
+        .max_upload_bytes
+        .saturating_add(MULTIPART_OVERHEAD_BYTES);
+    if request
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .is_some_and(|length| length > body_limit)
+    {
+        return Err(ApiError::PayloadTooLarge);
+    }
     let request_id = request
         .headers()
         .get(REQUEST_ID_HEADER)
