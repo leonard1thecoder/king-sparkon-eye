@@ -7,6 +7,7 @@
 use std::time::Duration;
 
 use reqwest::Url;
+use sha2::{Digest, Sha256};
 use serde::Deserialize;
 
 use super::config::{PriceSlot, StripeMode, StripeSettings};
@@ -123,6 +124,11 @@ impl ReturnUrlPolicy {
 pub struct HostedSession {
     pub id: String,
     pub url: String,
+}
+
+#[derive(Deserialize)]
+struct CustomerResponse {
+    id: String,
 }
 
 #[derive(Deserialize)]
@@ -270,6 +276,50 @@ impl StripeClient {
         parse_hosted_session(response, "billing.stripe.com").await
     }
 
+    /// Creates a Stripe Customer for one registered Eye account.
+    ///
+    /// The Eye account ID is opaque, server-derived identity. It is the only metadata field;
+    /// email and other profile data are deliberately omitted. A stable idempotency key makes
+    /// concurrent/retried provisioning converge on one Stripe Customer.
+    pub async fn create_customer(
+        &self,
+        eye_user_id: &str,
+    ) -> Result<String, StripeError> {
+        if self.mode != StripeMode::Test {
+            return Err(StripeError::InvalidRequest { reason: "live billing is disabled" });
+        }
+        let suffix = eye_user_id.strip_prefix("usr_").unwrap_or_default();
+        if suffix.len() != 32 || !suffix.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(StripeError::InvalidRequest { reason: "Eye account identifier is invalid" });
+        }
+        let digest = Sha256::digest(format!("eye:{}:{}", self.mode, eye_user_id).as_bytes());
+        let idempotency_key = format!(
+            "eye-customer-{}",
+            digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+        );
+        let response = self
+            .http
+            .post(format!("{}/v1/customers", self.base))
+            .bearer_auth(self.secret.expose())
+            .header("Stripe-Version", STRIPE_API_VERSION)
+            .header("Idempotency-Key", idempotency_key)
+            .form(&[("metadata[eye_user_id]", eye_user_id)])
+            .send()
+            .await
+            .map_err(|_| StripeError::Unavailable)?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(map_status(status.as_u16()));
+        }
+        let customer = response
+            .json::<CustomerResponse>()
+            .await
+            .map_err(|_| StripeError::UnexpectedResponse)?;
+        if !valid_stripe_id(&customer.id, "cus_") {
+            return Err(StripeError::UnexpectedResponse);
+        }
+        Ok(customer.id)
+    }
     /// Retrieves one price. The identifier is validated by configuration before it reaches here.
     pub async fn retrieve_price(&self, price_id: &str) -> Result<PriceObject, StripeError> {
         let url = format!("{}/v1/prices/{}", self.base, price_id);
