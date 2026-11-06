@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use axum::body::Body;
+use axum::body::{Body, to_bytes};
 use axum::extract::{DefaultBodyLimit, FromRequest, Multipart, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode, header::AUTHORIZATION};
 use axum::middleware::{self, Next};
@@ -325,11 +325,17 @@ fn map_stripe_error(error: StripeError) -> ApiError {
 
 async fn create_checkout(
     State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<CheckoutRequest>,
+    request: Request<Body>,
 ) -> Result<Json<BillingSessionResponse>, ApiError> {
-    let owner_id = authenticate_billing(&state.config, &headers)?.sub;
+    let owner_id = authenticate_billing(&state.config, request.headers())?.sub;
     let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
+    let idempotency_key = billing_idempotency_key(&owner_id, request.headers(), "checkout")?;
+    let body = to_bytes(request.into_body(), 16 * 1024).await.map_err(|_| ApiError::Validation(ValidationError {
+        field: "body", rule: "must be a valid JSON billing request",
+    }))?;
+    let request: CheckoutRequest = serde_json::from_slice(&body).map_err(|_| ApiError::Validation(ValidationError {
+        field: "body", rule: "must be a valid JSON billing request",
+    }))?;
     let slot = checkout_slot(&request.plan, &request.interval)?;
     runtime.return_urls.validate(&request.success_url).map_err(|_| ApiError::Validation(ValidationError {
         field: "successUrl", rule: "must use a configured HTTPS return origin",
@@ -337,7 +343,6 @@ async fn create_checkout(
     runtime.return_urls.validate(&request.cancel_url).map_err(|_| ApiError::Validation(ValidationError {
         field: "cancelUrl", rule: "must use a configured HTTPS return origin",
     }))?;
-    let idempotency_key = billing_idempotency_key(&owner_id, &headers, "checkout")?;
     let customer_id = ensure_customer_mapping(&runtime.store, &runtime.stripe, &owner_id)
         .await.map_err(map_billing_provision_error)?;
     let session = runtime.stripe.create_checkout_session(
@@ -349,15 +354,20 @@ async fn create_checkout(
 
 async fn create_customer_portal(
     State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<PortalRequest>,
+    request: Request<Body>,
 ) -> Result<Json<BillingSessionResponse>, ApiError> {
-    let owner_id = authenticate_billing(&state.config, &headers)?.sub;
+    let owner_id = authenticate_billing(&state.config, request.headers())?.sub;
     let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
+    let idempotency_key = billing_idempotency_key(&owner_id, request.headers(), "portal")?;
+    let body = to_bytes(request.into_body(), 16 * 1024).await.map_err(|_| ApiError::Validation(ValidationError {
+        field: "body", rule: "must be a valid JSON billing request",
+    }))?;
+    let request: PortalRequest = serde_json::from_slice(&body).map_err(|_| ApiError::Validation(ValidationError {
+        field: "body", rule: "must be a valid JSON billing request",
+    }))?;
     runtime.return_urls.validate(&request.return_url).map_err(|_| ApiError::Validation(ValidationError {
         field: "returnUrl", rule: "must use a configured HTTPS return origin",
     }))?;
-    let idempotency_key = billing_idempotency_key(&owner_id, &headers, "portal")?;
     let customer_id = ensure_customer_mapping(&runtime.store, &runtime.stripe, &owner_id)
         .await.map_err(map_billing_provision_error)?;
     let session = runtime.stripe.create_portal_session(
