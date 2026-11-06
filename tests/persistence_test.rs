@@ -221,7 +221,16 @@ async fn transaction_state_mismatch_burns_cookie_bound_record() {
     );
     let (nonce, verifier) = (hash("nonce-mismatch"), b"encrypted-verifier".to_vec());
     let cb = "https://eye.example.test/auth/callback";
-    oauth::insert_transaction(&pool, &cookie, &state, &nonce, &verifier, cb, 600)
+    oauth::insert_transaction(
+        &pool,
+        &cookie,
+        &state,
+        &nonce,
+        b"encrypted-nonce",
+        &verifier,
+        cb,
+        600,
+    )
         .await
         .unwrap();
 
@@ -259,6 +268,7 @@ async fn transaction_is_consumed_once_and_survives_reconnect() {
         .unwrap()
         .expect("present after restart");
     assert_eq!(got.nonce_hash, nonce.to_vec());
+    assert_eq!(got.nonce_enc, b"encrypted-nonce".to_vec());
     assert_eq!(got.pkce_verifier_enc, verifier);
     assert_eq!(got.callback_url, cb);
     assert!(got.state_valid);
