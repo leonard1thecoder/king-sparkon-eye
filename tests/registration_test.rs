@@ -1,7 +1,7 @@
 //! Tests for `POST /v1/auth/register` against a mock PostgREST server.
 
-use std::net::SocketAddr;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use base64::Engine;
@@ -33,6 +33,7 @@ struct MockDb {
 
 struct Mock {
     base: String,
+    registered_users: Arc<Mutex<HashMap<String, Value>>>,
 }
 
 async fn rpc(
@@ -45,13 +46,7 @@ async fn rpc(
         "eye_password_credentials_by_email" => {
             let email = body["p_email"].as_str().unwrap_or_default();
             if email == OPERATOR_EMAIL {
-            if email == OPERATOR_EMAIL
-                || db
-                    .registered_users
-                    .lock()
-                    .unwrap()
-                    .contains(&email.to_string())
-            {
+                // Pre-provisioned operator: the only account seeded with enrollment:write.
                 Json(json!([{
                     "user_id": "usr_existing",
                     "email": email,
@@ -104,29 +99,46 @@ async fn spawn_mock() -> Mock {
     let db = MockDb {
         registered_users: registered_users.clone(),
     };
-    let app = Router::new().route("/rpc/{name}", post(rpc)).with_state(db);
+    let app = Router::new()
+        .route("/rest/v1/rpc/{name}", post(rpc))
+        .with_state(db);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Mock {
-        base: format!("http://{addr}"),
+        base: format!("http://{addr}/rest/v1"),
+        registered_users,
     }
 }
 
 fn app_with(mock: &Mock) -> Router {
-    let config = Config::from_lookup(|key| match key {
-        "EYE_JWT_HMAC_SECRET" => Some(JWT_SECRET.to_owned()),
-        "EYE_JWT_ACTIVE_KID" => Some(KID.to_owned()),
-        "EYE_POSTGREST_BASE_URL" => Some(mock.base.clone()),
-        "EYE_POSTGREST_SERVICE_KEY" => Some("secret".to_owned()),
-        "EYE_COOKIE_SECRET" => Some("0123456789abcdef0123456789abcdef0123456789abcdef".to_owned()),
-        "EYE_GOOGLE_CLIENT_ID" => Some("client-id".to_owned()),
-        "EYE_GOOGLE_REDIRECT_URL" => Some("https://eye.test/v1/auth/google/callback".to_owned()),
-        "EYE_GOOGLE_PKCE_ENCRYPTION_KEY" => {
-            Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_owned())
-        }
-        "EYE_OAUTH_EXCHANGE_SECRET" => Some("exchange-secret".to_owned()),
-        _ => None,
+    // Mirrors the settings `Config` requires for the OAuth/database runtime
+    // (see tests/login_test.rs), pointed at the mock PostgREST server.
+    let vars = [
+        ("EYE_GOOGLE_CLIENT_ID", "test-client-id"),
+        ("EYE_GOOGLE_CLIENT_SECRET", "test-client-secret"),
+        (
+            "EYE_GOOGLE_REDIRECT_URL",
+            "http://127.0.0.1:9/v1/auth/google/callback",
+        ),
+        ("EYE_DATABASE_REST_URL", mock.base.as_str()),
+        ("EYE_DATABASE_SERVICE_ROLE_KEY", "test-service-role-key"),
+        (
+            "EYE_OAUTH_CALLBACK_URLS",
+            "http://127.0.0.1:9/v1/auth/google/callback",
+        ),
+        (
+            "EYE_OAUTH_EXCHANGE_SECRET",
+            "exchange-secret-at-least-32-bytes-long",
+        ),
+        ("EYE_JWT_SIGNING_SECRET", JWT_SECRET),
+        ("EYE_JWT_KID", KID),
+        ("EYE_OAUTH_ALLOW_LOCALHOST_HTTP", "true"),
+    ];
+    let config = Config::from_lookup(|key| {
+        vars.iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| (*value).to_owned())
     })
     .expect("config is valid");
     api::router(config)
@@ -156,7 +168,6 @@ async fn valid_registration_succeeds_with_created_status() {
     assert_eq!(response.status(), StatusCode::CREATED);
 }
 
-
 #[tokio::test]
 async fn public_registration_does_not_grant_enrollment_permission() {
     let mock = spawn_mock().await;
@@ -182,6 +193,15 @@ async fn public_registration_does_not_grant_enrollment_permission() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
+
+    // The registration RPC must carry an empty scope list: no client-supplied or
+    // default `enrollment:write` may reach the database at account creation.
+    {
+        let users = mock.registered_users.lock().unwrap();
+        let stored = users.get(NEW_EMAIL).expect("registration RPC was recorded");
+        assert_eq!(stored["p_scopes"], json!([]));
+        assert_eq!(stored["p_role"], json!("GateOperator"));
+    }
 
     let login = serde_json::to_vec(&json!({
         "email": NEW_EMAIL,
@@ -211,11 +231,13 @@ async fn public_registration_does_not_grant_enrollment_permission() {
     let claims: Value = serde_json::from_slice(&claims_bytes).unwrap();
 
     assert_eq!(claims["scopes"], json!([]));
-    assert!(!claims["scopes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|scope| scope == "enrollment:write"));
+    assert!(
+        !claims["scopes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|scope| scope == "enrollment:write")
+    );
 }
 
 #[tokio::test]

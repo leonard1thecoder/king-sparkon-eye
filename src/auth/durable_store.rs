@@ -461,7 +461,8 @@ pub fn new_oauth_user(email: &str, now_ms: u64) -> Result<UserRecord, DurableSto
         password_hash: hash_password(&one_time_password, &salt),
         salt,
         role: UserRole::GateOperator,
-        scopes: vec!["enrollment:write".to_owned()],
+        // Google sign-in authenticates only; the database assigns no scopes (#132).
+        scopes: Vec::new(),
         is_active: true,
         created_at_ms: now_ms,
     })

@@ -13,6 +13,7 @@ use axum::http::{Request, StatusCode};
 use axum::routing::post;
 use http_body_util::BodyExt;
 use king_sparkon_eye::api;
+use king_sparkon_eye::auth::durable_store::hash_hex;
 use king_sparkon_eye::config::Config;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -39,7 +40,8 @@ async fn rpc(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     match name.as_str() {
-        "eye_allow_oauth_attempt" => Json(json!([{"ok": true}])),
+        // The rate-limit RPC returns `table(allowed boolean)` (202610290001).
+        "eye_allow_oauth_attempt" => Json(json!([{"allowed": true}])),
         "eye_create_password_reset_token" => {
             let email = body["p_email"].as_str().unwrap_or_default();
             if email == EXISTING_EMAIL {
@@ -57,7 +59,8 @@ async fn rpc(
         }
         "eye_consume_password_reset_token" => {
             let token_hash = body["p_token_hash"].as_str().unwrap_or_default();
-            if token_hash.contains("valid")
+            // The store sends `\x` + SHA-256(raw token) (bytea literal); only the valid token matches.
+            if token_hash == format!("\\x{}", hash_hex(VALID_TOKEN))
                 || db
                     .created_tokens
                     .lock()
@@ -78,29 +81,45 @@ async fn spawn_mock() -> Mock {
     let db = MockDb {
         created_tokens: Arc::new(Mutex::new(Vec::new())),
     };
-    let app = Router::new().route("/rpc/{name}", post(rpc)).with_state(db);
+    let app = Router::new()
+        .route("/rest/v1/rpc/{name}", post(rpc))
+        .with_state(db);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Mock {
-        base: format!("http://{addr}"),
+        base: format!("http://{addr}/rest/v1"),
     }
 }
 
 fn app_with(mock: &Mock) -> Router {
-    let config = Config::from_lookup(|key| match key {
-        "EYE_JWT_HMAC_SECRET" => Some(JWT_SECRET.to_owned()),
-        "EYE_JWT_ACTIVE_KID" => Some(KID.to_owned()),
-        "EYE_POSTGREST_BASE_URL" => Some(mock.base.clone()),
-        "EYE_POSTGREST_SERVICE_KEY" => Some("secret".to_owned()),
-        "EYE_COOKIE_SECRET" => Some("0123456789abcdef0123456789abcdef0123456789abcdef".to_owned()),
-        "EYE_GOOGLE_CLIENT_ID" => Some("client-id".to_owned()),
-        "EYE_GOOGLE_REDIRECT_URL" => Some("https://eye.test/v1/auth/google/callback".to_owned()),
-        "EYE_GOOGLE_PKCE_ENCRYPTION_KEY" => {
-            Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_owned())
-        }
-        "EYE_OAUTH_EXCHANGE_SECRET" => Some("exchange-secret".to_owned()),
-        _ => None,
+    // Mirrors the settings `Config` requires for the OAuth/database runtime
+    // (see tests/login_test.rs), pointed at the mock PostgREST server.
+    let vars = [
+        ("EYE_GOOGLE_CLIENT_ID", "test-client-id"),
+        ("EYE_GOOGLE_CLIENT_SECRET", "test-client-secret"),
+        (
+            "EYE_GOOGLE_REDIRECT_URL",
+            "http://127.0.0.1:9/v1/auth/google/callback",
+        ),
+        ("EYE_DATABASE_REST_URL", mock.base.as_str()),
+        ("EYE_DATABASE_SERVICE_ROLE_KEY", "test-service-role-key"),
+        (
+            "EYE_OAUTH_CALLBACK_URLS",
+            "http://127.0.0.1:9/v1/auth/google/callback",
+        ),
+        (
+            "EYE_OAUTH_EXCHANGE_SECRET",
+            "exchange-secret-at-least-32-bytes-long",
+        ),
+        ("EYE_JWT_SIGNING_SECRET", JWT_SECRET),
+        ("EYE_JWT_KID", KID),
+        ("EYE_OAUTH_ALLOW_LOCALHOST_HTTP", "true"),
+    ];
+    let config = Config::from_lookup(|key| {
+        vars.iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| (*value).to_owned())
     })
     .expect("config is valid");
     api::router(config)

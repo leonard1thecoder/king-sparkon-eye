@@ -995,24 +995,18 @@ async fn register_account(
     let salt = uuid::Uuid::new_v4().simple().to_string();
     let now = now_ms();
 
+    // Public registration is authentication-only: persist no scopes, never a
+    // client-supplied scope, and never `enrollment:write` (see
+    // docs/AUTH_BOUNDARY_CONTRACTS.md §3.4).
     match oauth
         .store
-        .register_user(
-            &user_id,
-            &email,
-            &password_hash,
-            &salt,
-            crate::auth::UserRole::GateOperator,
-            &[],
-            now,
-        )
         .register_user(RegisterUserInput {
             user_id: &user_id,
             email: &email,
             password_hash: &password_hash,
             salt: &salt,
             role: crate::auth::UserRole::GateOperator,
-            scopes: &["enrollment:write".to_string()],
+            scopes: &[],
             now_ms: now,
         })
         .await
