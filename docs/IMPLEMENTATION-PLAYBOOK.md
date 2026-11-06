@@ -510,3 +510,17 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - Updates `README.md` (auth-page table) and this playbook. `docs/PUBLIC-LANDING-PAGE.md` is unaffected because it covers the landing page only.
 
 **Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed. The callback-page test now checks for the injected `<img src="x"` payload instead of any `<img`, because the page now has a real logo image. Local runs used `RUSTUP_TOOLCHAIN=stable`. Playwright against a local server: no horizontal overflow at 375px or 1280px on the landing page, sign-in, and the auth pages; the page background is `rgb(0, 0, 0)`; the logo renders at natural width 506px. Earlier checks: an empty sign-in submit focuses the email field and sets `aria-invalid`; the register form is disabled; the reset form is hidden without a token; the no-JavaScript message renders. The 375px sign-in screenshot was inspected.
+
+
+### Issue #199 — centered landing navigation and "Get started" button (2026-11-06)
+
+**Branch:** `issue/199-center-nav-get-started`  
+**Issue:** [#199](https://github.com/leonard1thecoder/king-sparkon-eye/issues/199)
+
+- The header is a three-column grid: brand, links, actions. The five text links (The flow, Architecture, Pricing, Build status, API contract) sit centered in the middle column.
+- Sign in and Get started stay in the right-hand actions column, flush with the right edge of the header.
+- Below 1100px the brand and actions share the top row and the links sit centered below them. At 620px and below the links wrap, centered.
+- Renames the header's "Sign up" button to "Get started". It still links to `/auth/register`.
+- Updates `README.md` and `docs/PUBLIC-LANDING-PAGE.md`. `AGENTS.md` was reviewed and left unchanged.
+
+**Verification:** Playwright against a local server, at 1280, 1101, 1024, 768 and 375px: the links' centre is 0px from the viewport centre; the actions end 0px from the header's right edge; no two header groups overlap; no horizontal overflow. The button text is "Get started". `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
