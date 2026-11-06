@@ -135,7 +135,7 @@ pub async fn ensure_customer_mapping(
         .map_err(|error| match error {
             BillingAccountStoreError::MappingConflict => {
                 BillingAccountProvisionError::MappingConflict
-            },
+            }
             BillingAccountStoreError::InvalidOwner => BillingAccountProvisionError::InvalidOwner,
             BillingAccountStoreError::Unavailable => BillingAccountProvisionError::Unavailable,
         })
