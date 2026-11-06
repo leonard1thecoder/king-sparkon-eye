@@ -8,7 +8,11 @@ use std::{collections::HashMap, net::SocketAddr};
 use axum::{body::Body, extract::connect_info::MockConnectInfo, http::Request};
 use base64::Engine;
 use http_body_util::BodyExt;
-use king_sparkon_eye::{api, config::Config, persistence::{connect, migrate}};
+use king_sparkon_eye::{
+    api,
+    config::Config,
+    persistence::{connect, migrate},
+};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
@@ -61,7 +65,10 @@ fn config(database_url: &str) -> Config {
 
 async fn seed_user(pool: &PgPool, email: &str, scopes: &[&str]) -> String {
     let user_id = format!("usr_{}", Uuid::new_v4().simple());
-    let scopes = scopes.iter().map(|scope| (*scope).to_owned()).collect::<Vec<_>>();
+    let scopes = scopes
+        .iter()
+        .map(|scope| (*scope).to_owned())
+        .collect::<Vec<_>>();
     sqlx::query(
         "INSERT INTO eye_auth_users(user_id,email,password_hash,salt,role,scopes,is_active,created_at_ms)
          VALUES($1,lower($2),'seeded-password-hash','seeded-salt','GateOperator',$3,true,1)",
@@ -75,15 +82,9 @@ async fn seed_user(pool: &PgPool, email: &str, scopes: &[&str]) -> String {
     user_id
 }
 
-async fn post(
-    database_url: &str,
-    path: &str,
-    payload: Value,
-) -> (axum::http::StatusCode, Value) {
-    let app = api::router(config(database_url)).layer(MockConnectInfo(SocketAddr::from((
-        [127, 0, 0, 1],
-        42000,
-    ))));
+async fn post(database_url: &str, path: &str, payload: Value) -> (axum::http::StatusCode, Value) {
+    let app = api::router(config(database_url))
+        .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 42000))));
     let response = app
         .oneshot(
             Request::builder()
@@ -128,8 +129,12 @@ async fn registration_persists_account_without_enrollment_scope() {
     assert!(scopes.is_empty());
     assert!(active);
 
-    let (login_status, login_body) =
-        post(&url, "/v1/auth/login", json!({"email": email, "password": PASSWORD})).await;
+    let (login_status, login_body) = post(
+        &url,
+        "/v1/auth/login",
+        json!({"email": email, "password": PASSWORD}),
+    )
+    .await;
     assert_eq!(login_status, axum::http::StatusCode::OK, "{login_body}");
     let token = login_body["accessToken"].as_str().expect("access token");
     let payload = token.split('.').nth(1).expect("JWT payload");
@@ -138,11 +143,13 @@ async fn registration_persists_account_without_enrollment_scope() {
         .expect("base64url JWT payload");
     let claims: Value = serde_json::from_slice(&claims_bytes).unwrap();
     assert_eq!(claims["scopes"], json!([]));
-    assert!(!claims["scopes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|scope| scope == "enrollment:write"));
+    assert!(
+        !claims["scopes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|scope| scope == "enrollment:write")
+    );
     pool.close().await;
 }
 
