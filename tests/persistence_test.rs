@@ -161,10 +161,10 @@ async fn handoff_is_single_use_and_bound_to_callback() {
         None,
         "callback mismatch burns the handoff"
     );
-    oauth::insert_handoff(&pool, &hash("handoff-valid"), &u, cb, 60)
+    let valid_code = hash("handoff-valid");
+    oauth::insert_handoff(&pool, &valid_code, &u, cb, 60)
         .await
         .unwrap();
-    let valid_code = hash("handoff-valid");
     assert_eq!(
         oauth::consume_handoff(&pool, &valid_code, cb).await.unwrap(),
         Some(u.clone()),
@@ -206,6 +206,29 @@ async fn expired_handoff_is_rejected() {
     assert_eq!(
         oauth::consume_handoff(&pool, &code, cb).await.unwrap(),
         None
+    );
+}
+
+#[tokio::test]
+async fn transaction_state_mismatch_burns_cookie_bound_record() {
+    let Some(pool) = pool().await else { return };
+    let (cookie, state, wrong_state) =
+        (hash("cookie-mismatch"), hash("state-mismatch"), hash("wrong-state"));
+    let (nonce, verifier) = (hash("nonce-mismatch"), b"encrypted-verifier".to_vec());
+    let cb = "https://eye.example.test/auth/callback";
+    oauth::insert_transaction(&pool, &cookie, &state, &nonce, &verifier, cb, 600)
+        .await
+        .unwrap();
+
+    let consumed = oauth::consume_transaction(&pool, &cookie, &wrong_state)
+        .await
+        .unwrap()
+        .expect("cookie binding locates the transaction");
+    assert!(!consumed.state_valid);
+    assert_eq!(
+        oauth::consume_transaction(&pool, &cookie, &state).await.unwrap(),
+        None,
+        "wrong-state attempt consumes the transaction"
     );
 }
 
