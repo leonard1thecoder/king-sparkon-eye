@@ -524,3 +524,14 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - Updates `README.md` and `docs/PUBLIC-LANDING-PAGE.md`. `AGENTS.md` was reviewed and left unchanged.
 
 **Verification:** Playwright against a local server, at 1280, 1101, 1024, 768 and 375px: the links' centre is 0px from the viewport centre; the actions end 0px from the header's right edge; no two header groups overlap; no horizontal overflow. The button text is "Get started". `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
+
+
+### Issue #201 — Responsibility section readable on black (2026-11-06)
+
+**Branch:** `issue/201-responsibility-black`  
+**Issue:** [#201](https://github.com/leonard1thecoder/king-sparkon-eye/issues/201)
+
+- The "02 / Responsibility" section (`.boundary`) had a gold background with light text, so the heading, labels and body copy were unreadable. Its background is now `var(--paper)` (black) with `var(--ink)` text. Gold remains as the section index, box labels and NON-NEGOTIABLE border.
+- No other section changes.
+
+**Verification:** Playwright against a local server: the section background is `rgb(0, 0, 0)`, the heading is `rgb(245, 243, 236)` and the body copy `rgb(184, 187, 177)`, with no horizontal overflow at 375px or 1280px. The 375px section screenshot was inspected. `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
