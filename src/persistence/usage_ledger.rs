@@ -12,7 +12,7 @@ use thiserror::Error;
 use crate::billing::{
     AllowancePeriod, MeterId,
     ledger::{
-        AppendBody, AppendOutcome, AppendRequest, BYTES_PER_GIB, UsageSource,
+        AppendBody, AppendOutcome, AppendRequest, BYTES_PER_GIB, TenantId, UsageSource,
     },
 };
 
@@ -207,15 +207,19 @@ impl UsageLedgerStore {
         period: &AllowancePeriod,
         meter: MeterId,
     ) -> Result<u64, UsageStoreError> {
-        let total: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(                  CASE WHEN entry.body_kind = 'flow' THEN entry.quantity::numeric                       WHEN entry.body_kind = 'reversal' THEN -original.quantity::numeric                       ELSE 0 END), 0)::bigint              FROM eye_billing_usage_ledger entry              LEFT JOIN eye_billing_usage_ledger original                ON original.tenant_id = entry.tenant_id               AND original.event_key = entry.reversal_of_event_key              WHERE entry.tenant_id = $1 AND entry.period_start = $2                AND entry.meter = $3 AND entry.body_kind IN ('flow','reversal')",
+        let tenant = TenantId::new(tenant_id).map_err(|_| UsageStoreError::Invalid)?;
+        if !matches!(meter, MeterId::Enrollments | MeterId::IdentificationRequests) {
+            return Err(UsageStoreError::Invalid);
+        }
+        let total: String = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(                  CASE WHEN entry.body_kind = 'flow' THEN entry.quantity::numeric                       WHEN entry.body_kind = 'reversal' THEN -original.quantity::numeric                       ELSE 0 END), 0)::text              FROM eye_billing_usage_ledger entry              LEFT JOIN eye_billing_usage_ledger original                ON original.tenant_id = entry.tenant_id               AND original.event_key = entry.reversal_of_event_key              WHERE entry.tenant_id = $1 AND entry.period_start = $2                AND entry.meter = $3 AND entry.body_kind IN ('flow','reversal')",
         )
-        .bind(tenant_id)
+        .bind(tenant.as_str())
         .bind(period.start_date())
         .bind(meter_name(meter))
         .fetch_one(&self.pool)
         .await?;
-        u64::try_from(total).map_err(|_| UsageStoreError::ArithmeticOverflow)
+        total.parse::<u64>().map_err(|_| UsageStoreError::ArithmeticOverflow)
     }
 
     /// Claim due reporting-intent rows with crash-safe leases and SKIP LOCKED concurrency.
@@ -321,6 +325,7 @@ impl UsageLedgerStore {
         first_day: NaiveDate,
         last_day: NaiveDate,
     ) -> Result<u64, UsageStoreError> {
+        let tenant = TenantId::new(tenant_id).map_err(|_| UsageStoreError::Invalid)?;
         if first_day > last_day
             || first_day < period.start_date()
             || last_day >= period.end_exclusive_date()
@@ -332,7 +337,7 @@ impl UsageLedgerStore {
         let rows = sqlx::query(
             "SELECT DISTINCT ON ((occurred_at AT TIME ZONE 'UTC')::date)                     (occurred_at AT TIME ZONE 'UTC')::date AS sample_day, quantity              FROM eye_billing_usage_ledger              WHERE tenant_id = $1 AND period_start = $2 AND meter = $3 AND body_kind = 'level'                AND (occurred_at AT TIME ZONE 'UTC')::date BETWEEN $4 AND $5              ORDER BY (occurred_at AT TIME ZONE 'UTC')::date, occurred_at DESC, id DESC",
         )
-        .bind(tenant_id)
+        .bind(tenant.as_str())
         .bind(period.start_date())
         .bind(meter_name(meter))
         .bind(first_day)
