@@ -45,6 +45,13 @@ async fn rpc(
         "eye_password_credentials_by_email" => {
             let email = body["p_email"].as_str().unwrap_or_default();
             if email == OPERATOR_EMAIL {
+            if email == OPERATOR_EMAIL
+                || db
+                    .registered_users
+                    .lock()
+                    .unwrap()
+                    .contains(&email.to_string())
+            {
                 Json(json!([{
                     "user_id": "usr_existing",
                     "email": email,
@@ -97,9 +104,7 @@ async fn spawn_mock() -> Mock {
     let db = MockDb {
         registered_users: registered_users.clone(),
     };
-    let app = Router::new()
-        .route("/rpc/{name}", post(rpc))
-        .with_state(db);
+    let app = Router::new().route("/rpc/{name}", post(rpc)).with_state(db);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

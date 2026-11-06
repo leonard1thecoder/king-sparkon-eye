@@ -10,7 +10,8 @@ pub enum EmailError {
 
 #[async_trait]
 pub trait EmailSender: Send + Sync {
-    async fn send_password_reset(&self, to_email: &str, reset_link: &str) -> Result<(), EmailError>;
+    async fn send_password_reset(&self, to_email: &str, reset_link: &str)
+    -> Result<(), EmailError>;
 }
 
 /// Local/development email sender that logs delivery via tracing.
@@ -19,7 +20,11 @@ pub struct LoggingEmailSender;
 
 #[async_trait]
 impl EmailSender for LoggingEmailSender {
-    async fn send_password_reset(&self, to_email: &str, reset_link: &str) -> Result<(), EmailError> {
+    async fn send_password_reset(
+        &self,
+        to_email: &str,
+        reset_link: &str,
+    ) -> Result<(), EmailError> {
         tracing::info!(
             target: "auth::email",
             to = to_email,

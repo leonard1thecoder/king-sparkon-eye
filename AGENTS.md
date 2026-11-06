@@ -2,6 +2,10 @@
 
 These rules are mandatory for AI coding agents and contributors. For the full product plan and detailed architecture, read the README and the linked issue before starting work.
 
+## Mandatory issue selection and blocker handling
+
+Before recommending or starting work, follow [docs/AGENT_ISSUE_WORKFLOW.md](docs/AGENT_ISSUE_WORKFLOW.md). Search for the most relevant existing issue; if none matches, create the correctly classified issue before implementation. Inspect open PRs, but do not treat unrelated open PRs as blockers. Report genuine dependencies with evidence and continue with the next unblocked issue.
+
 ## Product and integration boundaries
 
 King Sparkon Eye is a standalone, integration-agnostic, multi-tenant identity-verification platform. External applications integrate through Eye's versioned APIs; they retain ownership of their users, customers, employees, tickets, events, deliveries, orders, permissions and business workflows.

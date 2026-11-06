@@ -90,6 +90,13 @@ Handoff rules:
 `POST /v1/auth/register` creates an Eye account; it does not approve the account for biometric enrollment. The server assigns the default role and an empty scope set. The request accepts neither a role nor scopes, and clients cannot grant themselves `enrollment:write`. A successful registration followed by login must therefore produce an access token with an empty `scopes` claim.
 
 Enrollment permission must be explicitly provisioned by a trusted administrator. There is no self-service permission-grant endpoint. Existing accounts are not automatically rewritten by this code change because the current schema does not preserve reliable provenance distinguishing self-registered users from independently approved operators. Existing permission grants require a separately audited migration/review before they can be safely revoked.
+### 3.4 OAuth authentication does not grant enrollment permissions
+
+Google OIDC establishes the user's Eye account identity; it does not approve biometric enrollment or assign application permissions. New Google-linked accounts are created with an empty scope set. In particular, a verified Google email must never imply `enrollment:write`.
+
+Migration `db/migrations/202611060001_google_oauth_least_privilege.sql` changes the database default to an empty scope array, replaces the Google identity resolver so newly created accounts receive no scopes, and removes the automatically granted `enrollment:write` scope from existing Google-linked `GateOperator` accounts. Existing unrelated scopes and non-Google accounts are not modified by this migration.
+
+There is currently no self-service enrollment-permission grant route. A trusted administrator must explicitly provision the required permission through the approved administrative process before a user can enroll. Do not add a client-controlled scope parameter to OAuth or account registration as a workaround. The migration must be applied to the dedicated Eye database before this mitigation is considered deployed; the code change alone does not change an already-running database function.
 
 ### 3.5 Safe failure outcomes and verification
 

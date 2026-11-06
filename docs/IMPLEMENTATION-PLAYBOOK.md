@@ -4,6 +4,10 @@
 >
 > **Status:** This is an implementation guide, not proof that the planned service is already implemented. Always verify the current repository and issue state before starting work.
 
+## 0. Issue-first triage and dependency-aware execution
+
+Before recommending a task or beginning implementation, follow [docs/AGENT_ISSUE_WORKFLOW.md](AGENT_ISSUE_WORKFLOW.md): search for a matching existing issue, read its acceptance criteria/comments/dependencies, inspect related PRs, and recommend the narrowest correct issue. Create a correctly classified issue before implementing untracked work; do not create duplicates. An open PR is not automatically a blocker—continue independent work on its own branch. If a dependency genuinely blocks a task, record the exact evidence and affected acceptance criteria, identify safe parallel work, and move to the next unblocked issue. Do not silently wait or claim an unmerged prerequisite is complete.
+
 ## Current product direction (supersedes legacy integration descriptions)
 
 As of 6 November 2026, Eye's approved direction is a standalone, integration-agnostic, multi-tenant identity-verification platform. The older tracker/ticket/gate-admission workstream below is historical implementation context, not the current product boundary or a mandatory dependency for new work.
@@ -14,6 +18,9 @@ As of 6 November 2026, Eye's approved direction is a standalone, integration-agn
 - Asynchronous processing is the target default. Clearly distinguish current synchronous routes and partial foundations from planned platform capabilities.
 - The current implementation sequence is epic [#181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and task issues [#182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182). Read those issues before selecting work; reconcile legacy issues rather than duplicating them.
 - The README and #182/#186 are the current product/API direction. The existing OpenAPI and older sections in this playbook may still describe the legacy gate contract; do not treat them as a shipped standalone API.
+- The authoritative architecture record is [docs/IDENTITY_PLATFORM_ARCHITECTURE.md](IDENTITY_PLATFORM_ARCHITECTURE.md). It defines tenant trust boundaries, API compatibility principles, threat controls and legacy issue reconciliation.
+- Current platform execution order: **#182 architecture → #183 tenant persistence + #184 tenant credentials (coordinate interfaces) → #185 identity/enrollment → #186 scopes and verification sessions → #187 durable async lifecycle → #188 signed webhooks → #190 TypeScript SDK/conformance → #191 website and console**. #189 evidence/retention controls and #192 SEO are parallel workstreams; verify their issue dependencies before integration.
+- #191 must use Eye's existing Axum/static HTML architecture and verified Rust contracts. Do not introduce a second frontend framework or mock production tenant data.
 
 ## Technical SEO implementation baseline (#192)
 
@@ -52,18 +59,20 @@ Before planning an integration, inspect these repositories and record the eviden
 
 **Private backend access rule:** the backend repository is private. If you cannot access it, stop work that depends on its behavior and report a blocker. Ask for authorized access or the relevant source/contracts. Never fabricate endpoints, roles, schemas or ticket rules.
 
-### Responsibility boundaries
+### Current standalone platform responsibility boundaries
 
 | Area | Authority |
 |---|---|
-| Browser camera/upload and worker review UI | Next.js frontend |
-| Secure image ingress, objective quality checks, face detection/recognition, typed vision results | Rust Eye service |
-| Versioned asynchronous transport | Kafka |
-| Users, events, tickets, eligibility, worker authorization, persistence and final admission | Spring Boot backend |
-| Retained original photos | Private object storage with explicit access, retention and deletion policy |
-| Face templates/embeddings | Protected biometric index/store with least privilege and lifecycle controls |
+| Tenant API clients, credentials and authorization | Eye Rust platform; tenant context comes from validated credentials |
+| Identity references, enrollment and protected templates | Eye Rust platform, tenant-scoped |
+| Identity scope boundaries and membership enforcement | Eye Rust platform; integrating application decides membership |
+| Face-only inference, 1:1 match and explicit-scope 1:N identify | Eye Rust platform |
+| Durable processing, typed results and signed webhook delivery | Eye Rust platform |
+| Users, customers, employees, attendees, recipients, tickets, events, orders and business permissions | Integrating application |
+| Consent capture, purpose and lawful-processing decisions | Integrating application |
+| Final business decision | Integrating application |
 
-A face match or Kafka event **never** admits an attendee. Spring Boot must validate ticket eligibility and worker authority, and the authenticated worker must explicitly approve entry. The primary gate flow is QR-free and searches only the authorized event's enrolled gallery; do not turn it into global identification.
+The older tracker-specific architecture and gate-flow issue map below are retained as historical implementation context only. They are not dependencies or contract authority for the standalone platform. New platform work must follow #181/#182 and the architecture decision record. Reuse old Rust components only after verifying their behavior and adapting them to generic tenant-scoped contracts.
 
 ## 3. Issue implementation map
 

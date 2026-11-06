@@ -461,16 +461,27 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_pages_disable_their_forms_and_say_so() {
-        for html in [
-            render("t", "h", REGISTER_BODY, REGISTER_SCRIPT).0,
-            render("t", "h", FORGOT_BODY, FORGOT_SCRIPT).0,
-            render("t", "h", RESET_BODY, RESET_SCRIPT).0,
+    fn implemented_auth_pages_render_enabled_forms_and_live_status_regions() {
+        for (html, form_id) in [
+            (
+                render("t", "h", REGISTER_BODY, REGISTER_SCRIPT).0,
+                "register",
+            ),
+            (render("t", "h", FORGOT_BODY, FORGOT_SCRIPT).0, "forgot"),
+            (render("t", "h", RESET_BODY, RESET_SCRIPT).0, "reset"),
         ] {
-            assert!(html.contains("class=\"notice unavailable\""));
-            assert!(html.contains("not available on this server yet"));
-            assert!(html.contains("<fieldset disabled>"));
+            assert!(html.contains(&format!("<form id=\"{form_id}\"")));
+            assert!(html.contains("id=\"notice\" class=\"notice\""));
+            assert!(html.contains("aria-live=\"polite\""));
+            assert!(!html.contains("<fieldset disabled>"));
+            assert!(!html.contains("class=\"notice unavailable\""));
         }
+
+        assert!(REGISTER_SCRIPT.contains("post('/v1/auth/register'"));
+        assert!(FORGOT_SCRIPT.contains("post('/v1/auth/password-reset/request'"));
+        assert!(RESET_SCRIPT.contains("post('/v1/auth/password-reset/confirm'"));
+        assert!(COMMON_SCRIPT.contains("This is not available on this server yet."));
+        assert!(COMMON_SCRIPT.contains("The service is temporarily unavailable."));
     }
 
     #[test]

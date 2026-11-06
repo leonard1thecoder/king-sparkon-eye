@@ -176,7 +176,8 @@ async fn health_and_api_responses_are_non_indexable() {
         Some("noindex, nofollow, noarchive")
     );
 
-    let (api_status, _, api_robots, _) = request(Method::POST, "/v1/enrollment/photo-assessments").await;
+    let (api_status, _, api_robots, _) =
+        request(Method::POST, "/v1/enrollment/photo-assessments").await;
     assert_eq!(api_status, StatusCode::UNAUTHORIZED);
     assert_eq!(api_robots.as_deref(), Some("noindex, nofollow, noarchive"));
 }

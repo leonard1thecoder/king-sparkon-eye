@@ -21,7 +21,8 @@ use tokio::sync::RwLock;
 
 use crate::api::AppState;
 use crate::auth::durable_store::{
-    DurableEyeStore, DurableStoreError, DurableUser, PasswordCredentials, hash_hex, new_oauth_user,
+    DurableEyeStore, DurableStoreError, DurableUser, PasswordCredentials, RegisterUserInput,
+    hash_hex, new_oauth_user,
 };
 use crate::auth::google::{
     ExpectedIdToken, GoogleAuthError, Jwk, PkcePair, build_authorization_url, random_urlsafe,
@@ -140,8 +141,14 @@ impl OAuthRuntime {
             .route("/v1/auth/refresh", post(refresh_session))
             .route("/v1/auth/login", post(password_login))
             .route("/v1/auth/register", post(register_account))
-            .route("/v1/auth/password-reset/request", post(request_password_reset))
-            .route("/v1/auth/password-reset/confirm", post(confirm_password_reset))
+            .route(
+                "/v1/auth/password-reset/request",
+                post(request_password_reset),
+            )
+            .route(
+                "/v1/auth/password-reset/confirm",
+                post(confirm_password_reset),
+            )
     }
 
     async fn rate_limit(
@@ -926,7 +933,6 @@ async fn password_login(
     }
 }
 
-
 async fn register_account(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -942,10 +948,7 @@ async fn register_account(
         return err.into_response();
     }
     let email = request.email.trim().to_ascii_lowercase();
-    if email.len() < 3
-        || email.len() > LOGIN_MAX_EMAIL_BYTES
-        || !email.contains('@')
-    {
+    if email.len() < 3 || email.len() > LOGIN_MAX_EMAIL_BYTES || !email.contains('@') {
         return ApiError::Validation(ValidationError {
             field: "email",
             rule: "must be a valid email address",
@@ -1003,6 +1006,15 @@ async fn register_account(
             &[],
             now,
         )
+        .register_user(RegisterUserInput {
+            user_id: &user_id,
+            email: &email,
+            password_hash: &password_hash,
+            salt: &salt,
+            role: crate::auth::UserRole::GateOperator,
+            scopes: &["enrollment:write".to_string()],
+            now_ms: now,
+        })
         .await
     {
         Ok(_) => StatusCode::CREATED.into_response(),
@@ -1017,7 +1029,6 @@ async fn register_account(
         Err(_) => ApiError::ServiceUnavailable.into_response(),
     }
 }
-
 
 async fn request_password_reset(
     State(state): State<AppState>,
@@ -1048,7 +1059,12 @@ async fn request_password_reset(
         {
             let reset_link = format!("/auth/reset-password?token={raw_token}");
             let sender = crate::auth::email::LoggingEmailSender;
-            let _ = crate::auth::email::EmailSender::send_password_reset(&sender, &user_email, &reset_link).await;
+            let _ = crate::auth::email::EmailSender::send_password_reset(
+                &sender,
+                &user_email,
+                &reset_link,
+            )
+            .await;
         }
     }
 

@@ -9,6 +9,9 @@ King Sparkon Eye (Eye) is a Rust service and platform foundation for application
 ## Security authorization status
 
 Public account creation and Google sign-in must not be treated as permission approval. The password-registration privilege escalation is tracked in [#226](https://github.com/leonard1thecoder/king-sparkon-eye/issues/226); its fix is not merged or deployed yet. The related Google OAuth issue is [#132](https://github.com/leonard1thecoder/king-sparkon-eye/issues/132), with a forward-only mitigation in PR #223 that also requires applying its database migration. Until these fixes are merged and deployed, do not expose the current registration/OAuth paths as a trusted biometric-enrollment authorization flow.
+## Contributing and AI-agent workflow
+
+Before recommending or implementing repository work, agents must select the most relevant existing GitHub issue, inspect related open PRs and dependencies, and create a new correctly classified issue when no match exists. An unrelated open PR must not stall independent work; genuine blockers must be documented with evidence and followed by the next unblocked task. See the mandatory [agent issue-selection and blocker workflow](docs/AGENT_ISSUE_WORKFLOW.md), [root agent instructions](AGENTS.md), and [implementation playbook](docs/IMPLEMENTATION-PLAYBOOK.md).
 
 ## Product boundary
 
@@ -58,6 +61,8 @@ flowchart LR
 
 Logical modules do not require separate microservice deployments. The platform is intended to expose versioned REST/JSON APIs, multipart capture upload, asynchronous status/result retrieval, and signed webhooks. The integrating application remains authoritative for its own business decisions.
 
+The detailed responsibility matrix, trust boundaries, threat model, API compatibility rules and legacy-issue reconciliation are recorded in the [identity platform architecture decision record](docs/IDENTITY_PLATFORM_ARCHITECTURE.md). This record defines the target design; it does not turn planned APIs into shipped behavior.
+
 ## Capability and implementation status
 
 The distinction below is deliberate: a proposed API or repository abstraction is not a shipped end-to-end feature.
@@ -86,7 +91,7 @@ The distinction below is deliberate: a proposed API or repository abstraction is
 
 ### Important security and readiness blockers
 
-- [#132 — Google sign-in privilege escalation](https://github.com/leonard1thecoder/king-sparkon-eye/issues/132) is open. Verified Google sign-in currently grants `enrollment:write` to new verified accounts; do not interpret sign-in as tenant authorization or production enrollment approval.
+- [#132 — Google sign-in privilege escalation](https://github.com/leonard1thecoder/king-sparkon-eye/issues/132): least-privilege mitigation is implemented in PR #223 but is **not merged or deployed**. Apply `db/migrations/202611060001_google_oauth_least_privilege.sql` to the dedicated Eye database before treating the finding as mitigated. Google sign-in alone must not grant `enrollment:write`; no self-service enrollment-permission grant route exists yet.
 - [#95 — no consented real-face data or calibrated thresholds](https://github.com/leonard1thecoder/king-sparkon-eye/issues/95) remains open. Synthetic inputs do not establish real-world accuracy, false-acceptance rates, false-rejection rates or safe operating thresholds.
 - [#124 — incremental multipart image-part limits](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) remains open.
 - [#28 — Kafka producer and delivery](https://github.com/leonard1thecoder/king-sparkon-eye/issues/28) remains open. The SQLx outbox repository work in [#113](https://github.com/leonard1thecoder/king-sparkon-eye/issues/113) does not by itself deliver Kafka messages.
