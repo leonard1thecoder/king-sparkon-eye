@@ -18,7 +18,7 @@ use tokio::{sync::watch, time::{self, MissedTickBehavior}};
 use tracing::{error, info, warn};
 
 use super::reporting_worker::{
-    ReportingWorkerConfig, StripeCustomerResolver, UsageReportingWorker, WorkerBatchResult,
+    StripeCustomerResolver, UsageReportingWorker, WorkerBatchResult,
     WorkerError,
 };
 
@@ -206,12 +206,6 @@ where
             }
         }
     }
-}
-
-/// Builds a worker using the worker's validated retry/lease configuration. Kept as a
-/// convenience for callers that assemble billing dependencies outside the HTTP router.
-pub fn default_worker_config() -> ReportingWorkerConfig {
-    ReportingWorkerConfig::default()
 }
 
 #[cfg(test)]
