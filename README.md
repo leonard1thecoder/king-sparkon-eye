@@ -6,6 +6,10 @@ King Sparkon Eye (Eye) is a Rust service and platform foundation for application
 
 > **Implementation status — 6 November 2026:** The repository contains a working Axum service, account/authentication routes, bounded image ingress, and a YuNet/ONNX face-detection assessment path. The standalone multi-tenant identity API described below is the approved product direction, not a shipped end-to-end capability. Tenant isolation, identity lifecycle, 1:1 matching, scoped 1:N identification, durable asynchronous verification sessions, and signed webhooks remain implementation work tracked by [epic #181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and [issues #182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182).
 
+## Contributing and AI-agent workflow
+
+Before recommending or implementing repository work, agents must select the most relevant existing GitHub issue, inspect related open PRs and dependencies, and create a new correctly classified issue when no match exists. An unrelated open PR must not stall independent work; genuine blockers must be documented with evidence and followed by the next unblocked task. See the mandatory [agent issue-selection and blocker workflow](docs/AGENT_ISSUE_WORKFLOW.md), [root agent instructions](AGENTS.md), and [implementation playbook](docs/IMPLEMENTATION-PLAYBOOK.md).
+
 ## Product boundary
 
 Eye is designed to provide reusable identity-verification primitives to unrelated applications.
