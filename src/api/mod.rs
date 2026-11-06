@@ -335,12 +335,15 @@ async fn create_checkout(
         .is_some_and(|value| value.split(';').next().is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))) {
         return Err(ApiError::UnsupportedMediaType);
     }
-    let body = to_bytes(request.into_body(), 16 * 1024).await.map_err(|_| ApiError::Validation(ValidationError {
-        field: "body", rule: "must be a valid JSON billing request",
-    }))?;
-    let request: CheckoutRequest = serde_json::from_slice(&body).map_err(|_| ApiError::Validation(ValidationError {
-        field: "body", rule: "must be a valid JSON billing request",
-    }))?;
+    let body = to_bytes(request.into_body(), 16 * 1024)
+        .await
+        .map_err(|_| ApiError::PayloadTooLarge)?;
+    let request: CheckoutRequest = serde_json::from_slice(&body).map_err(|_| {
+        ApiError::Validation(ValidationError {
+            field: "body",
+            rule: "must be a valid JSON billing request",
+        })
+    })?;
     let slot = checkout_slot(&request.plan, &request.interval)?;
     let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
     runtime.return_urls.validate(&request.success_url).map_err(|_| ApiError::Validation(ValidationError {
@@ -369,12 +372,15 @@ async fn create_customer_portal(
         .is_some_and(|value| value.split(';').next().is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))) {
         return Err(ApiError::UnsupportedMediaType);
     }
-    let body = to_bytes(request.into_body(), 16 * 1024).await.map_err(|_| ApiError::Validation(ValidationError {
-        field: "body", rule: "must be a valid JSON billing request",
-    }))?;
-    let request: PortalRequest = serde_json::from_slice(&body).map_err(|_| ApiError::Validation(ValidationError {
-        field: "body", rule: "must be a valid JSON billing request",
-    }))?;
+    let body = to_bytes(request.into_body(), 16 * 1024)
+        .await
+        .map_err(|_| ApiError::PayloadTooLarge)?;
+    let request: PortalRequest = serde_json::from_slice(&body).map_err(|_| {
+        ApiError::Validation(ValidationError {
+            field: "body",
+            rule: "must be a valid JSON billing request",
+        })
+    })?;
     let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
     runtime.return_urls.validate(&request.return_url).map_err(|_| ApiError::Validation(ValidationError {
         field: "returnUrl", rule: "must use a configured HTTPS return origin",
