@@ -125,8 +125,13 @@ pub struct RegisterUserInput<'a> {
 }
 
 impl DurableEyeStore {
-    pub fn new(pool: PgPool, config: &OAuthRuntimeConfig) -> Self {
-        Self { pool, encryption_key: config.oauth_encryption_key }
+    pub fn new(pool: PgPool, config: &OAuthRuntimeConfig) -> Result<Self, DurableStoreError> {
+        use base64::Engine;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(config.oauth_encryption_key.expose())
+            .map_err(|_| DurableStoreError::InvalidRecord)?;
+        let encryption_key: [u8; 32] = decoded.try_into().map_err(|_| DurableStoreError::InvalidRecord)?;
+        Ok(Self { pool, encryption_key })
     }
 
     fn cipher(&self) -> Result<LessSafeKey, DurableStoreError> {
