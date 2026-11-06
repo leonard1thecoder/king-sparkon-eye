@@ -5,10 +5,7 @@ use std::sync::{Arc, OnceLock};
 
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, FromRequest, Multipart, State};
-use axum::http::{
-    HeaderMap, HeaderName, HeaderValue, Request, StatusCode,
-    header::AUTHORIZATION,
-};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode, header::AUTHORIZATION};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -257,10 +254,8 @@ async fn upload_photo(
                     return Err(invalid_multipart());
                 }
                 let mut bytes = Vec::new();
-                while let Some(chunk) = field
-                    .chunk()
-                    .await
-                    .map_err(|_| ApiError::PayloadTooLarge)?
+                while let Some(chunk) =
+                    field.chunk().await.map_err(|_| ApiError::PayloadTooLarge)?
                 {
                     if bytes.len().saturating_add(chunk.len())
                         > state.config.image_limits.max_upload_bytes
@@ -273,10 +268,8 @@ async fn upload_photo(
             }
             "clientRequestId" => {
                 let mut size = 0usize;
-                while let Some(chunk) = field
-                    .chunk()
-                    .await
-                    .map_err(|_| ApiError::PayloadTooLarge)?
+                while let Some(chunk) =
+                    field.chunk().await.map_err(|_| ApiError::PayloadTooLarge)?
                 {
                     size = size.saturating_add(chunk.len());
                     if size > 1024 {
