@@ -89,6 +89,33 @@ impl UsageLedgerStore {
             AllowancePeriod::containing(request.occurred_at).start_date()
         };
 
+        // Fast path for an already committed event key, including a reversal retry.
+        // The unique constraint below remains the concurrency-safe final guard.
+        let existing = sqlx::query(
+            "SELECT id, source, meter, occurred_at, period_start, body_kind, quantity, reversal_of_event_key              FROM eye_billing_usage_ledger WHERE tenant_id = $1 AND event_key = $2",
+        )
+        .bind(request.tenant.as_str())
+        .bind(request.key.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(existing) = existing {
+            let same = existing.try_get::<String, _>("source")? == source
+                && existing.try_get::<String, _>("meter")? == meter
+                && existing.try_get::<DateTime<Utc>, _>("occurred_at")? == request.occurred_at
+                && existing.try_get::<NaiveDate, _>("period_start")? == period_start
+                && existing.try_get::<String, _>("body_kind")? == body_kind
+                && existing.try_get::<Option<i64>, _>("quantity")? == quantity
+                && existing.try_get::<Option<String>, _>("reversal_of_event_key")? == reversal_key;
+            if !same {
+                return Err(UsageStoreError::KeyConflict);
+            }
+            let id: i64 = existing.try_get("id")?;
+            tx.commit().await?;
+            return Ok(AppendOutcome::Duplicate {
+                seq: u64::try_from(id).map_err(|_| UsageStoreError::ArithmeticOverflow)?,
+            });
+        }
+
         // Check for an identical replay before enforcing the one-reversal-per-target rule.
         // This makes retries of a committed reversal idempotent.
         if let AppendBody::Reversal { reverses } = &request.body {
