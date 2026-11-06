@@ -7,7 +7,12 @@ use std::{collections::HashMap, net::SocketAddr};
 
 use axum::{body::Body, extract::connect_info::MockConnectInfo, http::Request};
 use http_body_util::BodyExt;
-use king_sparkon_eye::{api, auth::durable_store::hash_hex, config::Config, persistence::{connect, migrate}};
+use king_sparkon_eye::{
+    api,
+    auth::durable_store::hash_hex,
+    config::Config,
+    persistence::{connect, migrate},
+};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
@@ -24,7 +29,9 @@ async fn database() -> Option<(PgPool, String)> {
             return None;
         }
     };
-    let pool = connect(&url).await.expect("connect to disposable PostgreSQL database");
+    let pool = connect(&url)
+        .await
+        .expect("connect to disposable PostgreSQL database");
     migrate(&pool).await.expect("apply Eye SQLx migrations");
     Some((pool, url))
 }
@@ -33,12 +40,24 @@ fn config(database_url: &str) -> Config {
     let values = HashMap::from([
         ("EYE_GOOGLE_CLIENT_ID", "test-client-id".to_owned()),
         ("EYE_GOOGLE_CLIENT_SECRET", "test-client-secret".to_owned()),
-        ("EYE_GOOGLE_REDIRECT_URL", "http://127.0.0.1:9/v1/auth/google/callback".to_owned()),
+        (
+            "EYE_GOOGLE_REDIRECT_URL",
+            "http://127.0.0.1:9/v1/auth/google/callback".to_owned(),
+        ),
         ("EYE_DATABASE_URL", database_url.to_owned()),
         ("EYE_OAUTH_ENCRYPTION_KEY", ENCRYPTION_KEY.to_owned()),
-        ("EYE_OAUTH_CALLBACK_URLS", "http://127.0.0.1:9/v1/auth/google/callback".to_owned()),
-        ("EYE_OAUTH_EXCHANGE_SECRET", "test-exchange-secret-at-least-32-bytes".to_owned()),
-        ("EYE_JWT_SIGNING_SECRET", "test-jwt-signing-secret-at-least-32-bytes".to_owned()),
+        (
+            "EYE_OAUTH_CALLBACK_URLS",
+            "http://127.0.0.1:9/v1/auth/google/callback".to_owned(),
+        ),
+        (
+            "EYE_OAUTH_EXCHANGE_SECRET",
+            "test-exchange-secret-at-least-32-bytes".to_owned(),
+        ),
+        (
+            "EYE_JWT_SIGNING_SECRET",
+            "test-jwt-signing-secret-at-least-32-bytes".to_owned(),
+        ),
         ("EYE_OAUTH_ALLOW_LOCALHOST_HTTP", "true".to_owned()),
     ]);
     Config::from_lookup(|name| values.get(name).cloned()).expect("valid SQLx auth config")
@@ -66,8 +85,13 @@ async fn seed_user(pool: &PgPool, email: &str) -> String {
     user_id
 }
 
-async fn post(database_url: &str, path: &str, payload: Value) -> (axum::http::StatusCode, Value) {
-    let app = api::router(config(database_url)).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41000))));
+async fn post(
+    database_url: &str,
+    path: &str,
+    payload: Value,
+) -> (axum::http::StatusCode, Value) {
+    let app = api::router(config(database_url))
+        .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41000))));
     let response = app
         .oneshot(
             Request::builder()
@@ -81,7 +105,10 @@ async fn post(database_url: &str, path: &str, payload: Value) -> (axum::http::St
         .unwrap();
     let status = response.status();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 #[tokio::test]
@@ -92,7 +119,12 @@ async fn password_reset_request_prevents_account_enumeration() {
     let email = format!("existing-{}@example.test", Uuid::new_v4());
     seed_user(&pool, &email).await;
 
-    let existing = post(&url, "/v1/auth/password-reset/request", json!({"email": email})).await;
+    let existing = post(
+        &url,
+        "/v1/auth/password-reset/request",
+        json!({"email": email}),
+    )
+    .await;
     let unknown = post(
         &url,
         "/v1/auth/password-reset/request",
