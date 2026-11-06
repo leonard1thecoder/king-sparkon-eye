@@ -339,7 +339,9 @@ async fn streamed_image_limit_stops_before_following_body_chunk_is_polled() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "response body: {}", String::from_utf8_lossy(&body));
     assert_eq!(polled.load(Ordering::SeqCst), 1, "the trailing multipart chunk must not be read");
 }
 
