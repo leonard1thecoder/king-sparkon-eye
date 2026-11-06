@@ -8,7 +8,7 @@ King Sparkon Eye is designed to let an authorized gate worker find an enrolled a
 
 ## Public information site
 
-The browser authentication pages at `/auth/sign-in`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password`, and `/auth/callback` share a compact gold Eye mark and wordmark in their common template. The branding is presentation-only; the existing form/API/OAuth behavior is unchanged.
+The browser authentication pages at `/auth/sign-in`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password`, and `/auth/callback` share the supplied King Sparkon Eye logo (`/assets/logo.gif`) in their common template. The branding is presentation-only; the existing form/API/OAuth behavior is unchanged.
 
 The Axum service serves a public product landing page at `/`. It explains the intended QR-free, event-scoped identification workflow, the boundary between Rust vision results and Spring Boot admission authority, and the current implementation status. The page uses a black theme. The header shows the supplied King Sparkon Eye logo, with Sign in and Sign up buttons that link to the auth pages. The hero uses the supplied glowing-eye artwork as a static image. The event-scope workflow diagram remains explanatory artwork, not a live dashboard, camera feed, or product screenshot.
 
@@ -150,14 +150,14 @@ The registered Google redirect URL must be registered with Google exactly. Provi
 
 | Page | Status |
 |---|---|
-| `/auth/sign-in` | Email/password form posts to `POST /v1/auth/login`. The Google button starts `GET /v1/auth/google/start` with `callback_url` set to this origin's `/auth/callback`. Requires that URL in the callback allowlist. |
-| `/auth/register` | Client-side validation only (email format, minimum 10 characters, matching confirmation). Submits to `POST /v1/auth/register`, which is **not implemented yet**; the page reports "not available on this server yet". |
-| `/auth/forgot-password` | Submits to `POST /v1/auth/password-reset/request`, which is **not implemented yet**. Needs an email delivery provider, which is not configured. |
-| `/auth/reset-password?token=…` | Submits to `POST /v1/auth/password-reset/confirm`, which is **not implemented yet**. |
-| `/auth/callback` | Shows success or failure only. A successful redirect carries a one-time `code`, but completing the session needs the BFF exchange (`POST /v1/auth/oauth/exchange`), so the page does not finish sign-in. |
+| `/auth/sign-in` | Email/password form posts to `POST /v1/auth/login`. The Google button stays hidden until the script sets its URL to `GET /v1/auth/google/start` with `callback_url` set to this origin's `/auth/callback`, which must be in the callback allowlist. |
+| `/auth/register` | Shown as **unavailable**: the form is disabled and the page says so. Validation (email format, minimum 10 characters, matching confirmation) runs in the browser and is linked to each field's error. Targets `POST /v1/auth/register`, which is **not mounted yet**. |
+| `/auth/forgot-password` | Shown as **unavailable**: the form is disabled. Targets `POST /v1/auth/password-reset/request`, which is **not mounted yet**, and needs an email delivery provider, which is not configured. |
+| `/auth/reset-password?token=…` | Shown as **unavailable**: the form is disabled. Targets `POST /v1/auth/password-reset/confirm`, which is **not mounted yet**. Without a token, the form is hidden and the page asks for a new link. |
+| `/auth/callback` | Shows success or failure only. A returned one-time `code` does not sign the user in: the page says so, because completing the session needs the BFF exchange (`POST /v1/auth/oauth/exchange`). |
 | Consent / authorization | **Not built.** The contract marks the legal consent wording and retention policy as unapproved. |
 
-Pages never render query-string values into markup. They are not yet covered by a rendered-browser review.
+Pages never render query-string values into markup. All auth pages use one dark theme that matches the landing page and show a notice when JavaScript is off. They were checked in a browser at 375px and 1280px with no horizontal overflow (see [issue #196](https://github.com/leonard1thecoder/king-sparkon-eye/issues/196)).
 
 The new database migration creates Eye-owned auth, identity-link, transaction, handoff, refresh-token, and rate-limit state. Apply it to a dedicated Eye database through the project migration workflow before enabling OAuth; this repository does not run Flyway or apply it automatically. The runtime uses PostgREST RPCs so the store functions execute their locking/consume-once semantics in PostgreSQL. Behind a reverse proxy, also apply edge rate limiting and configure trusted-proxy networking: the runtime rate limiter sees the direct TCP peer address and intentionally does not trust caller-supplied forwarded headers.
 

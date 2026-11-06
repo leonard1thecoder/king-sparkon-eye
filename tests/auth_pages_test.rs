@@ -87,7 +87,7 @@ async fn callback_page_never_renders_query_values() {
     let (status, _, body) = get(&format!("/auth/callback?error={encoded}&code={encoded}")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
-        !body.contains("<img"),
+        !body.contains("<img src=\"x\""),
         "query text must not reach the markup"
     );
     assert!(
@@ -95,6 +95,25 @@ async fn callback_page_never_renders_query_values() {
         "query text must not reach the markup"
     );
     assert!(body.contains("Google sign-in did not complete"));
+}
+
+#[tokio::test]
+async fn unmounted_routes_are_labelled_unavailable_with_disabled_forms() {
+    for path in [
+        "/auth/register",
+        "/auth/forgot-password",
+        "/auth/reset-password",
+    ] {
+        let (_, _, body) = get(path).await;
+        assert!(
+            body.contains("not available on this server yet"),
+            "{path} explains the unavailable state"
+        );
+        assert!(
+            body.contains("<fieldset disabled>"),
+            "{path} disables its form"
+        );
+    }
 }
 
 #[tokio::test]
