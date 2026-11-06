@@ -994,6 +994,7 @@ dependencies = [
  "base64 0.22.1",
  "bcrypt",
  "chrono",
+ "futures-util",
  "http-body-util",
  "image",
  "ort",
