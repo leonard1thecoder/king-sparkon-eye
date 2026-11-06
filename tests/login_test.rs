@@ -33,7 +33,9 @@ async fn database() -> Option<(PgPool, String)> {
             return None;
         }
     };
-    let pool = connect(&url).await.expect("connect to disposable PostgreSQL database");
+    let pool = connect(&url)
+        .await
+        .expect("connect to disposable PostgreSQL database");
     migrate(&pool).await.expect("apply Eye SQLx migrations");
     sqlx::query("DELETE FROM eye_oauth_rate_limits")
         .execute(&pool)
@@ -50,7 +52,10 @@ fn config(database_url: &str) -> Config {
         ("EYE_DATABASE_URL", database_url.to_owned()),
         ("EYE_OAUTH_ENCRYPTION_KEY", ENCRYPTION_KEY.to_owned()),
         ("EYE_OAUTH_CALLBACK_URLS", REDIRECT_URL.to_owned()),
-        ("EYE_OAUTH_EXCHANGE_SECRET", "test-exchange-secret-at-least-32-bytes".to_owned()),
+        (
+            "EYE_OAUTH_EXCHANGE_SECRET",
+            "test-exchange-secret-at-least-32-bytes".to_owned(),
+        ),
         ("EYE_JWT_SIGNING_SECRET", JWT_SECRET.to_owned()),
         ("EYE_JWT_KID", KID.to_owned()),
         ("EYE_OAUTH_ALLOW_LOCALHOST_HTTP", "true".to_owned()),
@@ -58,7 +63,13 @@ fn config(database_url: &str) -> Config {
     Config::from_lookup(|name| values.get(name).cloned()).expect("valid SQLx OAuth config")
 }
 
-async fn seed_user(pool: &PgPool, email: &str, password_hash: &str, salt: &str, active: bool) -> String {
+async fn seed_user(
+    pool: &PgPool,
+    email: &str,
+    password_hash: &str,
+    salt: &str,
+    active: bool,
+) -> String {
     let user_id = format!("usr_{}", Uuid::new_v4().simple());
     sqlx::query(
         "INSERT INTO eye_auth_users(user_id,email,password_hash,salt,role,scopes,is_active,created_at_ms)
@@ -76,42 +87,55 @@ async fn seed_user(pool: &PgPool, email: &str, password_hash: &str, salt: &str, 
 }
 
 async fn login(database_url: &str, email: &str, password: &str) -> (axum::http::StatusCode, Value) {
-    let app = api::router(config(database_url)).layer(MockConnectInfo(SocketAddr::from((
-        [127, 0, 0, 1],
-        40_000,
-    ))));
+    let app = api::router(config(database_url))
+        .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40_000))));
     let response = app
         .oneshot(
             axum::http::Request::builder()
                 .method("POST")
                 .uri("/v1/auth/login")
                 .header("content-type", "application/json")
-                .body(Body::from(json!({"email": email, "password": password}).to_string()))
+                .body(Body::from(
+                    json!({"email": email, "password": password}).to_string(),
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
     let status = response.status();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 #[tokio::test]
 async fn legacy_password_login_returns_tokens_and_rehashes_in_postgres() {
-    let Some((pool, url)) = database().await else { return };
+    let Some((pool, url)) = database().await else {
+        return;
+    };
     let email = format!("legacy-{}@example.test", Uuid::new_v4());
-    let user_id = seed_user(&pool, &email, &legacy_hash_password(PASSWORD, SALT), SALT, true).await;
+    let user_id = seed_user(
+        &pool,
+        &email,
+        &legacy_hash_password(PASSWORD, SALT),
+        SALT,
+        true,
+    )
+    .await;
 
     let (status, body) = login(&url, &email, PASSWORD).await;
     assert_eq!(status, axum::http::StatusCode::OK, "{body}");
     assert!(body["accessToken"].as_str().is_some());
     assert!(body["refreshToken"].as_str().is_some());
 
-    let stored: String = sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let stored: String =
+        sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(stored.starts_with("$2b$12$"), "{stored}");
     assert!(bcrypt::verify(PASSWORD, &stored).unwrap());
     pool.close().await;
@@ -126,11 +150,12 @@ async fn bcrypt_login_does_not_rewrite_the_existing_hash() {
 
     let (status, body) = login(&url, &email, PASSWORD).await;
     assert_eq!(status, axum::http::StatusCode::OK, "{body}");
-    let actual: String = sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let actual: String =
+        sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(actual, stored_hash);
     pool.close().await;
 }
@@ -140,10 +165,29 @@ async fn unknown_wrong_password_and_disabled_account_have_uniform_errors() {
     let Some((pool, url)) = database().await else { return };
     let email = format!("operator-{}@example.test", Uuid::new_v4());
     let disabled_email = format!("disabled-{}@example.test", Uuid::new_v4());
-    seed_user(&pool, &email, &legacy_hash_password(PASSWORD, SALT), SALT, true).await;
-    seed_user(&pool, &disabled_email, &legacy_hash_password(PASSWORD, SALT), SALT, false).await;
+    seed_user(
+        &pool,
+        &email,
+        &legacy_hash_password(PASSWORD, SALT),
+        SALT,
+        true,
+    )
+    .await;
+    seed_user(
+        &pool,
+        &disabled_email,
+        &legacy_hash_password(PASSWORD, SALT),
+        SALT,
+        false,
+    )
+    .await;
 
-    let unknown = login(&url, &format!("missing-{}@example.test", Uuid::new_v4()), PASSWORD).await;
+    let unknown = login(
+        &url,
+        &format!("missing-{}@example.test", Uuid::new_v4()),
+        PASSWORD,
+    )
+    .await;
     let wrong = login(&url, &email, "not-the-password-1").await;
     let disabled = login(&url, &disabled_email, PASSWORD).await;
     for (status, body) in [&unknown, &wrong, &disabled] {
@@ -183,5 +227,8 @@ async fn login_is_unavailable_without_oauth_configuration() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
 }
