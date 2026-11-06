@@ -694,4 +694,26 @@ mod billing_route_auth_tests {
             .expect("response");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
+
+    #[tokio::test]
+    async fn billing_request_cannot_select_an_account_or_customer() {
+        let now = current_unix_seconds();
+        let bearer = token(&format!("usr_{}", "b".repeat(32)), now);
+        let app = router(config());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/billing/checkout")
+                    .header("authorization", format!("Bearer {bearer}"))
+                    .header("idempotency-key", "checkout-forged-owner")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"plan":"gold","interval":"monthly","successUrl":"https://eye.example.com/success","cancelUrl":"https://eye.example.com/cancel","eyeUserId":"usr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","stripeCustomerId":"cus_attacker"}"#))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
 }
