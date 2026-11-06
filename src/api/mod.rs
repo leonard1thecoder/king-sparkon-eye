@@ -1,15 +1,18 @@
 //! HTTP routes: health probes, bounded photo ingress, OAuth, and request-ID/tracing middleware.
 
+use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, FromRequest, Multipart, State};
+use axum::extract::{FromRequest, Multipart, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode, header::AUTHORIZATION};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures_util::StreamExt;
 use serde::Serialize;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -237,15 +240,62 @@ async fn upload_photo(
         .get(REQUEST_ID_HEADER)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
-    // Authentication runs before Multipart consumes any request-body bytes.
+    // Authentication runs before the body is wrapped or any request bytes are consumed.
+    // Count the complete multipart stream (boundaries and fields included), not just the image
+    // field. The shared flag lets the multipart parser distinguish a size-limit error from
+    // malformed multipart syntax without turning ordinary 400s into 413s.
+    let request_body_limit = state
+        .config
+        .image_limits
+        .max_upload_bytes
+        .saturating_add(MULTIPART_OVERHEAD_BYTES);
+    let body_limit_exceeded = Arc::new(AtomicBool::new(false));
+    let exceeded = Arc::clone(&body_limit_exceeded);
+    let limited_stream = request.into_body().into_data_stream().scan(
+        0usize,
+        move |total, item| {
+            let exceeded = Arc::clone(&exceeded);
+            async move {
+                match item {
+                    Ok(bytes) => {
+                        let next = (*total).saturating_add(bytes.len());
+                        if next > request_body_limit {
+                            exceeded.store(true, Ordering::Relaxed);
+                            Some(Err(io::Error::other("request body limit exceeded")))
+                        } else {
+                            *total = next;
+                            Some(Ok(bytes))
+                        }
+                    }
+                    Err(error) => Some(Err(io::Error::other(error))),
+                }
+            }
+        },
+    );
+    let request = Request::from_parts(
+        request.into_parts().0,
+        Body::from_stream(limited_stream),
+    );
     let mut multipart = Multipart::from_request(request, &state)
         .await
-        .map_err(|_| ApiError::UnsupportedMediaType)?;
+        .map_err(|_| {
+            if body_limit_exceeded.load(Ordering::Relaxed) {
+                ApiError::PayloadTooLarge
+            } else {
+                ApiError::UnsupportedMediaType
+            }
+        })?;
     let mut image = None;
     while let Some(mut field) = multipart
         .next_field()
         .await
-        .map_err(|_| invalid_multipart())?
+        .map_err(|_| {
+            if body_limit_exceeded.load(Ordering::Relaxed) {
+                ApiError::PayloadTooLarge
+            } else {
+                invalid_multipart()
+            }
+        })?
     {
         let field_name = field.name().unwrap_or_default().to_owned();
         match field_name.as_str() {
@@ -255,7 +305,13 @@ async fn upload_photo(
                 }
                 let mut bytes = Vec::new();
                 while let Some(chunk) =
-                    field.chunk().await.map_err(|_| ApiError::PayloadTooLarge)?
+                    field.chunk().await.map_err(|_| {
+                        if body_limit_exceeded.load(Ordering::Relaxed) {
+                            ApiError::PayloadTooLarge
+                        } else {
+                            invalid_multipart()
+                        }
+                    })?
                 {
                     if bytes.len().saturating_add(chunk.len())
                         > state.config.image_limits.max_upload_bytes
@@ -342,10 +398,6 @@ pub fn router(config: Config) -> Router {
             }
         }
     });
-    let upload_body_limit = config
-        .image_limits
-        .max_upload_bytes
-        .saturating_add(MULTIPART_OVERHEAD_BYTES);
     let assessment = assessment_runtime();
     let state = AppState {
         config: Arc::new(config),
@@ -357,7 +409,7 @@ pub fn router(config: Config) -> Router {
         .route("/health/ready", get(ready))
         .route(
             "/v1/enrollment/photo-assessments",
-            post(upload_photo).layer(DefaultBodyLimit::max(upload_body_limit)),
+            post(upload_photo),
         )
         .merge(OAuthRuntime::routes())
         .merge(crate::auth::pages::routes())
