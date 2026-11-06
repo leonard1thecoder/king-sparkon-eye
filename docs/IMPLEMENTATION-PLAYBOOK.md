@@ -584,3 +584,14 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - No markup or route changes. `README.md` and `docs/PUBLIC-LANDING-PAGE.md` do not describe alignment, so they are unchanged.
 
 **Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 481 passed, 0 failed, including the new `logo_and_link_lines_are_centred`. Playwright at 375px and 1280px on sign-in and forgot-password: logo and link-line centre offsets are 0px and there is no horizontal overflow. The 375px forgot-password screenshot was inspected.
+
+
+### Issue #213 — centered auth-page headings (2026-11-06)
+
+**Branch:** `issue/213-auth-heading-center`  
+**Issue:** [#213](https://github.com/leonard1thecoder/king-sparkon-eye/issues/213)
+
+- The page heading (`h1`) on every auth page is centered with `text-align:center`, matching the centered logo and link lines from #211. Form fields and labels stay left-aligned.
+- No markup or route changes. `README.md` and `docs/PUBLIC-LANDING-PAGE.md` are unchanged.
+
+**Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 481 passed, 0 failed, with `logo_and_link_lines_are_centred` extended to check the heading rule. Playwright at 375px on sign-in, register, forgot-password, reset-password and callback: heading centre offset 0px, `text-align: center`, no horizontal overflow.

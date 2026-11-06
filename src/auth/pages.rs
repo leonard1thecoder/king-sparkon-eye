@@ -122,7 +122,7 @@ main{max-width:26rem;margin:0 auto;padding:2.5rem 1rem 3rem}
 .auth-brand img{display:block;height:64px;width:auto}
 a{color:var(--gold-2)}
 a:focus-visible,button:focus-visible,input:focus-visible,.auth-brand:focus-visible{outline:3px solid var(--gold-2);outline-offset:3px}
-h1{font-size:1.6rem;line-height:1.2;margin:0 0 1.25rem}
+h1{font-size:1.6rem;line-height:1.2;margin:0 0 1.25rem;text-align:center}
 fieldset{border:0;margin:0;padding:0;min-width:0}
 fieldset:disabled{opacity:.55}
 label{display:block;margin:1.1rem 0 .35rem;font-weight:600}
@@ -531,6 +531,11 @@ mod tests {
     fn logo_and_link_lines_are_centred() {
         let html = render("t", "h", SIGN_IN_BODY, SIGN_IN_SCRIPT).0;
         assert!(html.contains(".auth-brand{display:flex;justify-content:center;"));
+        assert!(
+            html.contains(
+                "h1{font-size:1.6rem;line-height:1.2;margin:0 0 1.25rem;text-align:center}"
+            )
+        );
         assert!(html.contains(
             ".links{margin-top:1.5rem;font-size:.95rem;color:var(--muted);text-align:center}"
         ));
