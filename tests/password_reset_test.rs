@@ -43,7 +43,10 @@ async fn rpc(
         "eye_create_password_reset_token" => {
             let email = body["p_email"].as_str().unwrap_or_default();
             if email == EXISTING_EMAIL {
-                db.created_tokens.lock().unwrap().push(body["p_token_hash"].as_str().unwrap().to_string());
+                db.created_tokens
+                    .lock()
+                    .unwrap()
+                    .push(body["p_token_hash"].as_str().unwrap().to_string());
                 Json(json!([{
                     "user_id": "usr_existing_123",
                     "email": email,
@@ -54,7 +57,14 @@ async fn rpc(
         }
         "eye_consume_password_reset_token" => {
             let token_hash = body["p_token_hash"].as_str().unwrap_or_default();
-            if token_hash.contains("valid") || db.created_tokens.lock().unwrap().iter().any(|t| t == token_hash) {
+            if token_hash.contains("valid")
+                || db
+                    .created_tokens
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|t| t == token_hash)
+            {
                 Json(json!([{"ok": true}]))
             } else {
                 Json(json!([{"ok": false}]))
@@ -68,9 +78,7 @@ async fn spawn_mock() -> Mock {
     let db = MockDb {
         created_tokens: Arc::new(Mutex::new(Vec::new())),
     };
-    let app = Router::new()
-        .route("/rpc/{name}", post(rpc))
-        .with_state(db);
+    let app = Router::new().route("/rpc/{name}", post(rpc)).with_state(db);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
