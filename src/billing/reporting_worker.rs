@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use thiserror::Error;
 
 use crate::{
@@ -209,18 +209,9 @@ impl<R: StripeCustomerResolver> UsageReportingWorker<R> {
                 Ok(()) => self.ack_group(&rows, now, &mut result).await?,
                 Err(error) => {
                     let (category, retryable) = stripe_error_category(error);
-                    self.retry_group(
-                        &rows,
-                        now,
-                        category,
-                        &mut result,
-                    )
-                    .await?;
-                    // Rejected/invalid requests are deliberately retained as dead letters by
-                    // assigning the configured attempt ceiling for this batch.
-                    if !retryable {
-                        // schedule_retry already uses attempts; force the ceiling on the next
-                        // retry transition without storing provider response text.
+                    if retryable {
+                        self.retry_group(&rows, now, category, &mut result).await?;
+                    } else {
                         self.dead_letter_group(&rows, now, category, &mut result).await?;
                     }
                 }
