@@ -141,7 +141,7 @@ The existing [OpenAPI document](openapi/eye.openapi.json) describes the earlier 
 
 ## Public-site SEO baseline
 
-The current deployed-site origin is configured as the repository homepage: https://king-sparkon-eye.vercel.app. src/seo.rs is the source of truth for that origin and the crawl-control endpoints.
+The GitHub repository homepage setting identifies the intended production origin as https://king-sparkon-eye.vercel.app. src/seo.rs is the source of truth for that origin and the crawl-control endpoints.
 
 - The / route is currently the **only** public, indexable route. It is server-rendered as static HTML by Axum and is the only URL in /sitemap.xml.
 - /robots.txt allows public content and disallows /auth/, /v1/, /health/, and reserved private route classes such as /console/, /account/, /sessions/, /tenants/ and /verification/.
