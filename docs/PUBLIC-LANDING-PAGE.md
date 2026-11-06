@@ -28,7 +28,7 @@ Use an editorial product-infrastructure direction rather than a generic SaaS tem
 - Thin rules, generous whitespace, and purposeful numbered steps instead of decorative metric cards or generic feature-card grids.
 - A dark responsibility section to make the ownership boundary memorable.
 - A pricing comparison with clear candidate/unapproved status, not an active checkout or implied offer.
-- Responsive layouts collapse columns without hiding important information.
+- Responsive layouts collapse columns without hiding important information. On narrow screens (700px and below) the text navigation links move into a menu toggle; Sign in and Get started stay visible in the header. The toggle is a checkbox with a label, so the page needs no JavaScript.
 
 The hero image is King Sparkon Eye brand artwork, not a product screenshot, customer image, camera feed, or live system status. The event-scope workflow diagram remains conceptual explanatory artwork. Both raster brand images are embedded in the Eye binary with `include_bytes!` and served from the same origin, so the page adds no external image or CDN dependency. The artwork is brand treatment only; it does not represent a live recognition pipeline.
 
