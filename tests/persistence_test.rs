@@ -250,8 +250,8 @@ async fn transaction_state_mismatch_burns_cookie_bound_record() {
         cb,
         600,
     )
-        .await
-        .unwrap();
+    .await
+    .unwrap();
 
     let consumed = oauth::consume_transaction(&pool, &cookie, &wrong_state)
         .await
