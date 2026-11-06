@@ -102,6 +102,18 @@ pub struct RefreshRotation {
     pub family_id: Option<String>,
 }
 
+/// Inputs for creating a password-authenticated Eye account.
+#[derive(Debug, Clone, Copy)]
+pub struct RegisterUserInput<'a> {
+    pub user_id: &'a str,
+    pub email: &'a str,
+    pub password_hash: &'a str,
+    pub salt: &'a str,
+    pub role: UserRole,
+    pub scopes: &'a [String],
+    pub now_ms: u64,
+}
+
 impl DurableEyeStore {
     pub fn new(config: &OAuthRuntimeConfig) -> Self {
         Self {
@@ -311,25 +323,19 @@ impl DurableEyeStore {
 
     pub async fn register_user(
         &self,
-        user_id: &str,
-        email: &str,
-        password_hash: &str,
-        salt: &str,
-        role: UserRole,
-        scopes: &[String],
-        now_ms: u64,
+        input: RegisterUserInput<'_>,
     ) -> Result<DurableUser, DurableStoreError> {
         let rows: Vec<DurableUser> = self
             .rpc(
                 "eye_register_user",
                 json!({
-                    "p_user_id": user_id,
-                    "p_email": email,
-                    "p_password_hash": password_hash,
-                    "p_salt": salt,
-                    "p_role": role_name(role),
-                    "p_scopes": scopes,
-                    "p_now_ms": now_ms,
+                    "p_user_id": input.user_id,
+                    "p_email": input.email,
+                    "p_password_hash": input.password_hash,
+                    "p_salt": input.salt,
+                    "p_role": role_name(input.role),
+                    "p_scopes": input.scopes,
+                    "p_now_ms": input.now_ms,
                 }),
             )
             .await?;
