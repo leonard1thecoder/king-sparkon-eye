@@ -212,7 +212,7 @@ impl DurableEyeStore {
                 if conflict { return Err(DurableStoreError::Rejected); }
                 row
             } else {
-                sqlx::query("INSERT INTO eye_auth_users(user_id,email,password_hash,salt,role,scopes,is_active,created_at_ms) VALUES($1,lower($2),$3,$4,$5,'{}',true,$6) RETURNING user_id,email,role,scopes,is_active,created_at_ms")
+                sqlx::query_as::<_, UserRow>("INSERT INTO eye_auth_users(user_id,email,password_hash,salt,role,scopes,is_active,created_at_ms) VALUES($1,lower($2),$3,$4,$5,'{}',true,$6) RETURNING user_id,email,role,scopes,is_active,created_at_ms")
                     .bind(&new_user.user_id).bind(email.trim()).bind(&new_user.password_hash).bind(&new_user.salt)
                     .bind(role_name(new_user.role)).bind(to_i64(now_ms)?)
                     .fetch_one(&mut *tx).await.map_err(map_sqlx)?
