@@ -481,3 +481,17 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - Adds a shared-template branding regression test; updates README and the public landing-page design brief. `AGENTS.md` was reviewed and left unchanged because no reusable contributor rule changed.
 
 **Verification at branch preparation:** source assertions are present; run Rust formatting/tests and rendered browser review for light/dark themes and mobile widths before merge. No test or browser result is claimed until run.
+
+
+### Issue #194 — dark landing theme with supplied logo and hero (2026-11-06)
+
+**Branch:** `issue/194-dark-landing-theme`  
+**Issue:** [#194](https://github.com/leonard1thecoder/king-sparkon-eye/issues/194)
+
+- Overrides the animated SVG hero from [#177](https://github.com/leonard1thecoder/king-sparkon-eye/issues/177) at the owner's direction. The hero is now the supplied glowing-eye artwork (`/assets/hero.jpg`, edge-faded, `mix-blend-mode: screen`) and does not animate.
+- Replaces the header mark with the supplied logo (`/assets/logo.gif`). Adds Sign in and Sign up header buttons that link to `/auth/sign-in` and `/auth/register`, styled as pill buttons per [#174](https://github.com/leonard1thecoder/king-sparkon-eye/issues/174).
+- Switches the landing page to a black canvas (`--paper: #000`, `color-scheme: dark`) with gold accents.
+- Serves both images from `src/auth/pages.rs` with `include_bytes!` at `/assets/{name}`. The auth-page brand mark from [#179](https://github.com/leonard1thecoder/king-sparkon-eye/issues/179) is unchanged.
+- Updates `README.md` and `docs/PUBLIC-LANDING-PAGE.md`, and fixes a literal `\n` in the brief's implementation constraints. `AGENTS.md` was reviewed and left unchanged because no reusable contributor rule changed.
+
+**Verification:** `cargo fmt --all --check` passed. `cargo clippy --all-targets --all-features -- -D warnings` passed. `cargo test --all-features --locked` gave 473 passed and 0 failed. Local runs used `RUSTUP_TOOLCHAIN=stable` because the sandbox cannot download the pinned 1.97.0 toolchain. Rendered 1280px and 375px checks were run earlier on this working copy and showed no horizontal overflow; the HTML has not changed since.
