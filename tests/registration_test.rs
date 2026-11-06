@@ -33,7 +33,6 @@ struct MockDb {
 
 struct Mock {
     base: String,
-    registered_users: Arc<Mutex<HashMap<String, Value>>>,
 }
 
 async fn rpc(
@@ -42,7 +41,7 @@ async fn rpc(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     match name.as_str() {
-        "eye_allow_oauth_attempt" => Json(json!([{"ok": true}])),
+        "eye_allow_oauth_attempt" => Json(json!([{"allowed": true}])),
         "eye_password_credentials_by_email" => {
             let email = body["p_email"].as_str().unwrap_or_default();
             if email == OPERATOR_EMAIL {
@@ -106,7 +105,6 @@ async fn spawn_mock() -> Mock {
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Mock {
         base: format!("http://{addr}"),
-        registered_users,
     }
 }
 
