@@ -490,12 +490,11 @@ mod landing_page_tests {
             "The billing catalog is not loaded into runtime",
             "scope-title",
             "scope-caption",
-            "class=\"hero-logo\"",
-            "King Sparkon Eye logo",
-            "Official brand mark",
-            "Eye animation · 0.5×",
-            "animation:eye-blink 4.8s",
-            "prefers-reduced-motion:reduce",
+            "href=\"/auth/sign-in\"",
+            "href=\"/auth/register\"",
+            "src=\"/assets/logo.gif\"",
+            "src=\"/assets/hero.jpg\"",
+            "prefers-reduced-motion",
             "class=\"brand-mark\"",
         ] {
             assert!(page.contains(expected), "landing page missing: {expected}");
