@@ -535,3 +535,15 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - No other section changes.
 
 **Verification:** Playwright against a local server: the section background is `rgb(0, 0, 0)`, the heading is `rgb(245, 243, 236)` and the body copy `rgb(184, 187, 177)`, with no horizontal overflow at 375px or 1280px. The 375px section screenshot was inspected. `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
+
+
+### Issue #204 — placeholders on auth-page fields (2026-11-06)
+
+**Branch:** `issue/204-auth-placeholders`  
+**Issue:** [#204](https://github.com/leonard1thecoder/king-sparkon-eye/issues/204)
+
+- Adds placeholders to the auth-page fields: email `you@example.com`; sign-in password `Your password`; new password `Choose a password`; confirm `Repeat your password`.
+- Sets `input::placeholder` to the muted token. Measured colour `rgb(164, 165, 155)` on the field background.
+- No other field or page behaviour changes. `README.md` and `docs/PUBLIC-LANDING-PAGE.md` do not describe placeholders, so they are unchanged.
+
+**Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 479 passed, 0 failed, including the new `auth_fields_have_placeholders` test. Playwright at 375px confirmed each placeholder attribute and colour on sign-in and register. The register screenshot was inspected; its fields are dimmed because that form is disabled until its endpoint exists.
