@@ -72,9 +72,9 @@ def candidate_catalog():
         "currency": "USD",
         "approval_status": "candidate_unapproved",
         "plans": [
-            {"id": "free", "versions": [{"version": 1, "base": {"monthly": "0", "annual": "0"}}]},
-            {"id": "gold", "versions": [{"version": 1, "base": {"monthly": "99.00", "annual": "990.00"}}]},
-            {"id": "premium", "versions": [{"version": 1, "base": {"monthly": "299.00", "annual": "2990.00"}}]},
+            {"id": "free", "versions": [{"version": 1, "effective_from": "2026-11-01", "base": {"monthly": "0", "annual": "0"}}]},
+            {"id": "gold", "versions": [{"version": 1, "effective_from": "2026-11-01", "base": {"monthly": "99.00", "annual": "990.00"}}]},
+            {"id": "premium", "versions": [{"version": 1, "effective_from": "2026-11-01", "base": {"monthly": "299.00", "annual": "2990.00"}}]},
         ],
     }
 
@@ -135,6 +135,7 @@ def candidate_catalog_with_two_versions():
         first = plan["versions"][0]
         second = {
             "version": 2,
+            "effective_from": "2026-11-02",
             "base": {
                 "monthly": "109.00" if plan["id"] == "gold" else "329.00",
                 "annual": "1090.00" if plan["id"] == "gold" else "3290.00",
@@ -191,6 +192,22 @@ class SupersededPriceArchivalTests(unittest.TestCase):
 
         self.assertTrue(stripe.prices["premium-v1-annual"][0]["active"])
         self.assertTrue(stripe.prices["premium-v2-annual"][0]["active"])
+
+
+    def test_future_effective_version_does_not_replace_or_archive_current_price(self):
+        stripe = FakeStripe()
+        catalog = candidate_catalog()
+        current = MODULE.provision_catalog(catalog, stripe)
+        future_catalog = candidate_catalog_with_two_versions()
+        for plan in future_catalog["plans"]:
+            if plan["id"] != "free":
+                plan["versions"][1]["effective_from"] = "2099-01-01"
+
+        result = MODULE.provision_catalog(future_catalog, stripe, archive_superseded=True)
+
+        self.assertEqual(result, current)
+        self.assertTrue(stripe.prices["gold-v1-monthly"][0]["active"])
+        self.assertNotIn("gold-v2-monthly", stripe.prices)
 
 
 if __name__ == "__main__":
