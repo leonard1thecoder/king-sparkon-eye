@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use king_sparkon_eye::config::{
     Config, ConfigError, DEFAULT_BIND_ADDR, ENV_BIND_ADDR, ENV_PLATFORM_PORT,
     ENV_VISION_PROVIDER_API_KEY, ENV_VISION_PROVIDER_ENABLED, SecretString,
+    ENV_OAUTH_GOOGLE_CLIENT_ID, ENV_OAUTH_GOOGLE_CLIENT_SECRET, ENV_OAUTH_GOOGLE_REDIRECT_URL,
+    ENV_OAUTH_DATABASE_URL, ENV_OAUTH_ENCRYPTION_KEY, ENV_OAUTH_CALLBACK_URLS,
+    ENV_OAUTH_EXCHANGE_SECRET, ENV_JWT_SIGNING_SECRET,
 };
 fn lookup(map: HashMap<&'static str, &'static str>) -> impl Fn(&str) -> Option<String> {
     move |name| map.get(name).map(|v| v.to_string())
@@ -151,4 +154,40 @@ fn zero_or_non_numeric_image_limit_is_rejected_by_name() {
         );
         assert!(!err.to_string().contains(value));
     }
+}
+
+
+#[test]
+fn oauth_requires_direct_postgres_and_a_32_byte_encryption_key() {
+    let map = HashMap::from([
+        (ENV_OAUTH_GOOGLE_CLIENT_ID, "eye-client"),
+        (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "google-secret"),
+        (ENV_OAUTH_GOOGLE_REDIRECT_URL, "https://eye.example.test/v1/auth/google/callback"),
+        (ENV_OAUTH_DATABASE_URL, "postgres://eye:secret@db.example.test:5432/eye"),
+        (ENV_OAUTH_ENCRYPTION_KEY, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+        (ENV_OAUTH_CALLBACK_URLS, "https://app.example.test/auth/callback"),
+        (ENV_OAUTH_EXCHANGE_SECRET, "x1234567890123456789012345678901"),
+        (ENV_JWT_SIGNING_SECRET, "j1234567890123456789012345678901"),
+    ]);
+    let config = Config::from_lookup(lookup(map)).expect("complete SQLx OAuth config");
+    let oauth = config.oauth.expect("OAuth enabled");
+    assert_eq!(oauth.database_url, "postgres://eye:secret@db.example.test:5432/eye");
+    assert_eq!(oauth.oauth_encryption_key.expose(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+}
+
+#[test]
+fn oauth_rejects_invalid_encryption_key_without_echoing_it() {
+    let map = HashMap::from([
+        (ENV_OAUTH_GOOGLE_CLIENT_ID, "eye-client"),
+        (ENV_OAUTH_GOOGLE_CLIENT_SECRET, "google-secret"),
+        (ENV_OAUTH_GOOGLE_REDIRECT_URL, "https://eye.example.test/v1/auth/google/callback"),
+        (ENV_OAUTH_DATABASE_URL, "postgres://eye:secret@db.example.test:5432/eye"),
+        (ENV_OAUTH_ENCRYPTION_KEY, "not-a-valid-key"),
+        (ENV_OAUTH_CALLBACK_URLS, "https://app.example.test/auth/callback"),
+        (ENV_OAUTH_EXCHANGE_SECRET, "x1234567890123456789012345678901"),
+        (ENV_JWT_SIGNING_SECRET, "j1234567890123456789012345678901"),
+    ]);
+    let error = Config::from_lookup(lookup(map)).unwrap_err();
+    assert!(matches!(error, ConfigError::Invalid { name: ENV_OAUTH_ENCRYPTION_KEY, .. }));
+    assert!(!error.to_string().contains("not-a-valid-key"));
 }
