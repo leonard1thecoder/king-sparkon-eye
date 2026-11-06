@@ -84,8 +84,16 @@ impl UsageLedgerStore {
                 return Err(UsageStoreError::ReversalNotPermitted);
             }
 
+            original.try_get("period_start")?
+        } else {
+            AllowancePeriod::containing(request.occurred_at).start_date()
+        };
+
+        // Check for an identical replay before enforcing the one-reversal-per-target rule.
+        // This makes retries of a committed reversal idempotent.
+        if let AppendBody::Reversal { reverses } = &request.body {
             let already_reversed: bool = sqlx::query_scalar(
-                "SELECT EXISTS (SELECT 1 FROM eye_billing_usage_ledger                  WHERE tenant_id = $1 AND reversal_of_event_key = $2 AND body_kind = 'reversal')",
+                "SELECT EXISTS (SELECT 1 FROM eye_billing_usage_ledger WHERE tenant_id = $1 AND reversal_of_event_key = $2 AND body_kind = 'reversal')",
             )
             .bind(request.tenant.as_str())
             .bind(reverses.as_str())
@@ -94,10 +102,7 @@ impl UsageLedgerStore {
             if already_reversed {
                 return Err(UsageStoreError::AlreadyReversed);
             }
-            original.try_get("period_start")?
-        } else {
-            AllowancePeriod::containing(request.occurred_at).start_date()
-        };
+        }
 
         let inserted: Option<i64> = sqlx::query_scalar(
             "INSERT INTO eye_billing_usage_ledger              (tenant_id, event_key, source, meter, occurred_at, period_start, body_kind, quantity, reversal_of_event_key)              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)              ON CONFLICT (tenant_id, event_key) DO NOTHING RETURNING id",
