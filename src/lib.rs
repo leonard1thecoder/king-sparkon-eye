@@ -18,4 +18,5 @@ pub mod observability;
 pub mod persistence;
 pub mod provider;
 pub mod quality;
+pub mod seo;
 pub mod storage;

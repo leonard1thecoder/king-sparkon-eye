@@ -3,16 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#f4f2eb">
-<meta name="description" content="King Sparkon Eye is a Rust vision service designed for QR-free, event-scoped attendee identification with an explicit human admission decision.">
-<title>King Sparkon Eye — Identify clearly. Admit deliberately.</title>
+<meta name="theme-color" content="#000000">
+<meta name="description" content="King Sparkon Eye is an integration-agnostic identity verification platform foundation. Its current Rust service provides face detection and photo assessment; identity matching and asynchronous verification remain in development.">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://king-sparkon-eye.vercel.app/">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/assets/logo.gif" type="image/gif">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="King Sparkon Eye">
+<meta property="og:title" content="King Sparkon Eye | Face-Based Identity Verification Platform">
+<meta property="og:description" content="An integration-agnostic identity verification platform foundation. Face detection is implemented; identity matching and asynchronous verification are in development.">
+<meta property="og:url" content="https://king-sparkon-eye.vercel.app/">
+<meta property="og:image" content="https://king-sparkon-eye.vercel.app/assets/hero.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:alt" content="Concept illustration of a face-based identity verification workflow">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="King Sparkon Eye | Face-Based Identity Verification Platform">
+<meta name="twitter:description" content="A platform foundation designed for tenant-isolated, face-only identity verification. Current capabilities and planned work are clearly distinguished.">
+<meta name="twitter:image" content="https://king-sparkon-eye.vercel.app/assets/hero.jpg">
+<meta name="twitter:image:alt" content="Concept illustration of a face-based identity verification workflow">
+<title>King Sparkon Eye | Face-Based Identity Verification Platform</title>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "King Sparkon Eye",
+  "url": "https://king-sparkon-eye.vercel.app/"
+}
+</script>
 <style>
-:root{color-scheme:dark;--paper:#000;--paper-2:#0c0c0a;--ink:#f5f3ec;--muted:#a4a59b;--line:#2a2b24;--forest:#e9ae22;--forest-2:#ffc94d;--acid:#f5c64f;--coral:#e8825f;--white:#0c0c0a;--on-accent:#0a0a08;--serif:Georgia,"Times New Roman",serif;--sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"SFMono-Regular",Consolas,monospace;--content:1180px}
+:root{color-scheme:dark;--paper:#000;--ink:#f5f3ec;--muted:#a4a59b;--line:#2a2b24;--forest:#e9ae22;--forest-2:#ffc94d;--acid:#f5c64f;--coral:#e8825f;--white:#0c0c0a;--on-accent:#0a0a08;--serif:Georgia,"Times New Roman",serif;--sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"SFMono-Regular",Consolas,monospace;--content:1180px}
 *,*:before,*:after{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:6rem}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
 a{color:inherit}
-a:focus-visible{outline:3px solid var(--coral);outline-offset:4px;border-radius:3px}\n.button:focus-visible,.nav-actions .nav-cta:focus-visible{border-radius:999px}
+a:focus-visible{outline:3px solid var(--coral);outline-offset:4px;border-radius:3px}
+.button:focus-visible,.nav-actions .nav-cta:focus-visible{border-radius:999px}
 .shell{width:min(var(--content),calc(100% - 3rem));margin-inline:auto}
 .skip{position:absolute;top:.7rem;left:.7rem;z-index:20;padding:.8rem;background:var(--acid);transform:translateY(-180%)}
 .skip:focus{transform:translateY(0)}
@@ -77,37 +104,6 @@ h2{max-width:780px;margin-bottom:.9rem;font:500 clamp(2.5rem,4.8vw,4.3rem)/1.02 
 .status-card li{display:grid;grid-template-columns:18px 1fr;gap:.65rem;color:var(--muted);font-size:.78rem;line-height:1.6}
 .status-card li:before{content:"—";color:var(--coral);font-family:var(--mono)}
 .status-footnote{margin:1rem 0 0;color:var(--muted);font-size:.72rem;line-height:1.7}
-.pricing{background:var(--paper-2)}
-.pricing-head{display:flex;justify-content:space-between;align-items:end;gap:2rem;margin-bottom:2.2rem}
-.pricing-head .section-head{display:block;margin:0;max-width:780px}
-.pricing-notice{max-width:300px;padding:.9rem 1rem;border-left:2px solid var(--coral);color:var(--muted);font-size:.72rem;line-height:1.6}
-.pricing-notice strong{display:block;margin-bottom:.25rem;color:var(--ink);font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase}
-.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;align-items:stretch}
-.plan-card{display:flex;flex-direction:column;min-width:0;padding:1.5rem 1.4rem 1.35rem;border:1px solid #2a2b24;background:var(--paper-2)}
-.plan-card.featured{border:1px solid var(--forest);background:#0c0c0a;box-shadow:0 12px 30px #00000066}
-.plan-top{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding-bottom:1rem;border-bottom:1px solid var(--line)}
-.plan-name{font:500 1.55rem var(--serif);letter-spacing:-.035em}
-.plan-tag{color:var(--muted);font:9px var(--mono);letter-spacing:.1em;text-transform:uppercase}
-.plan-price{display:flex;align-items:baseline;gap:.35rem;margin:1.35rem 0 .3rem}
-.plan-price strong{font:500 clamp(2.5rem,4vw,3.4rem)/1 var(--serif);letter-spacing:-.06em}
-.plan-price span{color:var(--muted);font-size:.75rem}
-.plan-annual{min-height:2.3rem;margin:0 0 1.2rem;color:var(--muted);font-size:.72rem}
-.plan-annual strong{color:var(--ink)}
-.plan-description{min-height:2.8rem;margin:0 0 1.1rem;color:var(--muted);font-size:.77rem;line-height:1.55}
-.plan-metrics{display:grid;gap:.65rem;margin:0;padding:1rem 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);list-style:none}
-.plan-metrics li{display:flex;justify-content:space-between;gap:.75rem;color:var(--muted);font-size:.72rem}
-.plan-metrics b{color:var(--ink);font-weight:700;text-align:right;white-space:nowrap}
-.plan-foot{margin-top:auto;padding-top:1.1rem;color:var(--muted);font-size:.69rem;line-height:1.6}
-.plan-link{display:inline-flex;align-items:center;gap:.5rem;margin-top:1rem;color:var(--forest);font-size:.76rem;font-weight:750;text-underline-offset:4px}
-.plan-cta{margin-top:1.25rem;width:100%}
-.rate-limits{margin-top:1.2rem;padding:1.3rem 1.4rem;border:1px solid #2a2b24;background:#0c0c0a}
-.rate-limits h3{margin-bottom:.8rem;font:500 1.2rem var(--serif)}
-.rate-table{width:100%;border-collapse:collapse;font-size:.72rem}
-.rate-table th,.rate-table td{padding:.7rem .55rem;border-top:1px solid var(--line);text-align:left}
-.rate-table th{color:var(--muted);font:9px var(--mono);letter-spacing:.08em;text-transform:uppercase}
-.rate-table td:not(:first-child){font-variant-numeric:tabular-nums}
-.pricing-footnote{max-width:920px;margin:1.2rem 0 0;color:var(--muted);font-size:.7rem;line-height:1.7}
-.pricing-footnote strong{color:var(--ink)}
 .closing{display:grid;grid-template-columns:1fr auto;align-items:end;gap:2rem;padding:4rem 0 4.5rem}
 .closing h2{max-width:620px;margin-bottom:.8rem}
 .closing p{max-width:560px;margin:0;color:var(--muted);font-size:.87rem;line-height:1.75}
@@ -117,9 +113,9 @@ footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 .footer-links{display:flex;flex-wrap:wrap;gap:1.2rem}
 .footer-links a{color:var(--muted);font-size:.72rem;text-decoration:none}
 .footer-links a:hover{text-decoration:underline;text-underline-offset:3px}
-@media(max-width:900px){.hero-grid{grid-template-columns:1fr;gap:3rem}.hero-copy{max-width:650px}.steps-grid{grid-template-columns:repeat(2,1fr)}.step-panel:nth-child(3){padding-left:0;border-left:0;border-top:1px solid var(--line)}.step-panel:nth-child(4){border-top:1px solid var(--line)}.boundary-grid{grid-template-columns:1fr}.boundary-item,.boundary-item+.boundary-item{padding:1.4rem 0;border-left:0;border-bottom:1px solid #2a2b24}.boundary-item span{margin-bottom:.8rem}.boundary-item:last-child{border:0}.plan-grid{grid-template-columns:1fr 1fr}.plan-card:last-child{grid-column:1/-1}.pricing-head{align-items:start;flex-direction:column}.pricing-notice{max-width:unset}}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr;gap:3rem}.hero-copy{max-width:650px}.steps-grid{grid-template-columns:repeat(2,1fr)}.step-panel:nth-child(3){padding-left:0;border-left:0;border-top:1px solid var(--line)}.step-panel:nth-child(4){border-top:1px solid var(--line)}.boundary-grid{grid-template-columns:1fr}.boundary-item,.boundary-item+.boundary-item{padding:1.4rem 0;border-left:0;border-bottom:1px solid #2a2b24}.boundary-item span{margin-bottom:.8rem}.boundary-item:last-child{border:0}}
 @media(max-width:1100px){.nav{grid-template-columns:1fr auto;grid-template-areas:"brand actions" "links links";row-gap:1rem;padding:1rem 0}}
-@media(max-width:620px){.shell{width:calc(100% - 2rem)}.nav{min-height:70px;gap:.7rem}.nav-links{width:100%;justify-content:center;flex-wrap:wrap;gap:.55rem;padding-bottom:.25rem}.nav-links a{font-size:.68rem}.nav-actions .nav-cta{padding:.55rem .65rem}.hero{padding:3.4rem 0 4rem}h1{font-size:clamp(3.15rem,15vw,4.6rem)}.section-head{grid-template-columns:1fr;gap:.7rem;margin-bottom:2rem}.section-index{padding:0}.steps-grid{grid-template-columns:1fr 1fr}.step-panel{min-height:190px;padding:1.1rem .7rem 1.1rem 0}.step-panel+.step-panel{padding-left:.7rem}.step-panel:nth-child(3){padding-left:0}.step-panel .step-no{margin-bottom:1.35rem}.status-grid{grid-template-columns:1fr}.plan-grid{grid-template-columns:1fr}.plan-card:last-child{grid-column:auto}.plan-description{min-height:0}.plan-price strong{font-size:3rem}.rate-limits{overflow-x:auto;padding:1rem}.rate-table{min-width:480px}.closing{grid-template-columns:1fr;align-items:start}.footer-row{align-items:flex-start;flex-direction:column}}
+@media(max-width:620px){.shell{width:calc(100% - 2rem)}.nav{min-height:70px;gap:.7rem}.nav-links{width:100%;justify-content:center;flex-wrap:wrap;gap:.55rem;padding-bottom:.25rem}.nav-links a{font-size:.68rem}.nav-actions .nav-cta{padding:.55rem .65rem}.hero{padding:3.4rem 0 4rem}h1{font-size:clamp(3.15rem,15vw,4.6rem)}.section-head{grid-template-columns:1fr;gap:.7rem;margin-bottom:2rem}.section-index{padding:0}.steps-grid{grid-template-columns:1fr 1fr}.step-panel{min-height:190px;padding:1.1rem .7rem 1.1rem 0}.step-panel+.step-panel{padding-left:.7rem}.step-panel:nth-child(3){padding-left:0}.step-panel .step-no{margin-bottom:1.35rem}.status-grid{grid-template-columns:1fr}.closing{grid-template-columns:1fr;align-items:start}.footer-row{align-items:flex-start;flex-direction:column}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 .brand img{display:block;height:68px;width:auto}
@@ -129,6 +125,15 @@ footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 @media(max-width:600px){.nav-links{flex-wrap:wrap}.nav-actions .nav-signup{padding:.55rem .65rem}.brand img{height:56px}}
 .nav-check,.nav-toggle{display:none}
 @media(max-width:700px){.nav{grid-template-columns:1fr auto auto;grid-template-areas:"brand actions toggle" "links links links";row-gap:0;gap:.6rem;min-height:70px;padding:.7rem 0}.brand img{height:44px}.nav-check{display:block;position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.nav-toggle{display:flex;grid-area:toggle;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:44px;height:44px;box-sizing:border-box;border:1px solid var(--line);border-radius:999px;cursor:pointer}.nav-toggle span{display:block;width:18px;height:2px;border-radius:2px;background:var(--ink)}.nav-check:focus-visible+.nav-toggle{outline:3px solid var(--coral);outline-offset:3px}.nav-links{display:none;grid-area:links;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:0;width:auto;padding:.4rem 0 .6rem;border-top:1px solid var(--line)}.nav-check:checked~.nav-links{display:flex}.nav-links a{display:block;padding:.6rem 0;font-size:.95rem}.nav-actions{justify-self:end}.nav-actions .nav-cta,.nav-actions .nav-signup{padding:.5rem .7rem;font-size:.75rem}}
+
+.security-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;border-top:1px solid var(--line)}
+.security-card{padding:1.4rem 1.2rem 1.4rem 0}
+.security-card+.security-card{padding-left:1.2rem;border-left:1px solid var(--line)}
+.security-card span{display:block;margin-bottom:1.4rem;color:var(--coral);font:10px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.security-card h3{margin-bottom:.7rem;font:500 1.5rem var(--serif)}
+.security-card p{margin:0;color:var(--muted);font-size:.8rem;line-height:1.75}
+.status-footnote a{color:var(--forest-2);text-underline-offset:3px}
+@media(max-width:900px){.security-grid{grid-template-columns:1fr}.security-card,.security-card+.security-card{padding:1.3rem 0;border-left:0;border-bottom:1px solid var(--line)}}
 </style>
 </head>
 <body>
@@ -136,37 +141,37 @@ footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 <header class="topbar">
 <nav class="nav shell" aria-label="Main navigation">
 <a class="brand" href="/" aria-label="King Sparkon Eye home"><img src="/assets/logo.gif" width="506" height="335" alt="King Sparkon Eye"></a>
-<input type="checkbox" id="nav-open" class="nav-check" aria-label="Show navigation links"><label for="nav-open" class="nav-toggle"><span></span><span></span><span></span></label><div class="nav-links"><a href="#workflow">The flow</a><a href="#boundaries">Architecture</a><a href="#pricing">Pricing</a><a href="#status">Build status</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/openapi/eye.openapi.json" target="_blank" rel="noreferrer">API contract ↗</a></div><div class="nav-actions"><a class="nav-cta" href="/auth/sign-in">Sign in</a><a class="nav-signup" href="/auth/register">Get started</a></div>
+<input type="checkbox" id="nav-open" class="nav-check" aria-label="Show navigation links"><label for="nav-open" class="nav-toggle"><span></span><span></span><span></span></label><div class="nav-links"><a href="#workflow">Capabilities</a><a href="#boundaries">Architecture</a><a href="#security">Security &amp; privacy</a><a href="#status">Implementation status</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/README.md#current-http-surface" target="_blank" rel="noreferrer">API status ↗</a></div><div class="nav-actions"><a class="nav-cta" href="/auth/sign-in">Sign in</a><a class="nav-signup" href="/auth/register">Get started</a></div>
 </nav>
 </header>
 <main id="main">
 <section class="hero">
 <div class="hero-grid shell">
 <div>
-<p class="eyebrow">Event access · Vision infrastructure</p>
-<h1>Identify clearly.<br><em>Admit deliberately.</em></h1>
-<p class="hero-copy">A QR-free gate workflow starts with a better signal. King Sparkon Eye is a Rust vision service designed to help event teams identify an enrolled attendee within an authorized event context — while keeping the admission decision with people and the ticket system.</p>
-<div class="hero-actions"><a class="button" href="#workflow">Explore the gate flow <span aria-hidden="true">→</span></a><a class="text-link" href="#pricing">Explore proposed plans ↓</a></div>
-<div class="hero-note"><span class="note-mark" aria-hidden="true">!</span><span>A face match is a candidate signal — not proof of liveness, ticket eligibility, or admission. An authorized worker must review and explicitly approve entry.</span></div>
+<p class="eyebrow">Identity verification · Developer infrastructure</p>
+<h1>Face-based identity verification.<br><em>Built for your platform.</em></h1>
+<p class="hero-copy">King Sparkon Eye is an integration-agnostic identity verification platform foundation. The current Rust service validates images and runs YuNet face detection; tenant-isolated identity lifecycle, face matching, scoped identification and asynchronous verification remain in development. Integrating applications retain ownership of their users, permissions, consent capture and business workflows.</p>
+<div class="hero-actions"><a class="button" href="#workflow">Explore platform capabilities <span aria-hidden="true">→</span></a><a class="text-link" href="#status">View implementation status ↓</a></div>
+<div class="hero-note"><span class="note-mark" aria-hidden="true">!</span><span>Face similarity is probabilistic — not proof of legal identity, liveness, consent or business authorization. Eye does not make the integrating application's final decision.</span></div>
 </div>
-<figure class="hero-visual"><img src="/assets/hero.jpg" width="764" height="1024" alt="Verification concept: a smartphone displaying attendee photo matching at an event entrance"></figure></div></section>
+<figure class="hero-visual"><img src="/assets/hero.jpg" width="764" height="1024" alt="Concept illustration of a face-based identity verification workflow"></figure></div></section>
 
 <section class="section" id="workflow">
 <div class="shell">
-<div class="section-head"><p class="section-index">01 / The workflow</p><div><h2>One event. One scoped search. One human decision.</h2><p class="section-intro">The QR-free path starts with an authorized event context. The vision service finds a possible attendee; the ticket system and gate worker retain control of entry.</p></div></div>
+<div class="section-head"><p class="section-index">01 / Platform capabilities</p><div><h2>One tenant. One explicit scope. A result the application controls.</h2><p class="section-intro">The target platform separates tenant-owned identity data, face-only processing and application-owned decisions. Matching, scoped identification and asynchronous sessions are roadmap capabilities, not shipped API behavior.</p></div></div>
 <figure class="scope-illustration" aria-labelledby="scope-caption">
 <svg viewBox="0 0 960 168" role="img" aria-labelledby="scope-title scope-desc" xmlns="http://www.w3.org/2000/svg">
-<title id="scope-title">Illustration of event-scoped candidate identification</title>
-<desc id="scope-desc">An authorized event context narrows a gallery to a candidate result. The diagram does not represent an admission decision.</desc>
+<title id="scope-title">Illustration of tenant-scoped face identification</title>
+<desc id="scope-desc">An authenticated tenant context limits a hypothetical identity search to an explicit scope. The result is probabilistic and is not a business decision.</desc>
 <rect x="1" y="1" width="958" height="166" fill="#f4f2eb" stroke="#d7d8ce"/>
 <rect x="22" y="26" width="215" height="116" fill="#18372d"/>
-<text x="42" y="53" fill="#d7f078" font-family="monospace" font-size="10" letter-spacing="1.2">EVENT CONTEXT</text>
+<text x="42" y="53" fill="#d7f078" font-family="monospace" font-size="10" letter-spacing="1.2">TENANT CONTEXT</text>
 <text x="42" y="79" fill="#fffefa" font-family="Georgia,serif" font-size="21">Authorized scope</text>
-<text x="42" y="105" fill="#c1d0c7" font-family="monospace" font-size="9">ONE EVENT / ONE GALLERY</text>
+<text x="42" y="105" fill="#c1d0c7" font-family="monospace" font-size="9">ONE TENANT / EXPLICIT SCOPE</text>
 <path d="M250 84H306" stroke="#d96c50" stroke-width="2"/>
 <path d="M298 76L307 84L298 92" fill="none" stroke="#d96c50" stroke-width="2"/>
 <rect x="321" y="26" width="345" height="116" fill="#eae7dc" stroke="#c9c9bd"/>
-<text x="342" y="52" fill="#64716a" font-family="monospace" font-size="9" letter-spacing="1.1">ENROLLED EVENT GALLERY</text>
+<text x="342" y="52" fill="#64716a" font-family="monospace" font-size="9" letter-spacing="1.1">TENANT IDENTITY SCOPE</text>
 <g fill="#aab4a6" stroke="#18372d" stroke-width="1.5">
 <circle cx="375" cy="86" r="13"/><path d="M352 125Q355 103 375 103Q395 103 398 125Z"/>
 <circle cx="451" cy="86" r="13"/><path d="M428 125Q431 103 451 103Q471 103 474 125Z"/>
@@ -178,94 +183,60 @@ footer{padding:1.4rem 0;border-top:1px solid var(--line)}
 <rect x="755" y="26" width="183" height="116" fill="#f1d8cf" stroke="#d96c50"/>
 <text x="774" y="53" fill="#8c3f2d" font-family="monospace" font-size="9" letter-spacing="1">VISION OUTPUT</text>
 <text x="774" y="83" fill="#18372d" font-family="Georgia,serif" font-size="20">Candidate</text>
-<text x="774" y="105" fill="#64716a" font-family="monospace" font-size="9">REVIEW REQUIRED</text>
-<text x="774" y="123" fill="#64716a" font-family="monospace" font-size="8">NOT AN ADMISSION</text>
+<text x="774" y="105" fill="#64716a" font-family="monospace" font-size="9">PROBABILISTIC</text>
+<text x="774" y="123" fill="#64716a" font-family="monospace" font-size="8">NOT AUTHORIZATION</text>
 </svg>
-<figcaption id="scope-caption"><span>Event-scoped processing, not global identification</span><span>Concept diagram · 02 / 02</span></figcaption>
+<figcaption id="scope-caption"><span>Tenant-isolated scope, not global face search</span><span>Concept diagram · Target architecture</span></figcaption>
 </figure>
 <div class="steps-grid">
-<article class="step-panel"><span class="step-no">01 — CONTEXT</span><h3>Set the event boundary</h3><p>An authorized worker selects the event or gate context before identification begins.</p></article>
-<article class="step-panel"><span class="step-no">02 — CAPTURE</span><h3>Capture at the gate</h3><p>The browser handles camera interaction and sends the capture with its scoped session reference.</p></article>
-<article class="step-panel"><span class="step-no">03 — IDENTIFY</span><h3>Return a candidate</h3><p>Rust performs vision processing and returns a typed result for the authorized event's gallery.</p></article>
-<article class="step-panel"><span class="step-no">04 — APPROVE</span><h3>Keep the decision human</h3><p>Spring Boot rechecks ticket and worker authority. Entry changes only after explicit approval.</p></article>
+<article class="step-panel"><span class="step-no">01 — TENANT</span><h3>Resolve tenant context</h3><p>The target API resolves tenant authority from validated credentials, never from an untrusted caller-supplied identifier.</p></article>
+<article class="step-panel"><span class="step-no">02 — CAPTURE</span><h3>Submit a face capture</h3><p>The integrating application owns capture, purpose selection and consent. Eye validates image input.</p></article>
+<article class="step-panel"><span class="step-no">03 — VERIFY</span><h3>Process within scope</h3><p>Face-only 1:1 matching and explicit tenant-local 1:N identification are target capabilities; the current service only assesses photos and detects faces.</p></article>
+<article class="step-panel"><span class="step-no">04 — DECIDE</span><h3>Keep the decision external</h3><p>The integrating application interprets the probabilistic result and retains ownership of its permissions and business workflow.</p></article>
 </div>
 </div>
 </section>
 
 <section class="section boundary" id="boundaries">
 <div class="shell">
-<div class="section-head"><p class="section-index">02 / Responsibility</p><div><h2>Every system has a job. No system gets every key.</h2><p class="section-intro">The architecture separates camera interaction, vision processing, and the authoritative admission decision. That boundary is intentional.</p></div></div>
+<div class="section-head"><p class="section-index">02 / Responsibility</p><div><h2>Identity infrastructure without business-workflow ownership.</h2><p class="section-intro">Eye provides tenant-scoped face-verification primitives. The integrating application remains authoritative for users, permissions, consent capture and final decisions.</p></div></div>
 <div class="boundary-grid">
-<article class="boundary-item"><span>01 / Browser</span><h3>Next.js Tracker</h3><p>Owns buyer enrollment and gate-worker interaction: camera capture, presenting results, and collecting the worker's explicit action.</p></article>
-<article class="boundary-item"><span>02 / Vision</span><h3>Rust · Eye</h3><p>Owns bounded image ingress, validation, face detection and vision results. It does not own ticket eligibility or final admission.</p></article>
-<article class="boundary-item"><span>03 / Ticket truth</span><h3>Spring Boot</h3><p>Remains authoritative for event and ticket eligibility, worker authorization, persistence, and the final admission state.</p></article>
+<article class="boundary-item"><span>01 / Application</span><h3>Your platform</h3><p>Owns business entities, user permissions, capture experiences, consent collection, purpose selection and final business decisions.</p></article>
+<article class="boundary-item"><span>02 / Identity</span><h3>Rust · Eye</h3><p>Is designed to own tenant-isolated identities, face-only inference, verification sessions, results and platform controls defined by approved contracts.</p></article>
+<article class="boundary-item"><span>03 / Isolation</span><h3>Tenant boundary</h3><p>Identity data, templates, scopes, sessions and evidence must remain isolated. Cross-tenant lookup and global face search are not supported product behaviors.</p></article>
 </div>
-<div class="boundary-statement"><b>NON-NEGOTIABLE</b><span>A match is not an admission. A worker approves. The ticket system decides.</span></div>
+<div class="boundary-statement"><b>NON-NEGOTIABLE</b><span>A face similarity result is not legal identity, liveness or authorization.</span></div>
 </div>
 </section>
 
 <section class="section" id="status">
 <div class="shell">
-<div class="section-head"><p class="section-index">03 / Current state</p><div><h2>Built in the open. No pretend production claims.</h2><p class="section-intro">This repository contains an active Rust service foundation. The complete QR-free admission journey is still being built across the Eye and Tracker systems.</p></div></div>
+<div class="section-head"><p class="section-index">03 / Implementation status</p><div><h2>A working service foundation. Not yet a complete identity API.</h2><p class="section-intro">The status below distinguishes current Rust behavior from the approved multi-tenant identity platform roadmap.</p></div></div>
 <div class="status-grid">
-<article class="status-card"><h3><span class="status-dot" aria-hidden="true"></span>Implemented in this repository</h3><ul><li>Axum service with liveness and readiness routes.</li><li>Authenticated, bounded photo-assessment ingress and image normalization.</li><li>Vendored YuNet face-detection pipeline.</li><li>Conservative assessment behavior while quality thresholds remain uncalibrated.</li></ul></article>
-<article class="status-card"><h3><span class="status-dot pending" aria-hidden="true"></span>Still in development</h3><ul><li>Calibrated photo suitability and production-ready recognition.</li><li>Durable enrollment persistence and production Kafka delivery.</li><li>Event-scoped 1:N gate identification and end-to-end Tracker integration.</li><li>Worker-approved admission through the authoritative ticket backend.</li></ul></article>
+<article class="status-card"><h3><span class="status-dot" aria-hidden="true"></span>Implemented today</h3><ul><li>Rust/Axum HTTP service and health probes.</li><li>Authenticated, bounded image ingress and photo assessment.</li><li>YuNet face detection through ONNX Runtime.</li><li>Account pages and authentication routes, excluded from search indexing.</li></ul></article>
+<article class="status-card"><h3><span class="status-dot pending" aria-hidden="true"></span>Roadmap — not shipped</h3><ul><li>Tenant isolation, tenant API credentials and identity lifecycle.</li><li>Face embeddings, 1:1 matching and tenant-scoped 1:N identification.</li><li>Durable asynchronous verification sessions and signed webhooks.</li><li>Calibrated recognition behavior based on consented evaluation data.</li></ul></article>
 </div>
-<p class="status-footnote">Status reflects repository code and its current documentation. A detector result is not identity verification; no liveness or automatic-admission capability is claimed here.</p>
+<p class="status-footnote">Photo assessment is synchronous and does not enroll an identity or create a verification session. A detector result is not identity verification. No liveness or legal-identity proof is claimed.</p>
 </div>
 </section>
 
-<section class="section pricing" id="pricing">
+<section class="section" id="security">
 <div class="shell">
-<div class="pricing-head">
-<div class="section-head"><p class="section-index">04 / Plan proposal</p><div><h2>Start with the capacity your events need.</h2><p class="section-intro">A proposed plan structure for teams evaluating event-scoped vision workloads. Compare included monthly capacity before choosing a tier.</p></div></div>
-<aside class="pricing-notice"><strong>Commercial proposal · Not live</strong>Prices and allowances below are unapproved planning values in USD. Checkout, quota enforcement and production billing are not available.</aside>
+<div class="section-head"><p class="section-index">04 / Security &amp; privacy</p><div><h2>Privacy boundaries are part of the platform contract.</h2><p class="section-intro">The target architecture is face-only and tenant-isolated. The current service is still a limited photo-assessment foundation; do not infer a complete biometric lifecycle from the roadmap.</p></div></div>
+<div class="security-grid">
+<article class="security-card"><span>01 / Isolation</span><h3>Tenant-scoped by design</h3><p>Identities, templates, scopes, sessions, results and evidence must never be shared across tenants. Tenant isolation and machine credentials remain implementation work.</p></article>
+<article class="security-card"><span>02 / Face-only</span><h3>Probabilistic results</h3><p>Face similarity is not proof of legal identity, liveness, consent or authorization. Recognition models and thresholds require implementation and consented evaluation.</p></article>
+<article class="security-card"><span>03 / Data lifecycle</span><h3>Clear ownership</h3><p>Integrating applications own consent capture and business purpose. Evidence retention, deletion and audit controls are being defined; no unsupported compliance claim is made.</p></article>
 </div>
-<div class="plan-grid">
-<article class="plan-card">
-<div class="plan-top"><span class="plan-name">Free</span><span class="plan-tag">Explore</span></div>
-<p class="plan-price"><strong>$0</strong><span>/ month</span></p>
-<p class="plan-annual"><strong>$0 / year</strong> · No base subscription fee</p>
-<p class="plan-description">For evaluation and small-scale experiments with a defined monthly ceiling.</p>
-<ul class="plan-metrics"><li><span>Successful enrollments</span><b>1,000 / mo</b></li><li><span>Original-photo storage</span><b>5 GB</b></li><li><span>Active templates</span><b>1,000</b></li><li><span>Identifications</span><b>2,000 / mo</b></li></ul>
-<p class="plan-foot">Proposed over-limit behavior: block or defer the relevant operation. No automatic overage billing.</p>
-<a class="button plan-cta" href="/auth/register">Get started</a>
-</article>
-<article class="plan-card featured">
-<div class="plan-top"><span class="plan-name">Gold</span><span class="plan-tag">Growing teams</span></div>
-<p class="plan-price"><strong>$99</strong><span>/ month</span></p>
-<p class="plan-annual"><strong>$990 / year</strong> · Proposed annual base</p>
-<p class="plan-description">For event operators running regular check-ins across multiple event days.</p>
-<ul class="plan-metrics"><li><span>Successful enrollments</span><b>10,000 / mo</b></li><li><span>Original-photo storage</span><b>50 GB</b></li><li><span>Active templates</span><b>10,000</b></li><li><span>Identifications</span><b>25,000 / mo</b></li></ul>
-<p class="plan-foot">Proposed paid-plan overages apply above included allowances; final rates and policies require approval.</p>
-<a class="button plan-cta" href="/auth/register">Get started</a>
-</article>
-<article class="plan-card">
-<div class="plan-top"><span class="plan-name">Premium</span><span class="plan-tag">Higher volume</span></div>
-<p class="plan-price"><strong>$299</strong><span>/ month</span></p>
-<p class="plan-annual"><strong>$2,990 / year</strong> · Proposed annual base</p>
-<p class="plan-description">For larger event programmes with higher monthly processing and retention needs.</p>
-<ul class="plan-metrics"><li><span>Successful enrollments</span><b>50,000 / mo</b></li><li><span>Original-photo storage</span><b>250 GB</b></li><li><span>Active templates</span><b>50,000</b></li><li><span>Identifications</span><b>150,000 / mo</b></li></ul>
-<p class="plan-foot">Proposed paid-plan overages apply above included allowances; final rates and policies require approval.</p>
-<a class="button plan-cta" href="/auth/register">Get started</a>
-</article>
-</div>
-<div class="rate-limits">
-<h3>Proposed API throughput limits</h3>
-<table class="rate-table">
-<thead><tr><th scope="col">Plan</th><th scope="col">General API</th><th scope="col">Inference / photo assessment</th><th scope="col">Concurrent inference</th></tr></thead>
-<tbody><tr><th scope="row">Free</th><td>60 / min</td><td>10 / min</td><td>2</td></tr><tr><th scope="row">Gold</th><td>300 / min</td><td>60 / min</td><td>10</td></tr><tr><th scope="row">Premium</th><td>1,200 / min</td><td>300 / min</td><td>50</td></tr></tbody>
-</table>
-</div>
-<p class="pricing-footnote" id="pricing-notes"><strong>Pricing status:</strong> These figures mirror the candidate commercial proposal in the repository billing roadmap; they are not approved production prices or an offer to purchase. USD only is currently modelled. Annual amounts apply to the proposed base subscription; usage is intended to be aggregated and invoiced monthly in arrears. Candidate paid overages are $0.15 per confirmed enrollment, $0.06 per retained photo GB-month, $0.015 per active template-month and $0.05 per eligible completed identification. The billing catalog is not loaded into runtime, and usage metering, quota enforcement, checkout and subscription management are not live. All amounts, currencies, tax treatment, included allowances and rate limits require commercial, legal and infrastructure validation before launch.</p>
+<p class="status-footnote">The current photo-assessment endpoint reports <code>persistence: NOT_REQUESTED</code>. It does not create an identity or store a face template. Read the <a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/README.md" target="_blank" rel="noreferrer">implementation and security status</a> before integrating.</p>
 </div>
 </section>
 
 <section class="shell closing">
-<div><p class="eyebrow">Inspect the implementation</p><h2>Trust the contract. Verify the behavior.</h2><p>Explore the source and the current OpenAPI contract. Planned capabilities and candidate pricing are not presented as live integrations or purchasable plans.</p></div>
-<a class="button" href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/openapi/eye.openapi.json" target="_blank" rel="noreferrer">Read the API contract ↗</a>
+<div><p class="eyebrow">Build with clear boundaries</p><h2>Start with the verified platform status.</h2><p>The standalone identity API contract is still being defined. The existing OpenAPI file describes a legacy photo-assessment contract and must not be treated as the canonical platform API.</p></div>
+<a class="button" href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/README.md#current-http-surface" target="_blank" rel="noreferrer">Read implementation status ↗</a>
 </section>
 </main>
-<footer><div class="shell footer-row"><p class="footer-brand"><svg class="brand-mark" viewBox="0 0 120 72" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M5 36Q60 -4 115 36Q60 76 5 36Z" fill="#d99b08"/><path d="M18 36Q60 8 102 36Q60 64 18 36Z" fill="#17221e"/><circle cx="60" cy="36" r="20" fill="#303640" stroke="#f3b91b" stroke-width="3"/><path d="M64 16L49 39H60L54 57L75 31H63L70 16Z" fill="#ffd23f"/></svg><span>© King Sparkon Eye · Vision infrastructure for considered entry.</span></p><div class="footer-links"><a href="https://github.com/leonard1thecoder/king-sparkon-eye" target="_blank" rel="noreferrer">Source code ↗</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/README.md" target="_blank" rel="noreferrer">Project status ↗</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/openapi/eye.openapi.json" target="_blank" rel="noreferrer">API contract ↗</a></div></div></footer>
+<footer><div class="shell footer-row"><p class="footer-brand"><svg class="brand-mark" viewBox="0 0 120 72" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M5 36Q60 -4 115 36Q60 76 5 36Z" fill="#d99b08"/><path d="M18 36Q60 8 102 36Q60 64 18 36Z" fill="#17221e"/><circle cx="60" cy="36" r="20" fill="#303640" stroke="#f3b91b" stroke-width="3"/><path d="M64 16L49 39H60L54 57L75 31H63L70 16Z" fill="#ffd23f"/></svg><span>© King Sparkon Eye · Face-based identity verification infrastructure.</span></p><div class="footer-links"><a href="https://github.com/leonard1thecoder/king-sparkon-eye" target="_blank" rel="noreferrer">Source code ↗</a><a href="https://github.com/leonard1thecoder/king-sparkon-eye/blob/main/README.md" target="_blank" rel="noreferrer">Project status ↗</a><a href="#security">Security &amp; privacy</a></div></div></footer>
 </body>
 </html>

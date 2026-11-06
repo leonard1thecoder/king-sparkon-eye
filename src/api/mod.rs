@@ -6,9 +6,10 @@ use std::sync::{Arc, OnceLock};
 use axum::body::{Body, to_bytes};
 use axum::extract::State;
 use axum::http::{
-    HeaderMap, HeaderName, Request, StatusCode,
+    HeaderMap, HeaderName, HeaderValue, Request, StatusCode,
     header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
 };
+use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -143,6 +144,16 @@ pub fn readiness(config: &Config) -> ReadinessResponse {
 
 async fn live() -> Json<LivenessResponse> {
     Json(LivenessResponse { status: "ok" })
+}
+
+/// Marks operational, account and API responses as non-indexable even if discovered externally.
+async fn add_noindex_header(request: Request<Body>, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        HeaderName::from_static("x-robots-tag"),
+        HeaderValue::from_static("noindex, nofollow, noarchive"),
+    );
+    response
 }
 
 async fn ready(State(state): State<AppState>) -> Response {
@@ -443,13 +454,19 @@ pub fn router(config: Config) -> Router {
         oauth,
         assessment,
     };
-    Router::new()
-        .route("/", get(landing))
+    let non_indexable_routes = Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/v1/enrollment/photo-assessments", post(upload_photo))
         .merge(OAuthRuntime::routes())
         .merge(crate::auth::pages::routes())
+        .route_layer(middleware::from_fn(add_noindex_header));
+
+    Router::new()
+        .route("/", get(landing))
+        .merge(crate::seo::routes())
+        .merge(crate::auth::pages::asset_routes())
+        .merge(non_indexable_routes)
         .fallback(not_found)
         .with_state(state)
         // Never log query strings: Google's callback query contains the provider code and state.
@@ -476,31 +493,33 @@ mod landing_page_tests {
     fn landing_page_is_product_specific_and_uses_verified_claim_boundaries() {
         let page = include_str!("../../public/index.html");
         for expected in [
-            "<title>King Sparkon Eye",
-            "Identify clearly.",
-            "A face match is a candidate signal",
-            "event-scoped",
-            "Spring Boot",
+            "<title>King Sparkon Eye | Face-Based Identity Verification Platform</title>",
+            "Face-based identity verification.",
+            "Face similarity is probabilistic",
+            "integration-agnostic identity verification platform foundation",
+            "tenant-isolated",
             "prefers-reduced-motion",
             "Skip to content",
-            "openapi/eye.openapi.json",
-            "Commercial proposal · Not live",
-            "Proposed API throughput limits",
-            "1,000 / mo",
-            "The billing catalog is not loaded into runtime",
+            "README.md#current-http-surface",
+            "Security &amp; privacy",
             "scope-title",
             "scope-caption",
             "href=\"/auth/sign-in\"",
             "href=\"/auth/register\"",
             "src=\"/assets/logo.gif\"",
             "src=\"/assets/hero.jpg\"",
-            "prefers-reduced-motion",
             "class=\"brand-mark\"",
+            "rel=\"canonical\"",
+            "favicon.svg",
+            "application/ld+json",
+            "persistence: NOT_REQUESTED",
         ] {
             assert!(page.contains(expected), "landing page missing: {expected}");
         }
-        assert!(!page.contains("Illustrative event entrance scene"));
-        assert!(!page.contains("hero-art-title"));
+        assert!(!page.contains("event-scoped attendee identification"));
+        assert!(!page.contains("Spring Boot"));
+        assert!(!page.contains("openapi/eye.openapi.json"));
+        assert!(!page.contains("Proposed API throughput limits"));
         assert!(!page.contains("99.9%"));
         assert!(!page.contains("trusted by"));
     }
