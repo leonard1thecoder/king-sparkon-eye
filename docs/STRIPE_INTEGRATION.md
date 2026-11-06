@@ -14,7 +14,7 @@ Related: [`BILLING_PLAN_DOMAIN.md`](BILLING_PLAN_DOMAIN.md) (plan and meter doma
 - Attributes the aggregate to the final second of its UTC month and refuses timestamps outside Stripe's documented acceptance window.
 - Reporting is opt-in; the adapter cannot be constructed when disabled. It sends only the configured meter name, customer reference, quantity, timestamp and opaque report identifier.
 
-**This is transport only, not end-to-end metering.** It does not resolve tenant-to-customer mappings, calculate aggregates from the ledger, claim/complete outbox rows, schedule retries, create monthly invoices, or reconcile Stripe summaries. The live/reporting gate remains closed pending #138/#143 approvals. Do not enable it in a deployment yet.
+**Worker foundation implemented; runtime wiring remains open.** `src/billing/reporting_worker.rs` claims leased outbox rows, groups them by tenant/meter/UTC month, computes the closed-month aggregate, resolves the Stripe Customer through an injected trusted resolver, and acknowledges only after successful Stripe acceptance. Zero-quantity groups are acknowledged without emitting a meter event. Transient failures use capped exponential retry; permanent failures are dead-lettered with fixed redacted categories. A replay uses the same tenant/meter/month Stripe identifier. The worker is not scheduled or wired into service startup, no production customer resolver exists until #138 supplies the durable mapping contract, and no invoice creation or Stripe reconciliation is implemented. Live reporting remains disabled; the current transport accepts test keys only.
 
 ## What is implemented
 
