@@ -6,6 +6,7 @@
 pub mod enrollment_outbox;
 pub mod identity;
 pub mod oauth;
+pub mod usage_ledger;
 
 use sqlx::PgPool;
 
