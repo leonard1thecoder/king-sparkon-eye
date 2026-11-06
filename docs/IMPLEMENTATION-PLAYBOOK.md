@@ -108,6 +108,13 @@ The [implementation epic #20](https://github.com/leonard1thecoder/king-sparkon-e
 
 ### Billing workstream — Rust plans first, Stripe after durable usage
 
+### Billing contract and current release gates (#138)
+
+The current technical contract proposal is [docs/BILLING_CONTRACT.md](BILLING_CONTRACT.md). It defines the four meters, billable/non-billable boundaries, UTC period semantics, idempotency and reversal rules, tenant/Stripe trust boundaries, and a proposed monthly usage collection design for annual base subscribers. The enrollment confirmation boundary remains blocked on the verified backend acknowledgement contract (#28); tenant billing-admin authorization remains blocked on #183/#184. Product/finance approval is still required for currency, tax, prices, storage units/rounding, proration, grace/dunning and the Stripe provider choice.
+
+**Provider decision gate:** Stripe's current documentation recommends Metronome for new usage-based integrations while continuing to support Basic Billing Meters. Existing Eye issues request Billing Meters. Do not silently change provider or provision live metered prices; validate the requested Meters approach in test mode and obtain an explicit owner decision before production.
+
+
 Billing epic [#137](https://github.com/leonard1thecoder/king-sparkon-eye/issues/137) is tracking-only. The existing billing requirements and integrations remain in [#138–#144](https://github.com/leonard1thecoder/king-sparkon-eye/issues/138). Rust implementation issues are split so each can be delivered on its own issue branch and PR:
 
 | Issue | Workstream | Dependency / coordination rule |
