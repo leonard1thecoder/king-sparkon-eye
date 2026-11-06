@@ -1,7 +1,7 @@
 # Public landing page — design and claim brief
 
 **Issue:** [#172 — Add candidate pricing and original visuals to the public landing page](https://github.com/leonard1thecoder/king-sparkon-eye/issues/172)  \n**CTA polish:** [#174 — Use rounded pill styling for landing-page CTA buttons](https://github.com/leonard1thecoder/king-sparkon-eye/issues/174)  
-**Branding:** [#177 — Replace hero artwork with animated King Sparkon Eye branding](https://github.com/leonard1thecoder/king-sparkon-eye/issues/177), [#179 — Apply the logo to authentication screens](https://github.com/leonard1thecoder/king-sparkon-eye/issues/179)  
+**Branding:** [#177 — Replace hero artwork with animated King Sparkon Eye branding](https://github.com/leonard1thecoder/king-sparkon-eye/issues/177) (animated hero overridden by [#194](https://github.com/leonard1thecoder/king-sparkon-eye/issues/194)), [#179 — Apply the logo to authentication screens](https://github.com/leonard1thecoder/king-sparkon-eye/issues/179) (merged in [#180](https://github.com/leonard1thecoder/king-sparkon-eye/pull/180))  
 **Related design guidance:** [#70 — Prevent generic AI-generated landing page and verify UX quality](https://github.com/leonard1thecoder/king-sparkon-eye/issues/70)  
 **Related public-pages scope:** [#35 — Public landing, API, consent, terms and privacy pages](https://github.com/leonard1thecoder/king-sparkon-eye/issues/35)
 
@@ -20,17 +20,17 @@ Primary actions are to understand the workflow, inspect the canonical OpenAPI co
 
 Use an editorial product-infrastructure direction rather than a generic SaaS template:
 
-- Warm paper canvas, deep forest ink, restrained coral signal, and a small acid-green accent.
+- Black canvas (`--paper: #000`) with light ink, gold accents for the header and CTAs, and a restrained coral focus signal. The page sets `color-scheme: dark`.
 - Serif display typography paired with compact monospace system labels.
-- A concise product statement paired with the official King Sparkon Eye crown/eye/lightning wordmark and a four-step workflow.
-- The hero logo uses a deliberately slow 4.8-second blink loop (0.5× pacing); the eye closes around the aperture/lightning and reopens. The SVG disables that animation when `prefers-reduced-motion: reduce` is active.
-- The compact eye mark is reused in the public navigation, footer, and shared Eye authentication-page template so the brand remains recognizable without repeating the full wordmark.
+- A concise product statement paired with the supplied King Sparkon Eye logo in the header, the supplied glowing-eye hero image, and a four-step workflow.
+- The hero image (`/assets/hero.jpg`) is a static, edge-faded JPEG blended with `mix-blend-mode: screen`. It does not animate, so the hero needs no reduced-motion handling.
+- The header shows the supplied logo (`/assets/logo.gif`) with Sign in (`/auth/sign-in`) and Sign up (`/auth/register`) buttons. The footer and the shared Eye authentication-page template keep the compact inline SVG Eye mark, so the brand remains recognizable without repeating the full wordmark.
 - Thin rules, generous whitespace, and purposeful numbered steps instead of decorative metric cards or generic feature-card grids.
 - A dark responsibility section to make the ownership boundary memorable.
 - A pricing comparison with clear candidate/unapproved status, not an active checkout or implied offer.
 - Responsive layouts collapse columns without hiding important information.
 
-The hero SVG is the King Sparkon Eye brand mark, not a product screenshot, customer image, camera feed, or live system status. The event-scope workflow diagram remains conceptual explanatory artwork. Inline SVG keeps both visuals self-contained and avoids external image/CDN dependencies. The logo animation is a visual brand treatment only; it does not represent a live recognition pipeline.
+The hero image is King Sparkon Eye brand artwork, not a product screenshot, customer image, camera feed, or live system status. The event-scope workflow diagram remains conceptual explanatory artwork. Both raster brand images are embedded in the Eye binary with `include_bytes!` and served from the same origin, so the page adds no external image or CDN dependency. The artwork is brand treatment only; it does not represent a live recognition pipeline.
 
 ## Section purpose
 
@@ -71,8 +71,9 @@ The page must state that the billing catalog is not loaded by the runtime and th
 
 - Serve a self-contained semantic HTML document from the existing Axum service.
 - No frontend framework, external font, image CDN, JavaScript dependency, or new Cargo dependency.
-- Keep illustrations inline and self-contained; do not add remote image requests or unlicensed personal/biometric imagery.
+- Keep illustrations self-contained: brand images are embedded with `include_bytes!` and served from the same origin. Do not add remote image requests or unlicensed personal/biometric imagery.
 - All navigation targets are real in-page anchors or verified public GitHub resources.
-- Use fully rounded pill styling for filled primary CTA buttons and the outlined navigation CTA; keep text links visually distinct. Preserve a visible keyboard-focus outline.\n- Respect reduced motion, keyboard focus, mobile breakpoints, semantic landmarks, and descriptive metadata.
+- Use fully rounded pill styling for filled primary CTA buttons and the outlined navigation CTA; keep text links visually distinct. Preserve a visible keyboard-focus outline.
+- Respect reduced motion, keyboard focus, mobile breakpoints, semantic landmarks, and descriptive metadata.
 - Preserve existing API routes and request middleware.
 - Verify the root page's HTML content and responsive/accessibility rules with tests or reproducible browser evidence before declaring the work complete.
