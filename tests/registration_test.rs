@@ -1,7 +1,10 @@
 //! Tests for `POST /v1/auth/register` against a mock PostgREST server.
 
 use std::net::SocketAddr;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+use base64::Engine;
 
 use axum::Json;
 use axum::Router;
@@ -25,11 +28,12 @@ const KID: &str = "key-2026-v1";
 
 #[derive(Clone)]
 struct MockDb {
-    registered_users: Arc<Mutex<Vec<String>>>,
+    registered_users: Arc<Mutex<HashMap<String, Value>>>,
 }
 
 struct Mock {
     base: String,
+    registered_users: Arc<Mutex<HashMap<String, Value>>>,
 }
 
 async fn rpc(
@@ -41,7 +45,7 @@ async fn rpc(
         "eye_allow_oauth_attempt" => Json(json!([{"ok": true}])),
         "eye_password_credentials_by_email" => {
             let email = body["p_email"].as_str().unwrap_or_default();
-            if email == OPERATOR_EMAIL || db.registered_users.lock().unwrap().contains(&email.to_string()) {
+            if email == OPERATOR_EMAIL {
                 Json(json!([{
                     "user_id": "usr_existing",
                     "email": email,
@@ -52,6 +56,17 @@ async fn rpc(
                     "is_active": true,
                     "created_at_ms": 1_700_000_000_000u64,
                 }]))
+            } else if let Some(user) = db.registered_users.lock().unwrap().get(email) {
+                Json(json!([{
+                    "user_id": user["p_user_id"],
+                    "email": user["p_email"],
+                    "password_hash": user["p_password_hash"],
+                    "salt": user["p_salt"],
+                    "role": user["p_role"],
+                    "scopes": user["p_scopes"],
+                    "is_active": true,
+                    "created_at_ms": user["p_now_ms"],
+                }]))
             } else {
                 Json(json!([]))
             }
@@ -59,10 +74,10 @@ async fn rpc(
         "eye_register_user" => {
             let email = body["p_email"].as_str().unwrap_or_default();
             let mut users = db.registered_users.lock().unwrap();
-            if email == OPERATOR_EMAIL || users.contains(&email.to_string()) {
+            if email == OPERATOR_EMAIL || users.contains_key(email) {
                 Json(json!([]))
             } else {
-                users.push(email.to_string());
+                users.insert(email.to_string(), body.clone());
                 Json(json!([{
                     "user_id": body["p_user_id"],
                     "email": email,
@@ -73,13 +88,15 @@ async fn rpc(
                 }]))
             }
         }
+        "eye_issue_refresh_token" => Json(json!([{"ok": true}])),
         _ => Json(json!([])),
     }
 }
 
 async fn spawn_mock() -> Mock {
+    let registered_users = Arc::new(Mutex::new(HashMap::new()));
     let db = MockDb {
-        registered_users: Arc::new(Mutex::new(Vec::new())),
+        registered_users: registered_users.clone(),
     };
     let app = Router::new()
         .route("/rpc/{name}", post(rpc))
@@ -89,6 +106,7 @@ async fn spawn_mock() -> Mock {
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Mock {
         base: format!("http://{addr}"),
+        registered_users,
     }
 }
 
@@ -133,6 +151,68 @@ async fn valid_registration_succeeds_with_created_status() {
 
     let response = app.oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+
+#[tokio::test]
+async fn public_registration_does_not_grant_enrollment_permission() {
+    let mock = spawn_mock().await;
+    let app = app_with(&mock);
+    let peer: SocketAddr = "192.0.2.4:1234".parse().unwrap();
+
+    let registration = serde_json::to_vec(&json!({
+        "email": NEW_EMAIL,
+        "password": PASSWORD,
+    }))
+    .unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth/register")
+                .method("POST")
+                .header("content-type", "application/json")
+                .extension(MockConnectInfo(peer))
+                .body(Body::from(registration))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let login = serde_json::to_vec(&json!({
+        "email": NEW_EMAIL,
+        "password": PASSWORD,
+    }))
+    .unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth/login")
+                .method("POST")
+                .header("content-type", "application/json")
+                .extension(MockConnectInfo(peer))
+                .body(Body::from(login))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    let token = body["accessToken"].as_str().expect("access token");
+    let payload = token.split('.').nth(1).expect("JWT payload");
+    let claims_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .expect("base64url JWT payload");
+    let claims: Value = serde_json::from_slice(&claims_bytes).unwrap();
+
+    assert_eq!(claims["scopes"], json!([]));
+    assert!(!claims["scopes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|scope| scope == "enrollment:write"));
 }
 
 #[tokio::test]
