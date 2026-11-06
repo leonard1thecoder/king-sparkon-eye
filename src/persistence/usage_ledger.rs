@@ -11,9 +11,7 @@ use thiserror::Error;
 
 use crate::billing::{
     AllowancePeriod, MeterId,
-    ledger::{
-        AppendBody, AppendOutcome, AppendRequest, BYTES_PER_GIB, TenantId, UsageSource,
-    },
+    ledger::{AppendBody, AppendOutcome, AppendRequest, BYTES_PER_GIB, TenantId, UsageSource},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -77,7 +75,6 @@ impl MonthlyUsageAggregate {
     }
 }
 
-
 #[derive(Clone)]
 pub struct UsageLedgerStore {
     pool: PgPool,
@@ -91,10 +88,7 @@ impl UsageLedgerStore {
     /// Append one usage occurrence and its reporting intent in the same PostgreSQL transaction.
     /// An identical replay returns the original sequence; reusing a key for different content
     /// fails with KeyConflict. Reversals are booked to the original flow's period.
-    pub async fn append(
-        &self,
-        request: AppendRequest,
-    ) -> Result<AppendOutcome, UsageStoreError> {
+    pub async fn append(&self, request: AppendRequest) -> Result<AppendOutcome, UsageStoreError> {
         let (body_kind, quantity, reversal_key) = encode_body(&request.body)?;
         validate_source_body(request.source, request.occurred_at, &request.body)?;
         let meter = meter_name(request.source.meter());
@@ -197,8 +191,7 @@ impl UsageLedgerStore {
                 && existing.try_get::<NaiveDate, _>("period_start")? == period_start
                 && existing.try_get::<String, _>("body_kind")? == body_kind
                 && existing.try_get::<Option<i64>, _>("quantity")? == quantity
-                && existing.try_get::<Option<String>, _>("reversal_of_event_key")?
-                    == reversal_key;
+                && existing.try_get::<Option<String>, _>("reversal_of_event_key")? == reversal_key;
             if !same {
                 return Err(UsageStoreError::KeyConflict);
             }
@@ -233,7 +226,10 @@ impl UsageLedgerStore {
         meter: MeterId,
     ) -> Result<u64, UsageStoreError> {
         let tenant = TenantId::new(tenant_id).map_err(|_| UsageStoreError::Invalid)?;
-        if !matches!(meter, MeterId::Enrollments | MeterId::IdentificationRequests) {
+        if !matches!(
+            meter,
+            MeterId::Enrollments | MeterId::IdentificationRequests
+        ) {
             return Err(UsageStoreError::Invalid);
         }
         let total: String = sqlx::query_scalar(
@@ -244,7 +240,9 @@ impl UsageLedgerStore {
         .bind(meter_name(meter))
         .fetch_one(&self.pool)
         .await?;
-        total.parse::<u64>().map_err(|_| UsageStoreError::ArithmeticOverflow)
+        total
+            .parse::<u64>()
+            .map_err(|_| UsageStoreError::ArithmeticOverflow)
     }
 
     /// Finalize all four billable meter quantities for one completed UTC calendar month.
@@ -411,7 +409,10 @@ impl UsageLedgerStore {
         if first_day > last_day
             || first_day < period.start_date()
             || last_day >= period.end_exclusive_date()
-            || !matches!(meter, MeterId::ActiveTemplates | MeterId::RetainedPhotoStorageGb)
+            || !matches!(
+                meter,
+                MeterId::ActiveTemplates | MeterId::RetainedPhotoStorageGb
+            )
         {
             return Err(UsageStoreError::InvalidWindow);
         }
@@ -431,8 +432,8 @@ impl UsageLedgerStore {
         for row in rows {
             let day: NaiveDate = row.try_get("sample_day")?;
             let quantity: i64 = row.try_get("quantity")?;
-            let quantity = u64::try_from(quantity)
-                .map_err(|_| UsageStoreError::ArithmeticOverflow)?;
+            let quantity =
+                u64::try_from(quantity).map_err(|_| UsageStoreError::ArithmeticOverflow)?;
             samples.insert(day, quantity);
         }
 
@@ -468,7 +469,9 @@ impl UsageLedgerStore {
     }
 }
 
-fn encode_body(body: &AppendBody) -> Result<(&'static str, Option<i64>, Option<String>), UsageStoreError> {
+fn encode_body(
+    body: &AppendBody,
+) -> Result<(&'static str, Option<i64>, Option<String>), UsageStoreError> {
     match body {
         AppendBody::Flow { quantity } if *quantity > 0 => Ok((
             "flow",
@@ -481,20 +484,31 @@ fn encode_body(body: &AppendBody) -> Result<(&'static str, Option<i64>, Option<S
             Some(i64::try_from(*units).map_err(|_| UsageStoreError::ArithmeticOverflow)?),
             None,
         )),
-        AppendBody::Reversal { reverses } => Ok(("reversal", None, Some(reverses.as_str().to_owned()))),
+        AppendBody::Reversal { reverses } => {
+            Ok(("reversal", None, Some(reverses.as_str().to_owned())))
+        }
     }
 }
 
-fn validate_source_body(source: UsageSource, occurred_at: DateTime<Utc>, body: &AppendBody) -> Result<(), UsageStoreError> {
+fn validate_source_body(
+    source: UsageSource,
+    occurred_at: DateTime<Utc>,
+    body: &AppendBody,
+) -> Result<(), UsageStoreError> {
     let valid = matches!(
         (source, body),
-        (UsageSource::ConfirmedEnrollment, AppendBody::Flow { .. } | AppendBody::Reversal { .. })
-            | (UsageSource::EligibleIdentificationCompleted, AppendBody::Flow { .. } | AppendBody::Reversal { .. })
-            | (UsageSource::TemplateSample, AppendBody::Level { .. })
+        (
+            UsageSource::ConfirmedEnrollment,
+            AppendBody::Flow { .. } | AppendBody::Reversal { .. }
+        ) | (
+            UsageSource::EligibleIdentificationCompleted,
+            AppendBody::Flow { .. } | AppendBody::Reversal { .. }
+        ) | (UsageSource::TemplateSample, AppendBody::Level { .. })
             | (UsageSource::PhotoStorageSample, AppendBody::Level { .. })
     );
     let midnight = occurred_at.time() == NaiveTime::from_hms_opt(0, 0, 0).expect("valid midnight");
-    if valid && (matches!(body, AppendBody::Flow { .. } | AppendBody::Reversal { .. }) || midnight) {
+    if valid && (matches!(body, AppendBody::Flow { .. } | AppendBody::Reversal { .. }) || midnight)
+    {
         Ok(())
     } else {
         Err(UsageStoreError::Invalid)
