@@ -3,10 +3,10 @@
 //! Keep the production origin explicit and verified against the repository's configured
 //! homepage. Only routes that exist, are public, and have crawlable content belong in the sitemap.
 
+use axum::Router;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::Router;
 
 use crate::api::AppState;
 
