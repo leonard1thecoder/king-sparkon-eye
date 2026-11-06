@@ -406,12 +406,24 @@ async fn upload_photo(
     // Authentication runs before Multipart consumes any request-body bytes.
     let mut multipart = Multipart::from_request(request, &state)
         .await
-        .map_err(|_| ApiError::UnsupportedMediaType)?;
+        .map_err(|error| {
+            if error.into_response().status() == StatusCode::PAYLOAD_TOO_LARGE {
+                ApiError::PayloadTooLarge
+            } else {
+                ApiError::UnsupportedMediaType
+            }
+        })?;
     let mut image = None;
     while let Some(mut field) = multipart
         .next_field()
         .await
-        .map_err(|_| invalid_multipart())?
+        .map_err(|error| {
+            if error.into_response().status() == StatusCode::PAYLOAD_TOO_LARGE {
+                ApiError::PayloadTooLarge
+            } else {
+                invalid_multipart()
+            }
+        })?
     {
         let field_name = field.name().unwrap_or_default().to_owned();
         match field_name.as_str() {
