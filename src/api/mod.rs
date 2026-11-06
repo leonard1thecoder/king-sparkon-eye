@@ -581,3 +581,106 @@ mod landing_page_tests {
         assert!(!page.contains("trusted by"));
     }
 }
+
+
+#[cfg(test)]
+mod billing_route_auth_tests {
+    use super::*;
+    use crate::auth::{AccessTokenClaims, UserRole, sign_access_token};
+    use std::collections::HashMap;
+    use tower::ServiceExt;
+
+    fn config() -> Config {
+        let values = HashMap::from([
+            ("EYE_GOOGLE_CLIENT_ID", "client-id".to_owned()),
+            ("EYE_GOOGLE_CLIENT_SECRET", "client-secret".to_owned()),
+            (
+                "EYE_GOOGLE_REDIRECT_URL",
+                "https://eye.example.com/v1/auth/google/callback".to_owned(),
+            ),
+            ("EYE_DATABASE_REST_URL", "https://db.example.com/rest/v1".to_owned()),
+            ("EYE_DATABASE_SERVICE_ROLE_KEY", "database-service-key".to_owned()),
+            ("EYE_OAUTH_CALLBACK_URLS", "https://eye.example.com/auth/callback".to_owned()),
+            ("EYE_OAUTH_EXCHANGE_SECRET", "e".repeat(48)),
+            ("EYE_JWT_SIGNING_SECRET", "j".repeat(48)),
+            ("EYE_JWT_KID", "billing-test-kid".to_owned()),
+        ]);
+        Config::from_lookup(|name| values.get(name).cloned()).expect("valid test config")
+    }
+
+    fn token(subject: &str, now: u64) -> String {
+        let claims = AccessTokenClaims {
+            iss: crate::auth::jwt::EYE_TOKEN_ISSUER.to_owned(),
+            sub: subject.to_owned(),
+            aud: crate::auth::jwt::EYE_TOKEN_AUDIENCE.to_owned(),
+            exp: now + 600,
+            iat: now,
+            jti: format!("tok_{}", uuid::Uuid::new_v4().simple()),
+            role: UserRole::GateOperator,
+            scopes: Vec::new(),
+            event_id: None,
+        };
+        sign_access_token(&claims, "billing-test-kid", "j".repeat(48).as_bytes())
+            .expect("sign test token")
+    }
+
+    #[tokio::test]
+    async fn billing_routes_reject_missing_auth_before_body_or_runtime_access() {
+        let app = router(config());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/billing/checkout")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn verified_eye_subject_is_sufficient_without_billing_scope() {
+        let now = current_unix_seconds();
+        let bearer = token(&format!("usr_{}", "a".repeat(32)), now);
+        let app = router(config());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/billing/checkout")
+                    .header("authorization", format!("Bearer {bearer}"))
+                    .header("idempotency-key", "checkout-request-1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"plan":"gold","interval":"monthly","successUrl":"https://eye.example.com/billing/success","cancelUrl":"https://eye.example.com/billing/cancel"}"#))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        // Authentication succeeded; this test router intentionally has no billing runtime.
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn signed_but_non_eye_subject_is_rejected() {
+        let now = current_unix_seconds();
+        let bearer = token("tenant_123", now);
+        let app = router(config());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/billing/portal")
+                    .header("authorization", format!("Bearer {bearer}"))
+                    .header("idempotency-key", "portal-request-1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"returnUrl":"https://eye.example.com/account/billing"}"#))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+}
