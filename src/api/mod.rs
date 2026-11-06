@@ -251,7 +251,8 @@ async fn upload_photo(
         .saturating_add(MULTIPART_OVERHEAD_BYTES);
     let body_limit_exceeded = Arc::new(AtomicBool::new(false));
     let exceeded = Arc::clone(&body_limit_exceeded);
-    let limited_stream = request.into_body().into_data_stream().scan(
+    let (parts, body) = request.into_parts();
+    let limited_stream = body.into_data_stream().scan(
         0usize,
         move |total, item| {
             let exceeded = Arc::clone(&exceeded);
@@ -272,10 +273,7 @@ async fn upload_photo(
             }
         },
     );
-    let request = Request::from_parts(
-        request.into_parts().0,
-        Body::from_stream(limited_stream),
-    );
+    let request = Request::from_parts(parts, Body::from_stream(limited_stream));
     let mut multipart = Multipart::from_request(request, &state)
         .await
         .map_err(|_| {
