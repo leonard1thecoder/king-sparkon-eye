@@ -309,13 +309,13 @@ async fn per_file_byte_limit_is_enforced_before_decode() {
 async fn streamed_image_limit_stops_before_following_body_chunk_is_polled() {
     let boundary = "eye-boundary";
     let mut first = format!(
-        "--{boundary}\\r\\nContent-Disposition: form-data; name=\\\"image\\\"; filename=\\\"photo.png\\\"\\r\\nContent-Type: image/png\\r\\n\\r\\n"
+        "--{boundary}\r\nContent-Disposition: form-data; name=\\"image\\"; filename=\\"photo.png\\"\r\nContent-Type: image/png\r\n\r\n"
     ).into_bytes();
     first.extend_from_slice(&[7u8; 1024]);
     first.extend_from_slice(
-        format!("\\r\\n--{boundary}\\r\\nContent-Disposition: form-data; name=\\\"clientRequestId\\\"\\r\\n\\r\\n").as_bytes(),
+        format!("\r\n--{boundary}\r\nContent-Disposition: form-data; name=\\"clientRequestId\\"\r\n\r\n").as_bytes(),
     );
-    let second = format!("client-request-id\\r\\n--{boundary}--\\r\\n").into_bytes();
+    let second = format!("client-request-id\r\n--{boundary}--\r\n").into_bytes();
     let chunks = vec![first, second];
     let polled = Arc::new(AtomicUsize::new(0));
     let stream = futures_util::stream::unfold(
