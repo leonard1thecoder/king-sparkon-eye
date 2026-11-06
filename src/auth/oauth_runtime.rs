@@ -997,6 +997,15 @@ async fn register_account(
 
     match oauth
         .store
+        .register_user(
+            &user_id,
+            &email,
+            &password_hash,
+            &salt,
+            crate::auth::UserRole::GateOperator,
+            &[],
+            now,
+        )
         .register_user(RegisterUserInput {
             user_id: &user_id,
             email: &email,
