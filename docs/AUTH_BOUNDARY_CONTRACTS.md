@@ -85,7 +85,13 @@ Handoff rules:
 - The verified Google `sub` is the provider identity key and must be uniquely linked in durable Eye identity storage. Email-based linking requires `email_verified = true`. Reject conflicting provider/user links; do not let one Google subject attach to multiple Eye users.
 - The PostgreSQL RPC migration and `DurableEyeStore` define durable provider-subject links, state/nonce/PKCE transaction records, handoff hashes, refresh-token rotation, and database-backed rate-limit windows. This runtime requires that migration to be applied before enabling OAuth. The old `MemoryIdentityStore` and in-memory `TokenManager` remain for unit tests and are not the production OAuth path.
 
-### 3.4 Safe failure outcomes and verification
+### 3.4 Public registration is authentication-only
+
+`POST /v1/auth/register` creates an Eye account; it does not approve the account for biometric enrollment. The server assigns the default role and an empty scope set. The request accepts neither a role nor scopes, and clients cannot grant themselves `enrollment:write`. A successful registration followed by login must therefore produce an access token with an empty `scopes` claim.
+
+Enrollment permission must be explicitly provisioned by a trusted administrator. There is no self-service permission-grant endpoint. Existing accounts are not automatically rewritten by this code change because the current schema does not preserve reliable provenance distinguishing self-registered users from independently approved operators. Existing permission grants require a separately audited migration/review before they can be safely revoked.
+
+### 3.5 Safe failure outcomes and verification
 
 Provider cancellation, malformed callback, invalid state/nonce/PKCE, provider/JWKS outage, expired/replayed handoff, missing/unverified email and identity conflict must produce a documented safe outcome without exposing tokens or account-existence details. Apply bounded rate limits to start/callback/exchange routes before enabling them publicly.
 
