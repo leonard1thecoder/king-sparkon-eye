@@ -59,3 +59,18 @@ CREATE TABLE IF NOT EXISTS eye_oauth_rate_limits (
 );
 CREATE INDEX IF NOT EXISTS eye_oauth_rate_limits_window_idx
     ON eye_oauth_rate_limits(window_start_ms);
+
+-- Supabase's previous PostgREST schema used hex CHAR(64) hashes for these two
+-- tables. Convert them once to BYTEA so the direct SQLx runtime has one binary
+-- hash representation regardless of whether the legacy migrations ran first.
+DO $
+BEGIN
+    IF (SELECT data_type FROM information_schema.columns
+        WHERE table_schema=current_schema() AND table_name='eye_refresh_tokens' AND column_name='token_hash') = 'character' THEN
+        ALTER TABLE eye_refresh_tokens ALTER COLUMN token_hash TYPE BYTEA USING decode(trim(token_hash), 'hex');
+    END IF;
+    IF (SELECT data_type FROM information_schema.columns
+        WHERE table_schema=current_schema() AND table_name='eye_oauth_rate_limits' AND column_name='bucket_hash') = 'character' THEN
+        ALTER TABLE eye_oauth_rate_limits ALTER COLUMN bucket_hash TYPE BYTEA USING decode(trim(bucket_hash), 'hex');
+    END IF;
+END $;

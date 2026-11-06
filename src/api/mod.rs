@@ -595,6 +595,22 @@ async fn not_found() -> ApiError {
     ApiError::NotFound
 }
 
+/// Connect to Eye PostgreSQL and apply the embedded schema before the HTTP listener starts.
+/// The pool is intentionally closed here; the request runtime opens its own bounded pool.
+pub async fn initialize_auth_storage(config: &Config) -> Result<(), ()> {
+    let Some(oauth) = config.oauth.as_ref() else {
+        return Ok(());
+    };
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&oauth.database_url)
+        .await
+        .map_err(|_| ())?;
+    crate::persistence::migrate(&pool).await.map_err(|_| ())?;
+    pool.close().await;
+    Ok(())
+}
+
 pub fn router(config: Config) -> Router {
     router_with_billing(config, None)
 }

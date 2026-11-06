@@ -120,9 +120,10 @@ pub struct OAuthRuntimeConfig {
     pub google_client_id: String,
     pub google_redirect_url: String,
     pub google_client_secret: SecretString,
-    /// PostgREST URL for an Eye-owned PostgreSQL database (normally ending in /rest/v1).
-    pub database_rest_url: String,
-    pub database_service_role_key: SecretString,
+    /// Direct PostgreSQL connection URL for Eye-owned identity storage.
+    pub database_url: String,
+    /// Base64-encoded 256-bit key for OAuth nonce and PKCE encryption.
+    pub oauth_encryption_key: SecretString,
     pub callback_urls: String,
     pub allow_localhost_http: bool,
     pub exchange_secret: SecretString,
@@ -156,8 +157,8 @@ pub const ENV_IMAGE_DECODE_TIMEOUT_MS: &str = "EYE_IMAGE_DECODE_TIMEOUT_MS";
 pub const ENV_OAUTH_GOOGLE_CLIENT_ID: &str = "EYE_GOOGLE_CLIENT_ID";
 pub const ENV_OAUTH_GOOGLE_CLIENT_SECRET: &str = "EYE_GOOGLE_CLIENT_SECRET";
 pub const ENV_OAUTH_GOOGLE_REDIRECT_URL: &str = "EYE_GOOGLE_REDIRECT_URL";
-pub const ENV_OAUTH_DATABASE_REST_URL: &str = "EYE_DATABASE_REST_URL";
-pub const ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY: &str = "EYE_DATABASE_SERVICE_ROLE_KEY";
+pub const ENV_OAUTH_DATABASE_URL: &str = "EYE_DATABASE_URL";
+pub const ENV_OAUTH_ENCRYPTION_KEY: &str = "EYE_OAUTH_ENCRYPTION_KEY";
 pub const ENV_OAUTH_CALLBACK_URLS: &str = "EYE_OAUTH_CALLBACK_URLS";
 pub const ENV_OAUTH_ALLOW_LOCALHOST_HTTP: &str = "EYE_OAUTH_ALLOW_LOCALHOST_HTTP";
 pub const ENV_OAUTH_EXCHANGE_SECRET: &str = "EYE_OAUTH_EXCHANGE_SECRET";
@@ -299,8 +300,8 @@ where
     let client_id = non_empty(lookup(ENV_OAUTH_GOOGLE_CLIENT_ID));
     let client_secret = non_empty(lookup(ENV_OAUTH_GOOGLE_CLIENT_SECRET));
     let google_redirect_url = non_empty(lookup(ENV_OAUTH_GOOGLE_REDIRECT_URL));
-    let database_url = non_empty(lookup(ENV_OAUTH_DATABASE_REST_URL));
-    let database_key = non_empty(lookup(ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY));
+    let database_url = non_empty(lookup(ENV_OAUTH_DATABASE_URL));
+    let encryption_key = non_empty(lookup(ENV_OAUTH_ENCRYPTION_KEY));
     let callback_urls = non_empty(lookup(ENV_OAUTH_CALLBACK_URLS));
     let exchange_secret = non_empty(lookup(ENV_OAUTH_EXCHANGE_SECRET));
     let jwt_secret = non_empty(lookup(ENV_JWT_SIGNING_SECRET));
@@ -320,7 +321,7 @@ where
         client_secret.is_some(),
         google_redirect_url.is_some(),
         database_url.is_some(),
-        database_key.is_some(),
+        encryption_key.is_some(),
         callback_urls.is_some(),
         exchange_secret.is_some(),
         jwt_secret.is_some(),
@@ -337,7 +338,7 @@ where
     if provided.iter().any(|present| !present) {
         return Err(ConfigError::Invalid {
             name: ENV_OAUTH_CALLBACK_URLS,
-            reason: "OAuth requires all server-side client, database, callback, exchange and JWT settings".to_owned(),
+            reason: "OAuth requires all server-side client, PostgreSQL, encryption, callback, exchange and JWT settings".to_owned(),
         });
     }
 
@@ -345,7 +346,7 @@ where
     let client_secret = client_secret.unwrap_or_default();
     let google_redirect_url = google_redirect_url.unwrap_or_default();
     let database_url = database_url.unwrap_or_default();
-    let database_key = database_key.unwrap_or_default();
+    let encryption_key = encryption_key.unwrap_or_default();
     let callback_urls = callback_urls.unwrap_or_default();
     let exchange_secret = exchange_secret.unwrap_or_default();
     let jwt_secret = jwt_secret.unwrap_or_default();
@@ -394,30 +395,29 @@ where
 
     let parsed_database_url =
         reqwest::Url::parse(&database_url).map_err(|_| ConfigError::Invalid {
-            name: ENV_OAUTH_DATABASE_REST_URL,
-            reason: "expected an absolute HTTPS PostgREST URL".to_owned(),
+            name: ENV_OAUTH_DATABASE_URL,
+            reason: "expected a PostgreSQL connection URL".to_owned(),
         })?;
-    if !parsed_database_url.username().is_empty()
-        || parsed_database_url.password().is_some()
-        || parsed_database_url.query().is_some()
-        || parsed_database_url.fragment().is_some()
+    if !matches!(parsed_database_url.scheme(), "postgres" | "postgresql")
+        || parsed_database_url.host_str().is_none()
+        || parsed_database_url.path().trim_matches('/').is_empty()
     {
         return Err(ConfigError::Invalid {
-            name: ENV_OAUTH_DATABASE_REST_URL,
-            reason: "credentials, query strings and fragments are not allowed in the URL"
-                .to_owned(),
+            name: ENV_OAUTH_DATABASE_URL,
+            reason: "expected postgres:// or postgresql:// with a database name".to_owned(),
         });
     }
-    match parsed_database_url.scheme() {
-        "https" => {}
-        "http" if allow_localhost_http && is_loopback_host(parsed_database_url.host_str()) => {}
-        _ => {
-            return Err(ConfigError::Invalid {
-                name: ENV_OAUTH_DATABASE_REST_URL,
-                reason: "HTTPS is required except for explicitly enabled localhost development"
-                    .to_owned(),
-            });
-        }
+    let key_bytes =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &encryption_key)
+            .map_err(|_| ConfigError::Invalid {
+                name: ENV_OAUTH_ENCRYPTION_KEY,
+                reason: "must be base64-encoded 32-byte key material".to_owned(),
+            })?;
+    if key_bytes.len() != 32 {
+        return Err(ConfigError::Invalid {
+            name: ENV_OAUTH_ENCRYPTION_KEY,
+            reason: "must decode to exactly 32 bytes".to_owned(),
+        });
     }
 
     let mut seen_callbacks = std::collections::HashSet::new();
@@ -471,8 +471,8 @@ where
         google_client_id: client_id,
         google_redirect_url,
         google_client_secret: SecretString::new(client_secret),
-        database_rest_url: database_url.trim_end_matches('/').to_owned(),
-        database_service_role_key: SecretString::new(database_key),
+        database_url,
+        oauth_encryption_key: SecretString::new(encryption_key),
         callback_urls,
         allow_localhost_http,
         exchange_secret: SecretString::new(exchange_secret),

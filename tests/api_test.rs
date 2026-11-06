@@ -167,12 +167,12 @@ fn oauth_env() -> Vec<(&'static str, &'static str)> {
             TEST_REDIRECT_URL,
         ),
         (
-            king_sparkon_eye::config::ENV_OAUTH_DATABASE_REST_URL,
-            "https://db.example.test/rest/v1",
+            king_sparkon_eye::config::ENV_OAUTH_DATABASE_URL,
+            "postgres://eye:test-password@localhost:5432/eye_test",
         ),
         (
-            king_sparkon_eye::config::ENV_OAUTH_DATABASE_SERVICE_ROLE_KEY,
-            "test-service-role-key",
+            king_sparkon_eye::config::ENV_OAUTH_ENCRYPTION_KEY,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         ),
         (
             king_sparkon_eye::config::ENV_OAUTH_CALLBACK_URLS,
