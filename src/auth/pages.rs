@@ -322,14 +322,11 @@ byId('register').addEventListener('submit', async (event) => {
 });
 "##;
 
-const FORGOT_BODY: &str = r##"<p class="notice unavailable">Password reset is not available on this server yet. This form is disabled and no email is sent.</p>
-<form id="forgot" novalidate>
-<fieldset disabled>
+const FORGOT_BODY: &str = r##"<form id="forgot" novalidate>
 <label for="email">Email</label>
 <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required aria-describedby="email-error">
 <p id="email-error" class="field-error" hidden></p>
 <button type="submit">Send reset instructions</button>
-</fieldset>
 </form>
 <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 <p class="links"><a href="/auth/sign-in">Back to sign in</a></p>"##;
@@ -358,9 +355,7 @@ byId('forgot').addEventListener('submit', async (event) => {
 });
 "##;
 
-const RESET_BODY: &str = r##"<p class="notice unavailable">Password reset is not available on this server yet. This form is disabled.</p>
-<form id="reset" novalidate>
-<fieldset disabled>
+const RESET_BODY: &str = r##"<form id="reset" novalidate>
 <label for="password">New password</label>
 <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Choose a password" required aria-describedby="password-hint password-error">
 <p id="password-hint" class="hint">At least {{MIN_PASSWORD}} characters.</p>
@@ -369,7 +364,6 @@ const RESET_BODY: &str = r##"<p class="notice unavailable">Password reset is not
 <input id="confirm" name="confirm" type="password" autocomplete="new-password" placeholder="Repeat your password" required aria-describedby="confirm-error">
 <p id="confirm-error" class="field-error" hidden></p>
 <button type="submit">Set new password</button>
-</fieldset>
 </form>
 <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 <p class="links"><a href="/auth/sign-in">Back to sign in</a></p>"##;

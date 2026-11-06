@@ -140,6 +140,8 @@ impl OAuthRuntime {
             .route("/v1/auth/refresh", post(refresh_session))
             .route("/v1/auth/login", post(password_login))
             .route("/v1/auth/register", post(register_account))
+            .route("/v1/auth/password-reset/request", post(request_password_reset))
+            .route("/v1/auth/password-reset/confirm", post(confirm_password_reset))
     }
 
     async fn rate_limit(
@@ -786,6 +788,20 @@ struct RegisterRequest {
     email: String,
     password: String,
 }
+
+const PASSWORD_RESET_PEER_LIMIT: u32 = 5;
+const PASSWORD_RESET_TTL_MS: u64 = 15 * 60 * 1000; // 15 minutes
+
+#[derive(Deserialize)]
+struct PasswordResetRequestBody {
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct PasswordResetConfirmBody {
+    token: String,
+    password: String,
+}
 const LOGIN_MAX_PASSWORD_BYTES: usize = 1024;
 const LOGIN_MAX_EMAIL_BYTES: usize = 254;
 
@@ -995,6 +1011,108 @@ async fn register_account(
             Json(OAuthErrorBody {
                 code: "USER_ALREADY_EXISTS",
                 message: "An account with this email address already exists",
+            }),
+        )
+            .into_response(),
+        Err(_) => ApiError::ServiceUnavailable.into_response(),
+    }
+}
+
+
+async fn request_password_reset(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(request): Json<PasswordResetRequestBody>,
+) -> Response {
+    let Some(oauth) = state.oauth.as_ref() else {
+        return ApiError::ServiceUnavailable.into_response();
+    };
+    if let Err(err) = oauth
+        .rate_limit(peer, "password-reset-request", PASSWORD_RESET_PEER_LIMIT)
+        .await
+    {
+        return err.into_response();
+    }
+    let email = request.email.trim().to_ascii_lowercase();
+    if email.len() >= 3 && email.len() <= LOGIN_MAX_EMAIL_BYTES && email.contains('@') {
+        let raw_token = match random_urlsafe(32) {
+            Ok(t) => t,
+            Err(_) => return ApiError::ServiceUnavailable.into_response(),
+        };
+        let token_hash = hash_hex(&raw_token);
+        let now = now_ms();
+        if let Ok(Some(user_email)) = oauth
+            .store
+            .create_password_reset_token(&token_hash, &email, now, PASSWORD_RESET_TTL_MS)
+            .await
+        {
+            let reset_link = format!("/auth/reset-password?token={raw_token}");
+            let sender = crate::auth::email::LoggingEmailSender;
+            let _ = crate::auth::email::EmailSender::send_password_reset(&sender, &user_email, &reset_link).await;
+        }
+    }
+
+    // Always return 200 OK to prevent email enumeration
+    StatusCode::OK.into_response()
+}
+
+async fn confirm_password_reset(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(request): Json<PasswordResetConfirmBody>,
+) -> Response {
+    let Some(oauth) = state.oauth.as_ref() else {
+        return ApiError::ServiceUnavailable.into_response();
+    };
+    if let Err(err) = oauth
+        .rate_limit(peer, "password-reset-confirm", PASSWORD_RESET_PEER_LIMIT)
+        .await
+    {
+        return err.into_response();
+    }
+    let token = request.token.trim();
+    if token.is_empty() {
+        return ApiError::Validation(ValidationError {
+            field: "token",
+            rule: "is required",
+        })
+        .into_response();
+    }
+    if request.password.len() < 10 {
+        return ApiError::Validation(ValidationError {
+            field: "password",
+            rule: "must be at least 10 characters",
+        })
+        .into_response();
+    }
+    if request.password.len() > LOGIN_MAX_PASSWORD_BYTES {
+        return ApiError::Validation(ValidationError {
+            field: "password",
+            rule: "exceeds maximum password length",
+        })
+        .into_response();
+    }
+
+    let token_hash = hash_hex(token);
+    let password = request.password;
+    let password_hash = match tokio::task::spawn_blocking(move || hash_password(&password)).await {
+        Ok(Ok(h)) => h,
+        _ => return ApiError::ServiceUnavailable.into_response(),
+    };
+    let salt = uuid::Uuid::new_v4().simple().to_string();
+    let now = now_ms();
+
+    match oauth
+        .store
+        .consume_password_reset_token(&token_hash, &password_hash, &salt, now)
+        .await
+    {
+        Ok(true) => StatusCode::OK.into_response(),
+        Ok(false) => (
+            StatusCode::BAD_REQUEST,
+            Json(OAuthErrorBody {
+                code: "INVALID_OR_EXPIRED_TOKEN",
+                message: "This reset link is invalid or has expired",
             }),
         )
             .into_response(),
