@@ -104,9 +104,10 @@ fn valid_customer_id(value: &str) -> bool {
     value.len() > 4
         && value.len() <= 255
         && value.starts_with("cus_")
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
-
 
 /// Return the existing mapping or provision and persist one Customer for this Eye account.
 /// Stripe's deterministic idempotency key makes concurrent calls converge on one Customer;
@@ -132,7 +133,9 @@ pub async fn ensure_customer_mapping(
         .insert_customer_mapping(eye_user_id, stripe.mode(), &customer_id)
         .await
         .map_err(|error| match error {
-            BillingAccountStoreError::MappingConflict => BillingAccountProvisionError::MappingConflict,
+            BillingAccountStoreError::MappingConflict => {
+                BillingAccountProvisionError::MappingConflict
+            },
             BillingAccountStoreError::InvalidOwner => BillingAccountProvisionError::InvalidOwner,
             BillingAccountStoreError::Unavailable => BillingAccountProvisionError::Unavailable,
         })
