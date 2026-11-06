@@ -557,3 +557,16 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - `docs/PUBLIC-LANDING-PAGE.md` and `README.md` do not describe the plan-card links, so they are unchanged.
 
 **Verification:** Playwright against a local server at 375px and 1280px: three `.plan-cta` buttons, each reading "Get started" with `href="/auth/register"`; no `.plan-link` remains; `#pricing-notes` is present; no horizontal overflow. The 375px pricing section screenshot was inspected. `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
+
+
+### Issue #209 — mobile landing header with a menu toggle (2026-11-06)
+
+**Branch:** `issue/209-mobile-menu`  
+**Issue:** [#209](https://github.com/leonard1thecoder/king-sparkon-eye/issues/209)
+
+- At 700px and below, the five text navigation links (The flow, Architecture, Pricing, Build status, API contract) move into a menu toggle. Logo, Sign in and Get started stay in the header row.
+- The toggle is a visually hidden checkbox plus a label styled as a three-line button, so no JavaScript is added. The checkbox has an accessible name, and the label shows a focus ring.
+- Above 700px the header is unchanged. The mobile rules are the last block in the page's stylesheet, so they override earlier mobile rules.
+- `README.md` and `docs/PUBLIC-LANDING-PAGE.md` are updated. The brief's responsive rule no longer says nothing is hidden on narrow screens.
+
+**Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 480 passed, 0 failed. Playwright at 375px and 700px: links hidden by default, shown after the toggle is clicked, hidden again after a second click, with no horizontal overflow. At 701px and 1280px the toggle is hidden and the links are visible. The 375px open-menu screenshot was inspected.
