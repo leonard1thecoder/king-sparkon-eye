@@ -36,6 +36,7 @@ pub const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id"
 pub struct AppState {
     pub config: Arc<Config>,
     pub oauth: Option<Arc<OAuthRuntime>>,
+    billing: Option<Arc<BillingRuntime>>,
     assessment: Option<Arc<AssessmentRuntime>>,
 }
 
