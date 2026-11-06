@@ -104,8 +104,10 @@ async fn auth_forms_are_enabled_and_ready() {
         "/auth/reset-password?token=mocktoken",
     ] {
         let (_, _, body) = get(path).await;
+        // The shared client script (embedded in every page) mentions "not available on this
+        // server yet" as runtime error text, so assert the page's unavailable notice marker.
         assert!(
-            !body.contains("not available on this server yet"),
+            !body.contains("class=\"notice unavailable\""),
             "{path} should be available"
         );
         assert!(
