@@ -98,7 +98,9 @@ async fn login(database_url: &str, email: &str, password: &str) -> (axum::http::
 
 #[tokio::test]
 async fn legacy_password_login_returns_tokens_and_rehashes_in_postgres() {
-    let Some((pool, url)) = database().await else { return };
+    let Some((pool, url)) = database().await else {
+        return;
+    };
     let email = format!("legacy-{}@example.test", Uuid::new_v4());
     let user_id = seed_user(&pool, &email, &legacy_hash_password(PASSWORD, SALT), SALT, true).await;
 
@@ -107,11 +109,12 @@ async fn legacy_password_login_returns_tokens_and_rehashes_in_postgres() {
     assert!(body["accessToken"].as_str().is_some());
     assert!(body["refreshToken"].as_str().is_some());
 
-    let stored: String = sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let stored: String =
+        sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(stored.starts_with("$2b$12$"), "{stored}");
     assert!(bcrypt::verify(PASSWORD, &stored).unwrap());
     pool.close().await;
@@ -119,31 +122,55 @@ async fn legacy_password_login_returns_tokens_and_rehashes_in_postgres() {
 
 #[tokio::test]
 async fn bcrypt_login_does_not_rewrite_the_existing_hash() {
-    let Some((pool, url)) = database().await else { return };
+    let Some((pool, url)) = database().await else {
+        return;
+    };
     let email = format!("bcrypt-{}@example.test", Uuid::new_v4());
     let stored_hash = bcrypt::hash(PASSWORD, 4).unwrap();
     let user_id = seed_user(&pool, &email, &stored_hash, "", true).await;
 
     let (status, body) = login(&url, &email, PASSWORD).await;
     assert_eq!(status, axum::http::StatusCode::OK, "{body}");
-    let actual: String = sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let actual: String =
+        sqlx::query_scalar("SELECT password_hash FROM eye_auth_users WHERE user_id=$1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(actual, stored_hash);
     pool.close().await;
 }
 
 #[tokio::test]
 async fn unknown_wrong_password_and_disabled_account_have_uniform_errors() {
-    let Some((pool, url)) = database().await else { return };
+    let Some((pool, url)) = database().await else {
+        return;
+    };
     let email = format!("operator-{}@example.test", Uuid::new_v4());
     let disabled_email = format!("disabled-{}@example.test", Uuid::new_v4());
-    seed_user(&pool, &email, &legacy_hash_password(PASSWORD, SALT), SALT, true).await;
-    seed_user(&pool, &disabled_email, &legacy_hash_password(PASSWORD, SALT), SALT, false).await;
+    seed_user(
+        &pool,
+        &email,
+        &legacy_hash_password(PASSWORD, SALT),
+        SALT,
+        true,
+    )
+    .await;
+    seed_user(
+        &pool,
+        &disabled_email,
+        &legacy_hash_password(PASSWORD, SALT),
+        SALT,
+        false,
+    )
+    .await;
 
-    let unknown = login(&url, &format!("missing-{}@example.test", Uuid::new_v4()), PASSWORD).await;
+    let unknown = login(
+        &url,
+        &format!("missing-{}@example.test", Uuid::new_v4()),
+        PASSWORD,
+    )
+    .await;
     let wrong = login(&url, &email, "not-the-password-1").await;
     let disabled = login(&url, &disabled_email, PASSWORD).await;
     for (status, body) in [&unknown, &wrong, &disabled] {
@@ -157,7 +184,9 @@ async fn unknown_wrong_password_and_disabled_account_have_uniform_errors() {
 
 #[tokio::test]
 async fn malformed_credentials_are_rejected_before_database_lookup() {
-    let Some((pool, url)) = database().await else { return };
+    let Some((pool, url)) = database().await else {
+        return;
+    };
     let (status, body) = login(&url, "operator@example.test", "").await;
     assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "VALIDATION_FAILED");
@@ -183,5 +212,8 @@ async fn login_is_unavailable_without_oauth_configuration() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
 }
