@@ -305,7 +305,10 @@ impl DurableEyeStore {
         if consumed.is_some() || expires <= now { tx.commit().await.map_err(map_sqlx)?; return Ok(false); }
         let user_id: String = row.try_get("user_id").map_err(|_| DurableStoreError::InvalidRecord)?;
         sqlx::query("UPDATE eye_password_reset_tokens SET consumed_at_ms=$2 WHERE token_hash=$1").bind(decode_hash(token_hash_hex)?).bind(now).execute(&mut *tx).await.map_err(map_sqlx)?;
-        sqlx::query("UPDATE eye_auth_users SET password_hash=$2,salt=$3 WHERE user_id=$1").bind(user_id).bind(new_password_hash).bind(new_salt).execute(&mut *tx).await.map_err(map_sqlx)?;
+        sqlx::query("UPDATE eye_auth_users SET password_hash=$2,salt=$3 WHERE user_id=$1").bind(&user_id).bind(new_password_hash).bind(new_salt).execute(&mut *tx).await.map_err(map_sqlx)?;
+        // A password reset invalidates every outstanding session family for the account.
+        sqlx::query("UPDATE eye_refresh_tokens SET revoked_at_ms=$2 WHERE user_id=$1 AND revoked_at_ms IS NULL")
+            .bind(user_id).bind(now).execute(&mut *tx).await.map_err(map_sqlx)?;
         tx.commit().await.map_err(map_sqlx)?;
         Ok(true)
     }
@@ -314,6 +317,7 @@ impl DurableEyeStore {
         sqlx::query("INSERT INTO eye_refresh_tokens(token_hash,family_id,user_id,role,scopes,event_id,issued_at_ms,expires_at_ms) SELECT $1,$2,u.user_id,$4,$5,$6,$7,$8 FROM eye_auth_users u WHERE u.user_id=$3 AND u.is_active=true")
             .bind(decode_hash(token_hash)?).bind(family_id).bind(&user.user_id).bind(role_name(user.role)).bind(&user.scopes).bind(event_id).bind(to_i64(now_ms)?).bind(to_i64(expires_at_ms)?)
             .execute(&self.pool).await.map_err(map_sqlx)?;
+        if result.rows_affected() != 1 { return Err(DurableStoreError::Rejected); }
         Ok(())
     }
 
