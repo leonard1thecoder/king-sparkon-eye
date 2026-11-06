@@ -16,6 +16,10 @@ async fn main() {
     };
 
     observability::init_tracing(&config.log_filter);
+    if api::initialize_auth_storage(&config).await.is_err() {
+        tracing::error!("Eye PostgreSQL authentication storage initialization failed");
+        std::process::exit(2);
+    }
     let billing = match BillingRuntime::from_env().await {
         Ok(Some(runtime)) => Some(Arc::new(runtime)),
         Ok(None) => None,
