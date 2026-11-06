@@ -235,7 +235,7 @@ fn authenticate_enrollment_at(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CheckoutRequest {
     plan: String,
     interval: String,
@@ -244,7 +244,7 @@ struct CheckoutRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PortalRequest {
     return_url: String,
 }
@@ -329,8 +329,12 @@ async fn create_checkout(
     request: Request<Body>,
 ) -> Result<Json<BillingSessionResponse>, ApiError> {
     let owner_id = authenticate_billing(&state.config, request.headers())?.sub;
-    let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
     let idempotency_key = billing_idempotency_key(&owner_id, request.headers(), "checkout")?;
+    if !request.headers().get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.split(';').next().is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))) {
+        return Err(ApiError::UnsupportedMediaType);
+    }
     let body = to_bytes(request.into_body(), 16 * 1024).await.map_err(|_| ApiError::Validation(ValidationError {
         field: "body", rule: "must be a valid JSON billing request",
     }))?;
@@ -338,6 +342,7 @@ async fn create_checkout(
         field: "body", rule: "must be a valid JSON billing request",
     }))?;
     let slot = checkout_slot(&request.plan, &request.interval)?;
+    let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
     runtime.return_urls.validate(&request.success_url).map_err(|_| ApiError::Validation(ValidationError {
         field: "successUrl", rule: "must use a configured HTTPS return origin",
     }))?;
@@ -358,14 +363,19 @@ async fn create_customer_portal(
     request: Request<Body>,
 ) -> Result<Json<BillingSessionResponse>, ApiError> {
     let owner_id = authenticate_billing(&state.config, request.headers())?.sub;
-    let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
     let idempotency_key = billing_idempotency_key(&owner_id, request.headers(), "portal")?;
+    if !request.headers().get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.split(';').next().is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))) {
+        return Err(ApiError::UnsupportedMediaType);
+    }
     let body = to_bytes(request.into_body(), 16 * 1024).await.map_err(|_| ApiError::Validation(ValidationError {
         field: "body", rule: "must be a valid JSON billing request",
     }))?;
     let request: PortalRequest = serde_json::from_slice(&body).map_err(|_| ApiError::Validation(ValidationError {
         field: "body", rule: "must be a valid JSON billing request",
     }))?;
+    let runtime = state.billing.as_ref().ok_or(ApiError::ServiceUnavailable)?;
     runtime.return_urls.validate(&request.return_url).map_err(|_| ApiError::Validation(ValidationError {
         field: "returnUrl", rule: "must use a configured HTTPS return origin",
     }))?;
