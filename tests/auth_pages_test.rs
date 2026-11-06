@@ -98,6 +98,25 @@ async fn callback_page_never_renders_query_values() {
 }
 
 #[tokio::test]
+async fn unmounted_routes_are_labelled_unavailable_with_disabled_forms() {
+    for path in [
+        "/auth/register",
+        "/auth/forgot-password",
+        "/auth/reset-password",
+    ] {
+        let (_, _, body) = get(path).await;
+        assert!(
+            body.contains("not available on this server yet"),
+            "{path} explains the unavailable state"
+        );
+        assert!(
+            body.contains("<fieldset disabled>"),
+            "{path} disables its form"
+        );
+    }
+}
+
+#[tokio::test]
 async fn every_page_has_no_unfilled_placeholders() {
     for path in [
         "/auth/sign-in",
