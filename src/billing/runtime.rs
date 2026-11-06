@@ -6,12 +6,13 @@
 use std::str::FromStr;
 use std::time::Duration;
 
-use sqlx::{PgPool, postgres::{PgConnectOptions, PgPoolOptions, PgSslMode}};
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions, PgSslMode},
+};
 use thiserror::Error;
 
-use crate::billing::{
-    stripe::{ReturnUrlPolicy, StripeClient, StripeMode, StripeSettings},
-};
+use crate::billing::stripe::{ReturnUrlPolicy, StripeClient, StripeMode, StripeSettings};
 use crate::persistence::{self, billing_accounts::BillingAccountStore};
 
 pub const ENV_BILLING_DATABASE_URL: &str = "EYE_BILLING_DATABASE_URL";
@@ -75,14 +76,11 @@ impl BillingRuntime {
         if origins.is_empty() {
             return Err(BillingRuntimeError::InvalidConfiguration);
         }
-        let return_urls = ReturnUrlPolicy::new(origins)
-            .map_err(|_| BillingRuntimeError::InvalidConfiguration)?;
+        let return_urls =
+            ReturnUrlPolicy::new(origins).map_err(|_| BillingRuntimeError::InvalidConfiguration)?;
 
-        let stripe_settings = StripeSettings::from_lookup(
-            |name| std::env::var(name).ok(),
-            false,
-        )
-        .map_err(|_| BillingRuntimeError::InvalidConfiguration)?;
+        let stripe_settings = StripeSettings::from_lookup(|name| std::env::var(name).ok(), false)
+            .map_err(|_| BillingRuntimeError::InvalidConfiguration)?;
         if stripe_settings.mode != StripeMode::Test {
             return Err(BillingRuntimeError::InvalidConfiguration);
         }
