@@ -314,7 +314,7 @@ impl DurableEyeStore {
     }
 
     pub async fn issue_refresh_token(&self, token_hash: &str, family_id: &str, user: &DurableUser, event_id: Option<&str>, now_ms: u64, expires_at_ms: u64) -> Result<(), DurableStoreError> {
-        sqlx::query("INSERT INTO eye_refresh_tokens(token_hash,family_id,user_id,role,scopes,event_id,issued_at_ms,expires_at_ms) SELECT $1,$2,u.user_id,$4,$5,$6,$7,$8 FROM eye_auth_users u WHERE u.user_id=$3 AND u.is_active=true")
+        let result = sqlx::query("INSERT INTO eye_refresh_tokens(token_hash,family_id,user_id,role,scopes,event_id,issued_at_ms,expires_at_ms) SELECT $1,$2,u.user_id,$4,$5,$6,$7,$8 FROM eye_auth_users u WHERE u.user_id=$3 AND u.is_active=true")
             .bind(decode_hash(token_hash)?).bind(family_id).bind(&user.user_id).bind(role_name(user.role)).bind(&user.scopes).bind(event_id).bind(to_i64(now_ms)?).bind(to_i64(expires_at_ms)?)
             .execute(&self.pool).await.map_err(map_sqlx)?;
         if result.rows_affected() != 1 { return Err(DurableStoreError::Rejected); }
