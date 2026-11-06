@@ -122,6 +122,7 @@ fieldset:disabled{opacity:.55}
 label{display:block;margin:1.1rem 0 .35rem;font-weight:600}
 input{width:100%;box-sizing:border-box;min-height:44px;padding:.6rem .8rem;font:inherit;font-size:1rem;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink)}
 input[aria-invalid="true"]{border-color:var(--bad)}
+input::placeholder{color:var(--muted);opacity:1}
 button,.button{display:flex;align-items:center;justify-content:center;width:100%;min-height:44px;margin-top:1.4rem;padding:.6rem 1.25rem;box-sizing:border-box;font:inherit;font-weight:700;border:1px solid var(--gold);border-radius:999px;background:var(--gold);color:var(--on-accent);text-decoration:none;cursor:pointer}
 button:hover{background:var(--gold-2);border-color:var(--gold-2)}
 button:disabled{cursor:not-allowed}
@@ -217,10 +218,10 @@ function busy(button, value, label) {
 
 const SIGN_IN_BODY: &str = r##"<form id="sign-in" novalidate>
 <label for="email">Email</label>
-<input id="email" name="email" type="email" autocomplete="email" required aria-describedby="email-error">
+<input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required aria-describedby="email-error">
 <p id="email-error" class="field-error" hidden></p>
 <label for="password">Password</label>
-<input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="password-error">
+<input id="password" name="password" type="password" autocomplete="current-password" placeholder="Your password" required aria-describedby="password-error">
 <p id="password-error" class="field-error" hidden></p>
 <button type="submit">Sign in</button>
 </form>
@@ -265,14 +266,14 @@ const REGISTER_BODY: &str = r##"<p class="notice unavailable">Account creation i
 <form id="register" novalidate>
 <fieldset disabled>
 <label for="email">Email</label>
-<input id="email" name="email" type="email" autocomplete="email" required aria-describedby="email-error">
+<input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required aria-describedby="email-error">
 <p id="email-error" class="field-error" hidden></p>
 <label for="password">Password</label>
-<input id="password" name="password" type="password" autocomplete="new-password" required aria-describedby="password-hint password-error">
+<input id="password" name="password" type="password" autocomplete="new-password" placeholder="Choose a password" required aria-describedby="password-hint password-error">
 <p id="password-hint" class="hint">At least {{MIN_PASSWORD}} characters.</p>
 <p id="password-error" class="field-error" hidden></p>
 <label for="confirm">Confirm password</label>
-<input id="confirm" name="confirm" type="password" autocomplete="new-password" required aria-describedby="confirm-error">
+<input id="confirm" name="confirm" type="password" autocomplete="new-password" placeholder="Repeat your password" required aria-describedby="confirm-error">
 <p id="confirm-error" class="field-error" hidden></p>
 <button type="submit">Create account</button>
 </fieldset>
@@ -315,7 +316,7 @@ const FORGOT_BODY: &str = r##"<p class="notice unavailable">Password reset is no
 <form id="forgot" novalidate>
 <fieldset disabled>
 <label for="email">Email</label>
-<input id="email" name="email" type="email" autocomplete="email" required aria-describedby="email-error">
+<input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required aria-describedby="email-error">
 <p id="email-error" class="field-error" hidden></p>
 <button type="submit">Send reset instructions</button>
 </fieldset>
@@ -351,11 +352,11 @@ const RESET_BODY: &str = r##"<p class="notice unavailable">Password reset is not
 <form id="reset" novalidate>
 <fieldset disabled>
 <label for="password">New password</label>
-<input id="password" name="password" type="password" autocomplete="new-password" required aria-describedby="password-hint password-error">
+<input id="password" name="password" type="password" autocomplete="new-password" placeholder="Choose a password" required aria-describedby="password-hint password-error">
 <p id="password-hint" class="hint">At least {{MIN_PASSWORD}} characters.</p>
 <p id="password-error" class="field-error" hidden></p>
 <label for="confirm">Confirm new password</label>
-<input id="confirm" name="confirm" type="password" autocomplete="new-password" required aria-describedby="confirm-error">
+<input id="confirm" name="confirm" type="password" autocomplete="new-password" placeholder="Repeat your password" required aria-describedby="confirm-error">
 <p id="confirm-error" class="field-error" hidden></p>
 <button type="submit">Set new password</button>
 </fieldset>
@@ -484,6 +485,21 @@ mod tests {
     fn pages_explain_when_javascript_is_off() {
         let html = render("t", "h", SIGN_IN_BODY, SIGN_IN_SCRIPT).0;
         assert!(html.contains("<noscript>"));
+    }
+
+    #[test]
+    fn auth_fields_have_placeholders() {
+        let sign_in = render("t", "h", SIGN_IN_BODY, SIGN_IN_SCRIPT).0;
+        assert!(sign_in.contains("placeholder=\"you@example.com\""));
+        assert!(sign_in.contains("placeholder=\"Your password\""));
+        let register = render("t", "h", REGISTER_BODY, REGISTER_SCRIPT).0;
+        assert!(register.contains("placeholder=\"Choose a password\""));
+        assert!(register.contains("placeholder=\"Repeat your password\""));
+        let forgot = render("t", "h", FORGOT_BODY, FORGOT_SCRIPT).0;
+        assert!(forgot.contains("placeholder=\"you@example.com\""));
+        let reset = render("t", "h", RESET_BODY, RESET_SCRIPT).0;
+        assert!(reset.contains("placeholder=\"Choose a password\""));
+        assert!(sign_in.contains("input::placeholder{color:var(--muted)"));
     }
 
     #[test]
