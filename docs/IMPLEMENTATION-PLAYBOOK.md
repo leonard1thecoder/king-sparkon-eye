@@ -535,3 +535,15 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - No other section changes.
 
 **Verification:** Playwright against a local server: the section background is `rgb(0, 0, 0)`, the heading is `rgb(245, 243, 236)` and the body copy `rgb(184, 187, 177)`, with no horizontal overflow at 375px or 1280px. The 375px section screenshot was inspected. `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
+
+
+### Issue #203 — plan cards use a "Get started" button (2026-11-06)
+
+**Branch:** `issue/203-plan-get-started`  
+**Issue:** [#203](https://github.com/leonard1thecoder/king-sparkon-eye/issues/203)
+
+- Replaces the "Review proposal details ↗" text link on each of the three plan cards (Free, Gold, Premium) with a "Get started" pill button linking to `/auth/register`.
+- The pricing footnote (`#pricing-notes`) and its unapproved-price wording are unchanged. No checkout or purchase action is added; `/auth/register` shows its own unavailable notice.
+- `docs/PUBLIC-LANDING-PAGE.md` and `README.md` do not describe the plan-card links, so they are unchanged.
+
+**Verification:** Playwright against a local server at 375px and 1280px: three `.plan-cta` buttons, each reading "Get started" with `href="/auth/register"`; no `.plan-link` remains; `#pricing-notes` is present; no horizontal overflow. The 375px pricing section screenshot was inspected. `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
