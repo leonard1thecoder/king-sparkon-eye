@@ -44,6 +44,15 @@ impl From<sqlx::Error> for UsageStoreError {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaimedUsageReport {
+    pub id: i64,
+    pub tenant_id: String,
+    pub meter: MeterId,
+    pub period_start: NaiveDate,
+    pub attempts: i32,
+}
+
 #[derive(Clone)]
 pub struct UsageLedgerStore {
     pool: PgPool,
@@ -209,6 +218,99 @@ impl UsageLedgerStore {
         u64::try_from(total).map_err(|_| UsageStoreError::ArithmeticOverflow)
     }
 
+    /// Claim due reporting-intent rows with crash-safe leases and SKIP LOCKED concurrency.
+    pub async fn claim_due(
+        &self,
+        now: DateTime<Utc>,
+        lease: Duration,
+        batch_size: i64,
+    ) -> Result<Vec<ClaimedUsageReport>, UsageStoreError> {
+        if lease <= Duration::zero() || !(1..=100).contains(&batch_size) {
+            return Err(UsageStoreError::Invalid);
+        }
+        let lease_until = now
+            .checked_add_signed(lease)
+            .ok_or(UsageStoreError::ArithmeticOverflow)?;
+        let rows = sqlx::query(
+            "WITH due AS (                  SELECT id FROM eye_billing_usage_outbox                  WHERE (status = 'PENDING' AND next_attempt_at <= $1)                     OR (status = 'IN_FLIGHT' AND lease_until <= $1)                  ORDER BY next_attempt_at, id LIMIT $2 FOR UPDATE SKIP LOCKED              ), claimed AS (                  UPDATE eye_billing_usage_outbox outbox                  SET status = 'IN_FLIGHT', attempts = outbox.attempts + 1,                      lease_until = $3, updated_at = $1                  FROM due WHERE outbox.id = due.id                  RETURNING outbox.id, outbox.tenant_id, outbox.meter,                            outbox.period_start, outbox.attempts              )              SELECT id, tenant_id, meter, period_start, attempts FROM claimed ORDER BY id",
+        )
+        .bind(now)
+        .bind(batch_size)
+        .bind(lease_until)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let meter: String = row.try_get("meter")?;
+                Ok(ClaimedUsageReport {
+                    id: row.try_get("id")?,
+                    tenant_id: row.try_get("tenant_id")?,
+                    meter: parse_meter(&meter).ok_or(UsageStoreError::Invalid)?,
+                    period_start: row.try_get("period_start")?,
+                    attempts: row.try_get("attempts")?,
+                })
+            })
+            .collect()
+    }
+
+    /// Mark a claimed report complete only for the exact lease attempt that was claimed.
+    pub async fn mark_reported(
+        &self,
+        id: i64,
+        attempts: i32,
+        reported_at: DateTime<Utc>,
+    ) -> Result<bool, UsageStoreError> {
+        let result = sqlx::query(
+            "UPDATE eye_billing_usage_outbox              SET status = 'REPORTED', lease_until = NULL, updated_at = $3              WHERE id = $1 AND attempts = $2 AND status = 'IN_FLIGHT'",
+        )
+        .bind(id)
+        .bind(attempts)
+        .bind(reported_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Retry a report or retain it as a dead letter after the configured attempt limit.
+    pub async fn schedule_retry(
+        &self,
+        id: i64,
+        attempts: i32,
+        now: DateTime<Utc>,
+        next_attempt_at: DateTime<Utc>,
+        error_category: &str,
+        max_attempts: i32,
+    ) -> Result<bool, UsageStoreError> {
+        if max_attempts <= 0
+            || next_attempt_at < now
+            || error_category.is_empty()
+            || error_category.len() > 80
+            || !error_category
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        {
+            return Err(UsageStoreError::Invalid);
+        }
+        let status = if attempts >= max_attempts {
+            "DEAD_LETTER"
+        } else {
+            "PENDING"
+        };
+        let result = sqlx::query(
+            "UPDATE eye_billing_usage_outbox              SET status = $4, next_attempt_at = $5, lease_until = NULL,                  last_error_category = $6, updated_at = $3              WHERE id = $1 AND attempts = $2 AND status = 'IN_FLIGHT'",
+        )
+        .bind(id)
+        .bind(attempts)
+        .bind(now)
+        .bind(status)
+        .bind(next_attempt_at)
+        .bind(error_category)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     /// Daily-level meter quantity: latest sample per UTC day, averaged across the inclusive
     /// billable window and rounded up. Every day must have a sample to avoid silent underbilling.
     pub async fn level_billable_quantity(
@@ -309,6 +411,16 @@ fn validate_source_body(source: UsageSource, occurred_at: DateTime<Utc>, body: &
         Ok(())
     } else {
         Err(UsageStoreError::Invalid)
+    }
+}
+
+fn parse_meter(value: &str) -> Option<MeterId> {
+    match value {
+        "enrollments" => Some(MeterId::Enrollments),
+        "retained_photo_storage_gb" => Some(MeterId::RetainedPhotoStorageGb),
+        "active_templates" => Some(MeterId::ActiveTemplates),
+        "identification_requests" => Some(MeterId::IdentificationRequests),
+        _ => None,
     }
 }
 
