@@ -510,3 +510,16 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - Updates `README.md` (auth-page table) and this playbook. `docs/PUBLIC-LANDING-PAGE.md` is unaffected because it covers the landing page only.
 
 **Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed. The callback-page test now checks for the injected `<img src="x"` payload instead of any `<img`, because the page now has a real logo image. Local runs used `RUSTUP_TOOLCHAIN=stable`. Playwright against a local server: no horizontal overflow at 375px or 1280px on the landing page, sign-in, and the auth pages; the page background is `rgb(0, 0, 0)`; the logo renders at natural width 506px. Earlier checks: an empty sign-in submit focuses the email field and sets `aria-invalid`; the register form is disabled; the reset form is hidden without a token; the no-JavaScript message renders. The 375px sign-in screenshot was inspected.
+
+
+### Issue #199 — centered landing navigation and "Get started" button (2026-11-06)
+
+**Branch:** `issue/199-center-nav-get-started`  
+**Issue:** [#199](https://github.com/leonard1thecoder/king-sparkon-eye/issues/199)
+
+- Centers the landing-page navigation links on wide screens. The header becomes a three-column grid (brand, links, empty) with the links in the centre column.
+- Below 1100px the brand and links stack, centered. At 620px and below the links wrap centered.
+- Renames the header's "Sign up" button to "Get started". It still links to `/auth/register`.
+- Updates `README.md` and `docs/PUBLIC-LANDING-PAGE.md`. `AGENTS.md` was reviewed and left unchanged.
+
+**Verification:** Playwright against a local server measured the links' centre against the viewport centre: offset 0px at 1280, 1101, 1024, 768 and 375px. The brand and links do not overlap at any of those widths, and there is no horizontal overflow. The button text is "Get started". `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 478 passed, 0 failed.
