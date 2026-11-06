@@ -1,0 +1,35 @@
+name: Refresh Rust lockfile for CI baseline
+
+on:
+  push:
+    branches:
+      - issue/159-ci-baseline-repair
+    paths:
+      - ci-lock-refresh.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue/159-ci-baseline-repair
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: rustfmt
+      - name: Format Rust sources and refresh the dependency lockfile
+        run: |
+          cargo fmt --all
+          cargo check --all-features
+      - name: Commit generated formatting and lockfile
+        run: |
+          if ! git diff --quiet -- Cargo.lock src; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock src
+            git commit -m "fix(#159): refresh lockfile and format Rust sources"
+            git push origin HEAD:issue/159-ci-baseline-repair
+          fi
