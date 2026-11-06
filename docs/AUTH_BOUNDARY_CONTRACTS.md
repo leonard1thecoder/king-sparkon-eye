@@ -85,7 +85,15 @@ Handoff rules:
 - The verified Google `sub` is the provider identity key and must be uniquely linked in durable Eye identity storage. Email-based linking requires `email_verified = true`. Reject conflicting provider/user links; do not let one Google subject attach to multiple Eye users.
 - The PostgreSQL RPC migration and `DurableEyeStore` define durable provider-subject links, state/nonce/PKCE transaction records, handoff hashes, refresh-token rotation, and database-backed rate-limit windows. This runtime requires that migration to be applied before enabling OAuth. The old `MemoryIdentityStore` and in-memory `TokenManager` remain for unit tests and are not the production OAuth path.
 
-### 3.4 Safe failure outcomes and verification
+### 3.4 OAuth authentication does not grant enrollment permissions
+
+Google OIDC establishes the user's Eye account identity; it does not approve biometric enrollment or assign application permissions. New Google-linked accounts are created with an empty scope set. In particular, a verified Google email must never imply `enrollment:write`.
+
+Migration `db/migrations/202611060001_google_oauth_least_privilege.sql` changes the database default to an empty scope array, replaces the Google identity resolver so newly created accounts receive no scopes, and removes the automatically granted `enrollment:write` scope from existing Google-linked `GateOperator` accounts. Existing unrelated scopes and non-Google accounts are not modified by this migration.
+
+There is currently no self-service enrollment-permission grant route. A trusted administrator must explicitly provision the required permission through the approved administrative process before a user can enroll. Do not add a client-controlled scope parameter to OAuth or account registration as a workaround. The migration must be applied to the dedicated Eye database before this mitigation is considered deployed; the code change alone does not change an already-running database function.
+
+### 3.5 Safe failure outcomes and verification
 
 Provider cancellation, malformed callback, invalid state/nonce/PKCE, provider/JWKS outage, expired/replayed handoff, missing/unverified email and identity conflict must produce a documented safe outcome without exposing tokens or account-existence details. Apply bounded rate limits to start/callback/exchange routes before enabling them publicly.
 
