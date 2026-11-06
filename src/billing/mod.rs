@@ -13,6 +13,7 @@ pub mod ledger;
 pub mod meter_reporting;
 pub mod period;
 pub mod reporting_worker;
+pub mod reporting_runtime;
 pub mod stripe;
 
 use std::fmt;
