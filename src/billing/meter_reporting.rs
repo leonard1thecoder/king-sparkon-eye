@@ -5,7 +5,7 @@
 //! are explicit configuration; no candidate name, price, tenant ID, or production default is
 //! inferred here. Reporting is disabled unless explicitly enabled by deployment configuration.
 
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, Months, NaiveDate, Utc};
 use reqwest::{Client, StatusCode};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
@@ -152,12 +152,22 @@ impl StripeMeterReporter {
             aggregate.meter,
             aggregate.period_start,
         );
-        let timestamp = aggregate
+        // Attribute the aggregate to the final second of its UTC month so Stripe places
+        // it inside the intended monthly window (not the following month).
+        let month_end = aggregate
             .period_start
-            .and_hms_opt(0, 0, 0)
+            .checked_add_months(Months::new(1))
+            .and_then(|date| date.pred_opt())
+            .ok_or(StripeMeterError::InvalidConfiguration)?;
+        let timestamp = month_end
+            .and_hms_opt(23, 59, 59)
             .ok_or(StripeMeterError::InvalidConfiguration)?
             .and_utc()
             .timestamp();
+        let now = Utc::now().timestamp();
+        if timestamp < now - 35 * 24 * 60 * 60 || timestamp > now + 5 * 60 {
+            return Err(StripeMeterError::InvalidConfiguration);
+        }
 
         // Stripe accepts string values in the payload map. The customer mapping key must match
         // the meter's configured customer mapping in Stripe; this adapter never guesses it.
