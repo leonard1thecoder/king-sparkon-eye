@@ -115,6 +115,44 @@ async fn append_is_durable_idempotent_and_creates_reporting_intent_atomically() 
 }
 
 #[tokio::test]
+async fn reporting_outbox_uses_leases_retries_and_acknowledgement() {
+    let Some(fx) = fixture().await else { return };
+    let store = fx.store().await;
+    store.append(request(
+        "tenant_a",
+        "reportable-identification",
+        UsageSource::EligibleIdentificationCompleted,
+        instant(3),
+        AppendBody::Flow { quantity: 1 },
+    )).await.unwrap();
+
+    let now = instant(3) + chrono::Duration::seconds(1);
+    let claimed = store.claim_due(now, chrono::Duration::minutes(2), 10).await.unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].tenant_id, "tenant_a");
+    assert_eq!(claimed[0].meter, MeterId::IdentificationRequests);
+    assert_eq!(claimed[0].attempts, 1);
+
+    assert!(store.schedule_retry(
+        claimed[0].id,
+        claimed[0].attempts,
+        now,
+        now + chrono::Duration::minutes(5),
+        "stripe_unavailable",
+        3,
+    ).await.unwrap());
+
+    assert!(store.claim_due(now + chrono::Duration::minutes(4), chrono::Duration::minutes(2), 10).await.unwrap().is_empty());
+    let retry = store.claim_due(now + chrono::Duration::minutes(6), chrono::Duration::minutes(2), 10).await.unwrap();
+    assert_eq!(retry.len(), 1);
+    assert_eq!(retry[0].attempts, 2);
+
+    assert!(store.mark_reported(retry[0].id, retry[0].attempts, now + chrono::Duration::minutes(6)).await.unwrap());
+    assert!(!store.mark_reported(retry[0].id, retry[0].attempts, now + chrono::Duration::minutes(7)).await.unwrap());
+    assert!(store.claim_due(now + chrono::Duration::minutes(8), chrono::Duration::minutes(2), 10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn conflicting_event_key_and_cross_tenant_reversal_are_rejected() {
     let Some(fx) = fixture().await else { return };
     let store = fx.store().await;
