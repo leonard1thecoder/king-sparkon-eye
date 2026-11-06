@@ -16,8 +16,8 @@ This document describes the Rust plan, meter and allowance model in `src/billing
 | Pure included-vs-measured-vs-billable overage arithmetic (`assess_meter`, `assess_usage`) | Implemented |
 | Candidate catalog file, tagged `candidate_unapproved` | Implemented |
 | Loading the catalog into the service `Config` or runtime | **Not implemented** (no runtime consumer yet) |
-| Usage ledger reference semantics: append-only, idempotent, reversible, tenant-scoped, period aggregation, level sampling (`src/billing/ledger.rs`) | Implemented as a **non-durable reference model** (issue #148 core) |
-| Durable PostgreSQL ledger, transactional outbox, Stripe Billing Meter reporting | **Planned / blocked**, issues #113, #28, #143, #138 |
+| Usage ledger reference semantics (`src/billing/ledger.rs`) | Implemented as a storage-independent model; PostgreSQL adapter in `src/persistence/usage_ledger.rs` persists append, idempotency, reversal and aggregation semantics (#148) |
+| Durable PostgreSQL ledger and transactional reporting-intent outbox (migration `0003_billing_usage_ledger.sql`) | **Implemented in #148**; Stripe Meter delivery and reconciliation remain #143 |
 | Enforcing allowances (blocking, refusing, or tenant-scoped quotas) | **Planned**, issue #146 |
 | Stripe products, prices, metered prices, Checkout, Customer Portal, webhooks | **Partial** for #139: base-price config/verification plus test-mode-only product/base-price provisioner; no metered prices or runtime wiring. **Partial** for #141: signature verification merged in PR #156; durable event processing remains blocked on #113. See `docs/STRIPE_INTEGRATION.md`. |
 | Billing-account and tenant mapping from API credentials | **Planned**, issue #138 contract |
@@ -123,7 +123,7 @@ Meter measurement kinds, from `MeterId::measurement()`:
 | `retained_photo_storage_gb` | Level | Observed level, capped per period. Does not accumulate. |
 | `active_templates` | Level | Observed level, capped per period. Does not accumulate. |
 
-How a level is turned into billable template-months or GB-months (sampling, averaging, byte-to-GB rounding) is **not decided** here. It is part of #148.
+**Implemented measurement contract in #148:** template and retained-photo levels are sampled daily at 00:00 UTC. The latest sample for each UTC day wins; every billable day in the requested window must have a sample. The monthly quantity is the daily average over billable days, rounded up. Photo bytes use GiB (2^30 bytes). Partial first/last months are represented by the explicit inclusive billable-day window. Deletion changes later samples and never rewrites historical samples. This follows the implementation contract recorded in #138; production billing remains gated on outstanding backend source-of-truth and commercial approvals.
 
 ## Included, measured and billable
 
