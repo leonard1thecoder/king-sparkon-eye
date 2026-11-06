@@ -10,7 +10,7 @@ use axum::Router;
 
 use crate::api::AppState;
 
-/// Verified production origin from the GitHub repository homepage setting.
+/// Canonical origin configured in the GitHub repository homepage setting.
 pub const PRODUCTION_ORIGIN: &str = "https://king-sparkon-eye.vercel.app";
 
 /// Routes that search engines and other crawlers may use to discover public content.
