@@ -6,7 +6,7 @@
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
+    http::{HeaderMap, StatusCode, header::{AUTHORIZATION, LOCATION}},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -32,6 +32,8 @@ pub fn router(config: Config) -> Router {
         .route("/v1/identities", post(create_identity))
         .route("/v1/identities/{identity_id}", get(get_identity).delete(delete_identity))
         .route("/v1/identities/{identity_id}/revoke", post(revoke_identity))
+        .route("/v1/identities/{identity_id}/face-enrollments", post(create_enrollment_intent))
+        .route("/v1/identities/{identity_id}/face-enrollments/{enrollment_id}", get(get_enrollment_intent))
         .with_state(IdentityState { pool })
 }
 
@@ -133,6 +135,96 @@ fn map_identity_error(error_value: identity_registry::IdentityStoreError) -> Res
         E::Conflict => error(StatusCode::CONFLICT, "external_reference_conflict"),
         E::Unavailable => error(StatusCode::SERVICE_UNAVAILABLE, "storage_unavailable"),
     }
+}
+
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CreateEnrollmentIntentRequest {
+    consent_reference: String,
+    consent_policy_version: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EnrollmentIntentResponse {
+    enrollment_id: String,
+    identity_id: String,
+    status: String,
+    blocked_reason: Option<String>,
+    consent_reference: String,
+    consent_policy_version: String,
+    created_at_ms: i64,
+    updated_at_ms: i64,
+}
+
+impl From<identity_registry::IdentityEnrollment> for EnrollmentIntentResponse {
+    fn from(value: identity_registry::IdentityEnrollment) -> Self {
+        Self {
+            enrollment_id: value.enrollment_id,
+            identity_id: value.identity_id,
+            status: value.status,
+            blocked_reason: value.blocked_reason,
+            consent_reference: value.consent_reference,
+            consent_policy_version: value.consent_policy_version,
+            created_at_ms: value.created_at_ms,
+            updated_at_ms: value.updated_at_ms,
+        }
+    }
+}
+
+fn idempotency_key(headers: &HeaderMap) -> Result<&str, Response> {
+    let value = headers.get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| error(StatusCode::BAD_REQUEST, "idempotency_key_required"))?;
+    if value.is_empty() || value.len() > 128
+        || !value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
+        return Err(error(StatusCode::BAD_REQUEST, "invalid_idempotency_key"));
+    }
+    Ok(value)
+}
+
+async fn create_enrollment_intent(
+    State(state): State<IdentityState>,
+    Path(identity_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<CreateEnrollmentIntentRequest>,
+) -> Result<(StatusCode, [(axum::http::HeaderName, axum::http::HeaderValue); 1], Json<EnrollmentIntentResponse>), Response> {
+    let principal = principal(&state, &headers, "identities:write").await?;
+    let key = idempotency_key(&headers)?;
+    let outcome = identity_registry::create_enrollment_intent(
+        &state.pool,
+        &principal.tenant_id,
+        &identity_id,
+        &principal.client_id,
+        &principal.owner_user_id,
+        &request.consent_reference,
+        &request.consent_policy_version,
+        key,
+        now_ms(),
+    ).await.map_err(map_identity_error)?;
+
+    let (status, enrollment) = match outcome {
+        identity_registry::EnrollmentIntentOutcome::Created(value) => (StatusCode::ACCEPTED, value),
+        identity_registry::EnrollmentIntentOutcome::Existing(value) => (StatusCode::OK, value),
+    };
+    let location = format!("/v1/identities/{identity_id}/face-enrollments/{}", enrollment.enrollment_id);
+    let location = axum::http::HeaderValue::from_str(&location)
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "internal_error"))?;
+    Ok((status, [(LOCATION, location)], Json(enrollment.into())))
+}
+
+async fn get_enrollment_intent(
+    State(state): State<IdentityState>,
+    Path((identity_id, enrollment_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<EnrollmentIntentResponse>, Response> {
+    let principal = principal(&state, &headers, "identities:read").await?;
+    let enrollment = identity_registry::get_enrollment_intent(
+        &state.pool, &principal.tenant_id, &identity_id, &enrollment_id,
+    ).await.map_err(map_identity_error)?;
+    Ok(Json(enrollment.into()))
 }
 
 async fn create_identity(
