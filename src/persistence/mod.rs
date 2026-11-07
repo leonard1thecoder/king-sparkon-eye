@@ -11,6 +11,7 @@ pub mod identity_registry;
 pub mod jobs;
 pub mod oauth;
 pub mod tenants;
+pub mod verification;
 pub mod usage_ledger;
 
 use sqlx::{PgPool, postgres::PgPoolOptions};
