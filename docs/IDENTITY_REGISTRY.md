@@ -70,14 +70,18 @@ The current PR implements the durable blocked intent and status contract only. I
 
 ## PostgreSQL row-level enforcement (#260)
 
-The first #260 implementation slice enables and forces RLS on:
+The current #260 implementation slice enables and forces RLS on:
 
 - `eye_identities`
 - `eye_identity_enrollments`
 - `eye_identity_audit`
+- `eye_identity_scopes`
+- `eye_identity_scope_members`
+- `eye_verification_sessions`
+- `eye_verification_session_audit`
 
-Each table uses the same transaction-local policy: `tenant_id` must equal `current_setting('eye.tenant_id', true)`. Missing context yields no visible rows and rejects writes. The identity registry repository now starts every operation with `begin_tenant_transaction`, including read paths; the helper binds the verified tenant using `set_config(..., TRUE)`, so the setting is cleared on commit/rollback and cannot bleed into a reused pool connection.
+Each table uses the same transaction-local policy: `tenant_id` must equal `current_setting('eye.tenant_id', true)`. Missing context yields no visible rows and rejects writes. The identity registry and verification repositories now start every operation with `begin_tenant_transaction`, including read paths; the helper binds the verified tenant using `set_config(..., TRUE)`, so the setting is cleared on commit/rollback and cannot bleed into a reused pool connection.
 
-The PostgreSQL integration test explicitly rejects superuser and `BYPASSRLS` test roles, then verifies missing-context denial, cross-tenant read isolation, and cross-tenant write rejection. Run it against a dedicated test database using the same restricted-role properties required in production.
+The PostgreSQL integration test explicitly rejects superuser and `BYPASSRLS` test roles, then verifies missing-context denial, cross-tenant read isolation, and cross-tenant write rejection across identity and scope resources. Run it against a dedicated test database using the same restricted-role properties required in production.
 
-This is a deliberately bounded slice, not completion of #260. API credentials, scopes/memberships, verification sessions, jobs/outbox, privacy/evidence, webhook, audit and usage-ledger tables still require tenant-context propagation and RLS policies before the issue can close. The legacy `ten_legacy_unassigned` tenant remains suspended and untouched. No shared `public` schema objects are changed.
+This is a deliberately bounded slice, not completion of #260. API credentials, tenant registry, jobs/outbox, privacy/evidence, webhook, general audit and usage-ledger tables still require tenant-context propagation and RLS policies before the issue can close. The legacy `ten_legacy_unassigned` tenant remains suspended and untouched. No shared `public` schema objects are changed.
