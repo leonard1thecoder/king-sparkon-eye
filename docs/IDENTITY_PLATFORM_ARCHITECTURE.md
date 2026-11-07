@@ -54,7 +54,7 @@ Biometric payloads are sensitive data. Raw images, embeddings, templates, secret
 
 Evidence metadata retrieval is separately authorized and audited. The current public evidence route does not stream object bytes or issue signed URLs. Durable deletion rows are not proof of object removal: only a trusted storage worker confirmation may mark external cleanup complete. The existing #31 S3 module exposes an object-store operations interface and mock; it is not yet a production AWS SDK adapter.
 
-The processing lifecycle distinguishes **processing state**** from **verification outcome**:
+The processing lifecycle distinguishes **processing state** from **verification outcome**:
 
 - Processing states describe work: queued, processing, completed, failed, expired or cancelled. Exact wire enum names are finalized in #186/#187.
 - Outcomes describe face-verification conclusions: verified, not_verified, identified, no_candidate, ambiguous or inconclusive where appropriate. Exact applicability and wire names are finalized in #186.
