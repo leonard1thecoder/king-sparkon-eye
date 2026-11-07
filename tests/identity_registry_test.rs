@@ -175,4 +175,28 @@ async fn enrollment_intents_are_durable_idempotent_and_blocked_by_evaluation_gat
     ).bind(tenant_a.as_str()).bind(&enrollment.enrollment_id)
         .fetch_one(&pool).await.expect("read durable enrollment");
     assert_eq!(persisted_status, "BLOCKED_EVALUATION");
+
+    revoke_identity(
+        &pool, &tenant_a, &identity.identity_id, &client_a, &owner_a, 1_800_000_000_104,
+    ).await.expect("revoke identity and enrollment");
+    let revoked = get_enrollment_intent(
+        &pool, &tenant_a, &identity.identity_id, &enrollment.enrollment_id,
+    ).await.expect("read revoked enrollment");
+    assert_eq!(revoked.status, "REVOKED");
+
+    delete_identity(
+        &pool, &tenant_a, &identity.identity_id, &client_a, &owner_a, 1_800_000_000_105,
+    ).await.expect("delete identity");
+    let deleted = get_enrollment_intent(
+        &pool, &tenant_a, &identity.identity_id, &enrollment.enrollment_id,
+    ).await.expect("read deleted enrollment");
+    assert_eq!(deleted.status, "DELETED");
+
+    let enrollment_audits: Vec<String> = sqlx::query_scalar(
+        "SELECT action FROM eye_identity_audit WHERE tenant_id=$1 AND identity_id=$2 AND action LIKE 'ENROLLMENT_%' ORDER BY audit_id",
+    ).bind(tenant_a.as_str()).bind(&identity.identity_id)
+        .fetch_all(&pool).await.expect("read enrollment audit");
+    assert_eq!(enrollment_audits, vec![
+        "ENROLLMENT_BLOCKED", "ENROLLMENT_REVOKED", "ENROLLMENT_DELETED"
+    ]);
 }
