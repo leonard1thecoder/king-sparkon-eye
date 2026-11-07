@@ -37,8 +37,8 @@ use crate::auth::password::{
     Verification, hash_password, spend_equivalent_time, verify_stored_password,
 };
 use crate::config::OAuthRuntimeConfig;
-use crate::persistence;
 use crate::error::{ApiError, ValidationError};
+use crate::persistence;
 
 const OAUTH_COOKIE: &str = "eye_oauth_transaction";
 const JSON_MAX_BYTES: usize = 64 * 1024;
