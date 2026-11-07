@@ -29,7 +29,8 @@ async fn main() {
         }
     };
     let bind_addr = config.bind_addr;
-    let app = api::router_with_billing(config, billing.clone());
+    let app = api::router_with_billing(config.clone(), billing.clone())
+        .merge(king_sparkon_eye::credentials::router(config));
 
     let listener = match tokio::net::TcpListener::bind(bind_addr).await {
         Ok(listener) => listener,
