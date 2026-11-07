@@ -12,7 +12,7 @@ use tokio::{sync::watch, task::JoinSet, time::{interval, MissedTickBehavior}};
 use tracing::{error, info, warn};
 
 use crate::persistence::jobs::{
-    ClaimedJob, ClaimedOutboxEvent, FailureClass, JobStore, JobStoreError,
+    ClaimedJob, ClaimedOutboxEvent, FailureClass, JobStore,
 };
 
 #[derive(Debug, Clone)]
@@ -22,6 +22,7 @@ pub struct WorkerConfig {
     pub batch_size: i64,
     pub lease_ms: i64,
     pub poll_interval: Duration,
+    pub execution_timeout: Duration,
     pub outbox_max_attempts: i32,
 }
 impl WorkerConfig {
@@ -30,7 +31,9 @@ impl WorkerConfig {
             && self.worker_id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'));
         if !valid_worker || !(1..=64).contains(&self.concurrency)
             || !(1..=100).contains(&self.batch_size) || !(1..=900_000).contains(&self.lease_ms)
-            || self.poll_interval.is_zero() || !(1..=20).contains(&self.outbox_max_attempts) {
+            || self.poll_interval.is_zero() || self.execution_timeout.is_zero()
+            || self.execution_timeout > Duration::from_secs(3600)
+            || !(1..=20).contains(&self.outbox_max_attempts) {
             return Err(WorkerError::InvalidConfig);
         }
         Ok(())
@@ -159,16 +162,19 @@ impl WorkerRuntime {
                 _ = poll.tick() => {
                     let available = self.config.concurrency.saturating_sub(tasks.len());
                     if available == 0 { continue; }
-                    let claims = self.store.claim(&self.config.worker_id, now_ms(),
-                        self.config.lease_ms, (available as i64).min(self.config.batch_size))
-                        .await.map_err(map_store_error)?;
+                    let claims = match self.store.claim(&self.config.worker_id, now_ms(),
+                        self.config.lease_ms, (available as i64).min(self.config.batch_size)).await {
+                        Ok(claims) => claims,
+                        Err(err) => { warn!(error = %err, "job claim failed; supervisor will retry"); continue; }
+                    };
                     for claim in claims {
                         let store = self.store.clone();
                         let processor = self.processor.clone();
                         let worker_id = self.config.worker_id.clone();
                         let lease_ms = self.config.lease_ms;
+                        let execution_timeout = self.config.execution_timeout;
                         tasks.spawn(async move {
-                            execute_claim(store, processor, claim, worker_id, lease_ms).await;
+                            execute_claim(store, processor, claim, worker_id, lease_ms, execution_timeout).await;
                         });
                     }
                     if let Err(err) = self.store.recover_exhausted_leases(now_ms(), self.config.batch_size).await {
@@ -200,9 +206,11 @@ impl WorkerRuntime {
                 _ = poll.tick() => {
                     let available = self.config.concurrency.saturating_sub(tasks.len());
                     if available == 0 { continue; }
-                    let claims = self.store.claim_outbox(&self.config.worker_id, now_ms(),
-                        self.config.lease_ms, (available as i64).min(self.config.batch_size))
-                        .await.map_err(map_store_error)?;
+                    let claims = match self.store.claim_outbox(&self.config.worker_id, now_ms(),
+                        self.config.lease_ms, (available as i64).min(self.config.batch_size)).await {
+                        Ok(claims) => claims,
+                        Err(err) => { warn!(error = %err, "outbox claim failed; supervisor will retry"); continue; }
+                    };
                     for event in claims {
                         let store = self.store.clone();
                         let transport = self.transport.clone();
@@ -217,7 +225,7 @@ impl WorkerRuntime {
 }
 
 async fn execute_claim(store: JobStore, processor: Arc<dyn JobProcessor>, claim: ClaimedJob,
-    worker_id: String, lease_ms: i64) {
+    worker_id: String, lease_ms: i64, execution_timeout: Duration) {
     let job_id = claim.job.job_id.clone();
     let token = claim.lease_token;
     let mut execution = Box::pin(processor.process(&claim));
@@ -229,6 +237,10 @@ async fn execute_claim(store: JobStore, processor: Arc<dyn JobProcessor>, claim:
     let outcome = loop {
         tokio::select! {
             result = &mut execution => break result,
+            _ = tokio::time::sleep(execution_timeout) => {
+                warn!(job_id = %job_id, "job execution timed out");
+                break JobExecution::Retryable { category: "PROCESSOR_TIMEOUT", retry_after: Duration::from_secs(5) };
+            }
             _ = heartbeat.tick() => {
                 if store.heartbeat(&job_id, token, &worker_id, now_ms(), lease_ms).await.is_err() {
                     warn!(job_id = %job_id, "job lease lost; cancelling local execution");
@@ -276,7 +288,6 @@ fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis().min(i64::MAX as u128) as i64).unwrap_or(0)
 }
-fn map_store_error(_: JobStoreError) -> WorkerError { WorkerError::Persistence }
 fn log_join(result: Result<(), tokio::task::JoinError>, subsystem: &'static str) {
     if let Err(err) = result { error!(subsystem, error = %err, "worker task panicked or was cancelled; durable lease recovery will reclaim work"); }
 }
@@ -297,7 +308,7 @@ mod tests {
     fn worker_config_rejects_unbounded_or_invalid_values() {
         let valid = WorkerConfig { worker_id: "eye-worker-1".into(), concurrency: 4,
             batch_size: 8, lease_ms: 30_000, poll_interval: Duration::from_millis(500),
-            outbox_max_attempts: 8 };
+            execution_timeout: Duration::from_secs(120), outbox_max_attempts: 8 };
         assert!(valid.validate().is_ok());
         let mut invalid = valid.clone();
         invalid.concurrency = 0;
