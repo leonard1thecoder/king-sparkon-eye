@@ -148,21 +148,20 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, Response> {
-    let oauth = state.config.oauth.as_ref().ok_or_else(|| {
-        error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "credential_storage_unavailable",
-        )
-    })?;
+fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, StatusCode> {
+    let oauth = state
+        .config
+        .oauth
+        .as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let secret = oauth.jwt_signing_secret.expose();
     if secret.len() < 32 {
-        return Err(error(StatusCode::UNAUTHORIZED, "unauthorized"));
+        return Err(StatusCode::UNAUTHORIZED);
     }
     let value = headers
         .get(AUTHORIZATION)
         .and_then(|header| header.to_str().ok())
-        .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
+        .ok_or(StatusCode::UNAUTHORIZED)?;
     let token = value
         .split_once(' ')
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
@@ -170,15 +169,15 @@ fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, R
         .filter(|token| !token.is_empty())
         .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
     let claims = verify_access_token(token, &oauth.jwt_kid, secret.as_bytes(), now_ms() / 1000)
-        .map_err(|_| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
     if !claims.sub.starts_with("usr_") {
         return Err(error(StatusCode::UNAUTHORIZED, "unauthorized"));
     }
     Ok(claims.sub)
 }
 
-fn tenant_id(raw: &str) -> Result<TenantId, Response> {
-    TenantId::parse(raw.to_owned()).map_err(|_| error(StatusCode::NOT_FOUND, "not_found"))
+fn tenant_id(raw: &str) -> Result<TenantId, StatusCode> {
+    TenantId::parse(raw.to_owned()).map_err(|_| StatusCode::NOT_FOUND)
 }
 
 fn map_store_error(error_value: ApiCredentialError) -> Response {
@@ -200,8 +199,9 @@ async fn create_client(
     headers: HeaderMap,
     Json(request): Json<CreateClientRequest>,
 ) -> Result<Json<ClientResponse>, Response> {
-    let actor = human_actor(&state, &headers)?;
-    let tenant = tenant_id(&raw_tenant)?;
+    let actor = human_actor(&state, &headers)
+        .map_err(|status| error(status, "unauthorized"))?;
+    let tenant = tenant_id(&raw_tenant).map_err(|status| error(status, "not_found"))?;
     let client = api_credentials::create_api_client(
         &state.pool,
         &tenant,
