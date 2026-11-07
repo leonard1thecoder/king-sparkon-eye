@@ -5,7 +5,7 @@ use king_sparkon_eye::persistence::{
     api_credentials::create_api_client,
     identity_registry::{create_enrollment_intent, create_identity, EnrollmentIntentOutcome},
     jobs::{EnqueueOutcome, FailureClass, JobStore},
-    tenants::{create_tenant, TenantId},
+    tenants::{begin_tenant_transaction, create_tenant, TenantId},
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -37,8 +37,10 @@ async fn fixture(pool: &PgPool) -> (TenantId, String) {
 }
 async fn approve_fixture_enrollment(pool: &PgPool, tenant: &TenantId, enrollment: &str) {
     // Test-only simulation of an independently approved evaluation gate.
+    let mut tx=begin_tenant_transaction(pool,tenant).await.unwrap();
     sqlx::query("UPDATE eye_identity_enrollments SET status='QUEUED',blocked_reason=NULL,updated_at_ms=created_at_ms+1 WHERE tenant_id=$1 AND enrollment_id=$2")
-        .bind(tenant.as_str()).bind(enrollment).execute(pool).await.unwrap();
+        .bind(tenant.as_str()).bind(enrollment).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
 }
 
 #[tokio::test]
