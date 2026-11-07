@@ -316,7 +316,7 @@ fn map_verification_error(e:verification::VerificationStoreError)->Response {
 async fn create_scope(
     State(state):State<IdentityState>, headers:HeaderMap, Json(req):Json<CreateScopeRequest>
 )->Result<(StatusCode,Json<ScopeResponse>),Response>{
-    let p=principal(&state,&headers,"identity_scopes:write").await?;
+    let p=principal(&state,&headers,"scopes:write").await?;
     let tenant=TenantId::parse(p.tenant_id.as_str()).map_err(|_|error(StatusCode::UNAUTHORIZED,"unauthorized"))?;
     let scope=verification::VerificationStore::new(state.pool.clone())
         .create_scope(&tenant,&req.external_reference,&req.display_name,req.description.as_deref(),now_ms())
@@ -326,7 +326,7 @@ async fn create_scope(
 async fn add_scope_member(
     State(state):State<IdentityState>,Path((scope_id,identity_id)):Path<(String,String)>,headers:HeaderMap
 )->Result<StatusCode,Response>{
-    let p=principal(&state,&headers,"identity_scopes:write").await?;
+    let p=principal(&state,&headers,"scopes:write").await?;
     let tenant=TenantId::parse(p.tenant_id.as_str()).map_err(|_|error(StatusCode::UNAUTHORIZED,"unauthorized"))?;
     verification::VerificationStore::new(state.pool.clone()).add_member(&tenant,&scope_id,&identity_id,now_ms())
         .await.map_err(map_verification_error)?;
@@ -335,7 +335,7 @@ async fn add_scope_member(
 async fn remove_scope_member(
     State(state):State<IdentityState>,Path((scope_id,identity_id)):Path<(String,String)>,headers:HeaderMap
 )->Result<StatusCode,Response>{
-    let p=principal(&state,&headers,"identity_scopes:write").await?;
+    let p=principal(&state,&headers,"scopes:write").await?;
     let tenant=TenantId::parse(p.tenant_id.as_str()).map_err(|_|error(StatusCode::UNAUTHORIZED,"unauthorized"))?;
     verification::VerificationStore::new(state.pool.clone()).remove_member(&tenant,&scope_id,&identity_id,now_ms())
         .await.map_err(map_verification_error)?;
@@ -375,7 +375,7 @@ impl From<verification::VerificationSession> for VerificationSessionResponse {
 async fn create_verification_session(
     State(state):State<IdentityState>,headers:HeaderMap,Json(req):Json<CreateVerificationSessionRequest>
 )->Result<(StatusCode,[(axum::http::HeaderName,axum::http::HeaderValue);1],Json<VerificationSessionResponse>),Response>{
-    let p=principal(&state,&headers,"verification:write").await?;
+    let p=principal(&state,&headers,"verification:create").await?;
     let key=idempotency_key(&headers)?;
     let tenant=TenantId::parse(p.tenant_id.as_str()).map_err(|_|error(StatusCode::UNAUTHORIZED,"unauthorized"))?;
     let (created,session)=verification::VerificationStore::new(state.pool.clone()).create_session(
@@ -398,7 +398,7 @@ async fn get_verification_session(
 async fn cancel_verification_session(
     State(state):State<IdentityState>,Path(session_id):Path<String>,headers:HeaderMap
 )->Result<Json<VerificationSessionResponse>,Response>{
-    let p=principal(&state,&headers,"verification:write").await?;
+    let p=principal(&state,&headers,"verification:create").await?;
     let tenant=TenantId::parse(p.tenant_id.as_str()).map_err(|_|error(StatusCode::UNAUTHORIZED,"unauthorized"))?;
     let session=verification::VerificationStore::new(state.pool.clone()).cancel_session(&tenant,&session_id,now_ms())
         .await.map_err(map_verification_error)?;
@@ -409,7 +409,7 @@ async fn cancel_verification_session(
 async fn submit_verification_capture(
     State(state):State<IdentityState>,Path(_session_id):Path<String>,headers:HeaderMap
 )->Result<Response,Response>{
-    let p=principal(&state,&headers,"verification:write").await?;
+    let p=principal(&state,&headers,"verification:create").await?;
     let _key=idempotency_key(&headers)?;
     let tenant=TenantId::parse(p.tenant_id.as_str()).map_err(|_|error(StatusCode::UNAUTHORIZED,"unauthorized"))?;
     let session=verification::VerificationStore::new(state.pool.clone())
