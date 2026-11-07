@@ -82,7 +82,7 @@ impl PrivacyStore {
         version:&str,effective_at_ms:i64,now_ms:i64)->Result<RetentionPolicy,PrivacyStoreError>{
         if !matches!(data_class,"ORIGINAL_CAPTURE"|"FACE_TEMPLATE"|"EVIDENCE_METADATA"|"AUDIT_RECORD")
             ||retention_ms<=0||!safe_ref(version,128)
-            ||effective_at_ms<=0||now_ms<=0||effective_at_ms<now_ms {
+            ||effective_at_ms<=0||now_ms<=0||effective_at_ms>now_ms {
             return Err(PrivacyStoreError::InvalidInput);
         }
         let mut tx=self.pool.begin().await?;
@@ -92,10 +92,13 @@ impl PrivacyStore {
         let row=sqlx::query("INSERT INTO eye_retention_policies(policy_id,tenant_id,data_class,retention_ms,policy_version,effective_at_ms,active,created_at_ms) VALUES($1,$2,$3,$4,$5,$6,TRUE,$7) RETURNING policy_id,data_class,retention_ms,policy_version,effective_at_ms")
             .bind(&id).bind(tenant.as_str()).bind(data_class).bind(retention_ms).bind(version).bind(effective_at_ms).bind(now_ms)
             .fetch_one(&mut *tx).await?;
-        tx.commit().await?;
-        Ok(RetentionPolicy{policy_id:row.try_get("policy_id")?,data_class:row.try_get("data_class")?,
+        let policy=RetentionPolicy{policy_id:row.try_get("policy_id")?,data_class:row.try_get("data_class")?,
             retention_ms:row.try_get("retention_ms")?,policy_version:row.try_get("policy_version")?,
-            effective_at_ms:row.try_get("effective_at_ms")?})
+            effective_at_ms:row.try_get("effective_at_ms")?};
+        sqlx::query("INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,outcome,metadata,created_at_ms) VALUES($1,'SYSTEM','privacy-policy-manager','RETENTION_POLICY_SET','RETENTION_POLICY',$2,'SUCCESS',$3,$4)")
+            .bind(tenant.as_str()).bind(&policy.policy_id).bind(serde_json::json!({"dataClass":data_class,"policyVersion":version,"retentionMs":retention_ms})).bind(now_ms).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(policy)
     }
 
     pub async fn active_retention_policy(&self,tenant:&TenantId,data_class:&str,now_ms:i64)
@@ -210,10 +213,12 @@ impl PrivacyStore {
         let Some(row)=row else {tx.rollback().await?;return Ok(false)};
         let target_kind:String=row.try_get("target_kind")?;
         let target_ref:String=row.try_get("target_ref")?;
-        if target_kind=="EVIDENCE" {
+        if matches!(target_kind.as_str(),"EVIDENCE"|"FACE_TEMPLATE") {
             sqlx::query("UPDATE eye_evidence_references SET status='DELETED',deleted_at_ms=$3 WHERE tenant_id=$1 AND evidence_id=$2 AND status='DELETE_PENDING'")
                 .bind(tenant.as_str()).bind(target_ref).bind(now_ms).execute(&mut *tx).await?;
         }
+        sqlx::query("INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,outcome,metadata,created_at_ms) VALUES($1,'SYSTEM',$2,'DELETION_COMPLETED','DELETION_REQUEST',$3,'SUCCESS',$4,$5)")
+            .bind(tenant.as_str()).bind(worker_id).bind(deletion_id).bind(serde_json::json!({"targetKind":target_kind,"targetRef":target_ref})).bind(now_ms).execute(&mut *tx).await?;
         tx.commit().await?;Ok(true)
     }
 
