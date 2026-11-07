@@ -261,8 +261,8 @@ async fn rotate_credential(
     headers: HeaderMap,
     Json(request): Json<RotateCredentialRequest>,
 ) -> Result<Json<CredentialResponse>, Response> {
-    let actor = human_actor(&state, &headers)?;
-    let tenant = tenant_id(&raw_tenant)?;
+    let actor = human_actor(&state, &headers).map_err(map_human_error)?;
+    let tenant = tenant_id(&raw_tenant).map_err(|status| error(status, "not_found"))?;
     let credential = api_credentials::rotate_api_credential(
         &state.pool,
         &tenant,
