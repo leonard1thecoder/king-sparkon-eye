@@ -5,7 +5,7 @@ use king_sparkon_eye::persistence::{
     api_credentials::create_api_client,
     connect, migrate,
     identity_registry::{create_enrollment_intent, create_identity, delete_identity, get_identity, get_enrollment_intent, revoke_identity, EnrollmentIntentOutcome, IdentityStoreError},
-    tenants::{TenantId, create_tenant},
+    tenants::{begin_tenant_transaction, TenantId, create_tenant},
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -199,4 +199,64 @@ async fn enrollment_intents_are_durable_idempotent_and_blocked_by_evaluation_gat
     assert_eq!(enrollment_audits, vec![
         "ENROLLMENT_BLOCKED", "ENROLLMENT_REVOKED", "ENROLLMENT_DELETED"
     ]);
+}
+
+
+#[tokio::test]
+async fn identity_tables_enforce_transaction_local_rls_for_reads_and_writes() {
+    let Some(pool) = pool().await else { return };
+
+    // RLS is not a security boundary for superusers or BYPASSRLS roles. The
+    // application/test connection must use the same restricted role as runtime.
+    let (is_superuser, bypass_rls): (bool, bool) = sqlx::query_as(
+        "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("inspect current PostgreSQL role");
+    assert!(!is_superuser, "EYE_TEST_DATABASE_URL must not use a superuser role");
+    assert!(!bypass_rls, "EYE_TEST_DATABASE_URL role must not have BYPASSRLS");
+
+    let owner_a = seed_user(&pool).await;
+    let owner_b = seed_user(&pool).await;
+    let tenant_a = tenant(&pool, &owner_a).await;
+    let tenant_b = tenant(&pool, &owner_b).await;
+    let client_a = client(&pool, &tenant_a, &owner_a).await;
+    let identity = create_identity(
+        &pool, &tenant_a, "rls-subject-a", json!({}), &client_a, &owner_a,
+        1_800_000_000_101,
+    ).await.expect("create identity under tenant A");
+
+    let visible_without_context: i64 = sqlx::query_scalar("SELECT count(*) FROM eye_identities")
+        .fetch_one(&pool).await.expect("query without tenant context");
+    assert_eq!(visible_without_context, 0, "missing tenant context must fail closed");
+
+    let mut tx_a = begin_tenant_transaction(&pool, &tenant_a).await.unwrap();
+    let visible_a: i64 = sqlx::query_scalar("SELECT count(*) FROM eye_identities WHERE identity_id=$1")
+        .bind(&identity.identity_id).fetch_one(&mut *tx_a).await.unwrap();
+    assert_eq!(visible_a, 1);
+    tx_a.commit().await.unwrap();
+
+    let mut tx_b = begin_tenant_transaction(&pool, &tenant_b).await.unwrap();
+    let visible_b: i64 = sqlx::query_scalar("SELECT count(*) FROM eye_identities WHERE identity_id=$1")
+        .bind(&identity.identity_id).fetch_one(&mut *tx_b).await.unwrap();
+    assert_eq!(visible_b, 0, "tenant B must not read tenant A identity");
+
+    let attempted = sqlx::query(
+        "INSERT INTO eye_identities (identity_id,tenant_id,external_reference,created_at_ms,updated_at_ms) VALUES ($1,$2,$3,$4,$4)",
+    )
+    .bind(format!("idy_{}", Uuid::new_v4().simple()))
+    .bind(tenant_a.as_str())
+    .bind("cross-tenant-write")
+    .bind(1_800_000_000_102_i64)
+    .execute(&mut *tx_b)
+    .await;
+    assert!(attempted.is_err(), "tenant B context must reject tenant A writes");
+    let error = attempted.unwrap_err();
+    assert_eq!(
+        error.as_database_error().and_then(|db| db.code()).as_deref(),
+        Some("42501"),
+        "cross-tenant write must be rejected by PostgreSQL RLS"
+    );
+    tx_b.rollback().await.unwrap();
 }
