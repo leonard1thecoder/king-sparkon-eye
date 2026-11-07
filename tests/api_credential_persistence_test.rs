@@ -3,9 +3,8 @@
 
 use king_sparkon_eye::persistence::{
     api_credentials::{
-        ApiCredentialError, authenticate_api_credential, consume_rate_limit,
-        create_api_client, create_api_credential, revoke_api_credential,
-        rotate_api_credential,
+        ApiCredentialError, authenticate_api_credential, consume_rate_limit, create_api_client,
+        create_api_credential, revoke_api_credential, rotate_api_credential,
     },
     connect, migrate,
     tenants::{TenantId, create_tenant},
@@ -104,13 +103,12 @@ async fn credential_resolves_tenant_from_database_and_enforces_scopes() {
         Err(ApiCredentialError::InsufficientScope)
     );
 
-    let (stored_hash, stored_salt): (String, String) = sqlx::query_as(
-        "SELECT key_hash, salt FROM eye_api_credentials WHERE credential_id=$1",
-    )
-    .bind(&created.credential_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let (stored_hash, stored_salt): (String, String) =
+        sqlx::query_as("SELECT key_hash, salt FROM eye_api_credentials WHERE credential_id=$1")
+            .bind(&created.credential_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_ne!(stored_hash, created.raw_secret);
     assert!(!stored_hash.contains(&created.raw_secret));
     assert!(!stored_salt.is_empty());
@@ -255,13 +253,7 @@ async fn rotation_revokes_old_secret_and_returns_new_secret_once() {
     .unwrap();
 
     assert_eq!(
-        authenticate_api_credential(
-            &pool,
-            &old.raw_secret,
-            None,
-            1_800_000_000_400,
-        )
-        .await,
+        authenticate_api_credential(&pool, &old.raw_secret, None, 1_800_000_000_400,).await,
         Err(ApiCredentialError::InvalidCredential)
     );
     assert!(
