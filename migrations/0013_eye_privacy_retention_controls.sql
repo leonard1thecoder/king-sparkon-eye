@@ -124,3 +124,16 @@ DROP TRIGGER IF EXISTS trg_eye_queue_identity_evidence_deletion ON eye_identitie
 CREATE TRIGGER trg_eye_queue_identity_evidence_deletion
 AFTER UPDATE OF status ON eye_identities
 FOR EACH ROW EXECUTE FUNCTION eye_queue_identity_evidence_deletion();
+
+
+-- Audit events are immutable after insertion; approved retention cleanup may delete expired rows.
+CREATE OR REPLACE FUNCTION eye_reject_audit_event_update()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'eye audit events are immutable';
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_eye_audit_events_immutable ON eye_audit_events;
+CREATE TRIGGER trg_eye_audit_events_immutable
+BEFORE UPDATE ON eye_audit_events
+FOR EACH ROW EXECUTE FUNCTION eye_reject_audit_event_update();
