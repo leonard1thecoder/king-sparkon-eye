@@ -8,7 +8,7 @@ use sqlx::{PgPool, Row};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::persistence::tenants::TenantId;
+use crate::persistence::tenants::{begin_tenant_transaction, TenantId};
 
 const MAX_BATCH: i64 = 100;
 const MAX_LEASE_MS: i64 = 15 * 60 * 1000;
@@ -127,7 +127,7 @@ impl JobStore {
             || !(1..=20).contains(&max_attempts) {
             return Err(JobStoreError::InvalidInput);
         }
-        let mut tx = self.pool.begin().await?;
+        let mut tx = begin_tenant_transaction(&self.pool, tenant_id).await?;
         // Resolve idempotent retries before checking mutable aggregate state.
         let existing = sqlx::query(&format!(
             "SELECT {JOB_COLUMNS} FROM eye_processing_jobs WHERE tenant_id=$1 AND resource_type=$2 AND resource_id=$3 AND idempotency_key=$4 FOR UPDATE"
