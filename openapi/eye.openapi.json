@@ -87,7 +87,7 @@
     "/v1/enrollment/photo-assessments": {
       "post": {
         "summary": "Assess a buyer enrollment photo",
-        "description": "Requires a bearer JWT with the `enrollment:write` scope. Validates and normalizes an uploaded JPEG or static PNG, runs the YuNet-backed assessment pipeline, and returns structured suitability. Until quality thresholds are calibrated against a consented evaluation dataset, a nominal pass is downgraded to ASSESSMENT_UNAVAILABLE. Persistence is NOT_REQUESTED; this endpoint does not enroll or admit a person. Muse Spark guidance is not requested by this endpoint because the current response contract does not expose guidance.",
+        "description": "Requires a bearer JWT with the `enrollment:write` scope. Validates and normalizes an uploaded JPEG or static PNG, runs the YuNet-backed assessment pipeline, and returns structured suitability. Until quality thresholds are calibrated against a consented evaluation dataset, a nominal pass is downgraded to ASSESSMENT_UNAVAILABLE. Persistence is NOT_REQUESTED; this endpoint does not enroll or admit a person. Muse Spark guidance is not requested by this endpoint because the current response contract does not expose guidance. This legacy synchronous assessment operation is not the asynchronous enrollment or verification-session contract.",
         "operationId": "createPhotoAssessment",
         "requestBody": {
           "required": true,
@@ -190,13 +190,14 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "deprecated": true
       }
     },
     "/v1/gate/identifications": {
       "post": {
         "summary": "Identify an attendee at the gate (QR-free)",
-        "description": "Accepts a live capture and a server-issued, event-scoped gate session reference. No ticket QR data and no ticket ID are sent in the primary flow. Rust searches only the session's authorized event gallery and returns a candidate outcome. The result is not an admission. Spring Boot resolves the candidate to a ticket, and a worker must approve entry.",
+        "description": "Accepts a live capture and a server-issued, event-scoped gate session reference. No ticket QR data and no ticket ID are sent in the primary flow. Rust searches only the session's authorized event gallery and returns a candidate outcome. The result is not an admission. Spring Boot resolves the candidate to a ticket, and a worker must approve entry. This is a legacy event/gate-specific operation retained for compatibility and is not the generic platform identification contract; use /v1/verification-sessions with mode IDENTIFY for the standalone API.",
         "operationId": "createGateIdentification",
         "requestBody": {
           "required": true,
@@ -288,7 +289,8 @@
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
           }
-        }
+        },
+        "deprecated": true
       }
     },
     "/v1/billing/checkout": {
@@ -1118,8 +1120,8 @@
               }
             }
           },
-          "413": {
-            "description": "Capture exceeds configured ingress limit.",
+          "409": {
+            "description": "Session has expired, been cancelled or no longer accepts captures.",
             "content": {
               "application/json": {
                 "schema": {
