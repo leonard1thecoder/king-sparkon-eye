@@ -143,7 +143,8 @@ async fn create_identity(
     let principal = principal(&state, &headers, "identities:write").await?;
     let tenant = TenantId::parse(principal.tenant_id.as_str()).map_err(|_| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
     let identity = identity_registry::create_identity(
-        &state.pool, &tenant, &request.external_reference, request.metadata, now_ms(),
+        &state.pool, &tenant, &request.external_reference, request.metadata,
+        &principal.client_id, &principal.owner_user_id, now_ms(),
     ).await.map_err(map_identity_error)?;
     Ok((StatusCode::CREATED, Json(identity.into())))
 }
