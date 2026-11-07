@@ -3,7 +3,7 @@
 
 use king_sparkon_eye::persistence::{
     connect, migrate,
-    tenants::{begin_tenant_transaction, create_tenant, TenantId, TenantStoreError},
+    tenants::{TenantId, TenantStoreError, begin_tenant_transaction, create_tenant},
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -80,21 +80,19 @@ async fn tenant_context_is_transaction_local_and_does_not_leak_to_reused_connect
     let mut tx = begin_tenant_transaction(&pool, &tenant.tenant_id)
         .await
         .unwrap();
-    let active: String =
-        sqlx::query_scalar("SELECT current_setting('eye.tenant_id', TRUE)")
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap();
+    let active: String = sqlx::query_scalar("SELECT current_setting('eye.tenant_id', TRUE)")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
     assert_eq!(active, tenant.tenant_id.as_str());
     tx.commit().await.unwrap();
 
     let mut connection = pool.acquire().await.unwrap();
-    let leaked: Option<String> = sqlx::query_scalar(
-        "SELECT NULLIF(current_setting('eye.tenant_id', TRUE), '')",
-    )
-    .fetch_one(&mut *connection)
-    .await
-    .unwrap();
+    let leaked: Option<String> =
+        sqlx::query_scalar("SELECT NULLIF(current_setting('eye.tenant_id', TRUE), '')")
+            .fetch_one(&mut *connection)
+            .await
+            .unwrap();
     assert_eq!(leaked, None);
 }
 
