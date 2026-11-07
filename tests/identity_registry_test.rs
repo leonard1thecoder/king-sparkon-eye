@@ -227,9 +227,14 @@ async fn identity_tables_enforce_transaction_local_rls_for_reads_and_writes() {
         1_800_000_000_101,
     ).await.expect("create identity under tenant A");
 
-    let visible_without_context: i64 = sqlx::query_scalar("SELECT count(*) FROM eye_identities")
+    let (identities_without_context, enrollments_without_context, audit_without_context): (i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT (SELECT count(*) FROM eye_identities), (SELECT count(*) FROM eye_identity_enrollments), (SELECT count(*) FROM eye_identity_audit)",
+        )
         .fetch_one(&pool).await.expect("query without tenant context");
-    assert_eq!(visible_without_context, 0, "missing tenant context must fail closed");
+    assert_eq!(identities_without_context, 0, "identity table must fail closed");
+    assert_eq!(enrollments_without_context, 0, "enrollment table must fail closed");
+    assert_eq!(audit_without_context, 0, "audit table must fail closed");
 
     let mut tx_a = begin_tenant_transaction(&pool, &tenant_a).await.unwrap();
     let visible_a: i64 = sqlx::query_scalar("SELECT count(*) FROM eye_identities WHERE identity_id=$1")
