@@ -3,13 +3,7 @@
 //! Billing uses a dedicated native PostgreSQL DSN. It never reuses the OAuth PostgREST URL.
 //! This runtime intentionally accepts test Stripe mode only until live billing is separately approved.
 
-use std::str::FromStr;
-use std::time::Duration;
-
-use sqlx::{
-    PgPool,
-    postgres::{PgConnectOptions, PgPoolOptions, PgSslMode},
-};
+use sqlx::PgPool;
 use thiserror::Error;
 
 use crate::billing::stripe::{ReturnUrlPolicy, StripeClient, StripeMode, StripeSettings};
@@ -94,21 +88,7 @@ impl BillingRuntime {
         {
             return Err(BillingRuntimeError::InvalidConfiguration);
         }
-        let local_database = matches!(
-            parsed_database_url.host_str(),
-            Some("localhost" | "127.0.0.1" | "[::1]")
-        );
-        let connect_options = PgConnectOptions::from_str(&database_url)
-            .map_err(|_| BillingRuntimeError::InvalidConfiguration)?
-            .ssl_mode(if local_database {
-                PgSslMode::Disable
-            } else {
-                PgSslMode::Require
-            });
-        let pool = PgPoolOptions::new()
-            .max_connections(8)
-            .acquire_timeout(Duration::from_secs(5))
-            .connect_with(connect_options)
+        let pool = persistence::connect(&database_url)
             .await
             .map_err(|_| BillingRuntimeError::DatabaseUnavailable)?;
         persistence::migrate(&pool)
