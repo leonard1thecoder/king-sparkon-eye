@@ -152,3 +152,23 @@ async fn evidence_access_is_authorized_tenant_scoped_and_audited_atomically(){
     assert_eq!(audit_count,0,"denied cross-tenant reads must not create success audit events");
     tx.rollback().await.unwrap();
 }
+
+
+#[tokio::test]
+async fn evidence_metadata_rejects_private_object_locations_and_urls(){
+    let Some(pool)=pool().await else{return};
+    let owner=owner(&pool).await;let tenant=tenant(&pool,&owner).await;
+    let store=PrivacyStore::new(pool);
+    store.set_retention_policy(&tenant,"EVIDENCE_METADATA",86_400_000,
+        "evidence-metadata-v1",1_800_000_000_000,1_800_000_000_000).await.unwrap();
+    for metadata in [
+        json!({"objectKey":"private/evidence/object-1"}),
+        json!({"downloadUrl":"https://bucket.example/object?X-Amz-Signature=secret"}),
+        json!({"nested":{"s3_key":"private/evidence/object-2"}}),
+    ] {
+        let result=store.register_evidence_reference(&tenant,"IDENTITY","idy_metadata_subject",
+            "SUPPORTING_EVIDENCE","private/evidence/object-safe",metadata,
+            "API_CLIENT","cli_metadata_writer",1_800_000_000_001).await;
+        assert_eq!(result.unwrap_err(),PrivacyStoreError::InvalidInput);
+    }
+}
