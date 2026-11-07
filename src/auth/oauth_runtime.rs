@@ -19,8 +19,6 @@ use reqwest::Client;
 use serde::Deserialize;
 use tokio::sync::RwLock;
 
-use crate::persistence;
-
 use crate::api::AppState;
 use crate::auth::durable_store::{
     DurableEyeStore, DurableStoreError, DurableUser, PasswordCredentials, RegisterUserInput,
@@ -39,6 +37,7 @@ use crate::auth::password::{
     Verification, hash_password, spend_equivalent_time, verify_stored_password,
 };
 use crate::config::OAuthRuntimeConfig;
+use crate::persistence;
 use crate::error::{ApiError, ValidationError};
 
 const OAUTH_COOKIE: &str = "eye_oauth_transaction";
