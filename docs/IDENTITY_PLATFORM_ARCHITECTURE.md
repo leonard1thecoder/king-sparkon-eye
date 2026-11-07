@@ -44,7 +44,9 @@ The platform's logical resource families are:
 - Tenant-owned identities and enrollment records.
 - Tenant-owned identity scopes and membership edges.
 - Verification sessions, capture metadata, processing attempts and typed results.
-- Protected biometric templates and evidence references, subject to separately approved retention and deletion rules.
+- Protected biometric templates and tenant-scoped evidence references, each governed by an explicit retention policy; no universal retention period is assumed.
+- Append-only-by-convention audit events with actor, tenant, action, resource, request and outcome metadata; biometric bytes, embeddings, templates, credentials and signed URLs are rejected from audit metadata.
+- Retryable, lease-fenced deletion requests; a completed database request is not proof that an external object was deleted until the storage worker confirms it.
 - Tenant-bound machine clients and API credentials.
 - Tenant-owned webhook endpoints, delivery attempts and audit metadata.
 
@@ -59,7 +61,7 @@ The processing lifecycle distinguishes **processing state** from **verification 
 
 ## 4. API design and compatibility rules
 
-The canonical public contract is `openapi/eye.openapi.json`, updated by #186 with tenant-owned identity scopes and asynchronous verification-session metadata APIs. Legacy photo-assessment and event/gate-identification operations remain in the document for compatibility and are marked deprecated; they are not the generic platform contract. The #186 implementation is partial: capture ingress returns `503 evaluation_gate_closed` before reading bytes until #95 and #189 prerequisites are resolved and #187 durable processing is integrated.
+The canonical public contract is `openapi/eye.openapi.json`, updated by #186 with tenant-owned identity scopes and asynchronous verification-session metadata APIs. Legacy photo-assessment and event/gate-identification operations remain in the document for compatibility and are marked deprecated; they are not the generic platform contract. The #186 implementation is partial and merged: capture ingress returns `503 evaluation_gate_closed` before reading bytes until #95 and #189 prerequisites are resolved and #187's durable worker execution is integrated. #187 has merged persistence/lease/outbox primitives, not a supervised inference runtime.
 
 Approved design rules:
 
@@ -72,7 +74,7 @@ Approved design rules:
 7. Webhook event schemas are independently versioned. Delivery is at-least-once; consumers deduplicate using a stable event identifier. Webhook signatures cover the exact transmitted body and timestamp.
 8. Do not expose proposed endpoints, fields, status values or examples as implemented behavior. The OpenAPI document and contract tests are authoritative once finalized.
 
-The #186 OpenAPI update finalizes the initial scope/session metadata payloads, tenant/client-scoped Idempotency-Key behavior and stable response shapes. Capture success semantics, actual asynchronous job admission, retention periods, recognition thresholds and webhook event names remain gated or separately owned by #95, #187, #189 and #188.
+The #186 OpenAPI update finalizes the initial scope/session metadata payloads, tenant/client-scoped Idempotency-Key behavior and stable response shapes. Capture success semantics and actual asynchronous job admission remain unfinished under #265; retention periods are tenant-configured through #189 and are not assigned universal defaults; recognition thresholds and webhook event names remain separately owned by #95 and #188.
 
 ## 5. Security and privacy threat model
 
