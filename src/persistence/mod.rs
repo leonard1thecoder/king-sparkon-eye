@@ -53,7 +53,13 @@ pub fn connect_lazy(database_url: &str) -> Result<PgPool, sqlx::Error> {
 
 /// Embedded migrations from `migrations/`. Applied explicitly, never silently
 /// at request time.
-pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+pub static MIGRATOR: std::sync::LazyLock<sqlx::migrate::Migrator> =
+    std::sync::LazyLock::new(|| {
+        let mut migrator = sqlx::migrate!("./migrations");
+        migrator.dangerous_set_table_name("eye._sqlx_migrations");
+        migrator.create_schema("eye");
+        migrator
+    });
 
 /// Apply all pending migrations. Idempotent.
 pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
