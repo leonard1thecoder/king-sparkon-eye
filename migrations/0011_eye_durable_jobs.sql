@@ -65,3 +65,56 @@ CREATE TABLE IF NOT EXISTS eye_platform_outbox (
 CREATE INDEX IF NOT EXISTS ix_eye_platform_outbox_due
     ON eye_platform_outbox(status, next_attempt_at_ms, created_at_ms)
     WHERE status IN ('PENDING','IN_FLIGHT');
+
+-- Revoking/deleting the enrollment aggregate fences active workers and cancels queued work.
+-- The cancellation event is written in the same transaction as the aggregate/job transition.
+CREATE OR REPLACE FUNCTION eye_cancel_jobs_for_revoked_enrollment()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    job_row RECORD;
+    event_id TEXT;
+BEGIN
+    IF NEW.status NOT IN ('REVOKED', 'DELETED') OR OLD.status IN ('REVOKED', 'DELETED') THEN
+        RETURN NEW;
+    END IF;
+    FOR job_row IN
+        UPDATE eye_processing_jobs
+           SET status = 'CANCELLED',
+               lease_token = NULL,
+               worker_id = NULL,
+               lease_until_ms = NULL,
+               completed_at_ms = NEW.updated_at_ms,
+               updated_at_ms = NEW.updated_at_ms
+         WHERE tenant_id = NEW.tenant_id
+           AND resource_type = 'IDENTITY_ENROLLMENT'
+           AND resource_id = NEW.enrollment_id
+           AND status IN ('QUEUED', 'PROCESSING')
+         RETURNING job_id, tenant_id, resource_type, resource_id
+    LOOP
+        event_id := 'evt_' || md5(job_row.job_id || ':job.cancelled.v1');
+        INSERT INTO eye_platform_outbox (
+            event_id, tenant_id, job_id, event_type, payload, status, attempts,
+            next_attempt_at_ms, created_at_ms, updated_at_ms
+        ) VALUES (
+            event_id, job_row.tenant_id, job_row.job_id, 'job.cancelled.v1',
+            jsonb_build_object(
+                'eventId', event_id,
+                'eventType', 'job.cancelled.v1',
+                'eventVersion', '1.0.0',
+                'jobId', job_row.job_id,
+                'resourceType', job_row.resource_type,
+                'resourceId', job_row.resource_id,
+                'status', 'CANCELLED',
+                'occurredAtMs', NEW.updated_at_ms
+            ),
+            'PENDING', 0, NEW.updated_at_ms, NEW.updated_at_ms, NEW.updated_at_ms
+        ) ON CONFLICT (job_id, event_type) DO NOTHING;
+    END LOOP;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_eye_cancel_jobs_for_revoked_enrollment ON eye_identity_enrollments;
+CREATE TRIGGER trg_eye_cancel_jobs_for_revoked_enrollment
+AFTER UPDATE OF status ON eye_identity_enrollments
+FOR EACH ROW EXECUTE FUNCTION eye_cancel_jobs_for_revoked_enrollment();
