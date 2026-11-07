@@ -80,7 +80,7 @@ The distinction below is deliberate: a proposed API or repository abstraction is
 | Face embeddings and 1:1 matching | **Not implemented** | SFace is a documented target contract; weights/adapter and evaluation are not complete. |
 | Scoped 1:N identification | **Not implemented** | Legacy gate-identification contracts are not a live platform API. No global search exists. |
 | Tenant API credentials | **Implemented foundation** | Human JWT management and machine credential issuance/authentication, scopes, rotation, revocation and rate limits are merged in [#184](https://github.com/leonard1thecoder/king-sparkon-eye/issues/184). Full repository-wide tenant scoping and PostgreSQL RLS remain in [#260](https://github.com/leonard1thecoder/king-sparkon-eye/issues/260). |
-| Identity registry | **Partial implementation (issue #185 branch)** | Machine-authenticated create/read/revoke/soft-delete routes, tenant-local external-reference uniqueness and audit are implemented on the issue branch. Face enrollment, asynchronous processing, templates and biometric cleanup remain incomplete; see [identity registry contract/status](docs/IDENTITY_REGISTRY.md), [#95](https://github.com/leonard1thecoder/king-sparkon-eye/issues/95) and [#187](https://github.com/leonard1thecoder/king-sparkon-eye/issues/187). |
+| Identity registry | **Partial implementation (issue #185 branch)** | Machine-authenticated create/read/revoke/soft-delete routes plus durable, idempotent enrollment intents and tenant-scoped status reads are implemented on the issue branch. Enrollment intents remain `BLOCKED_EVALUATION` while #95 is open; no capture/template is stored and no job is queued. Worker execution belongs to #187, and retention/deletion controls to #189; see [identity registry contract/status](docs/IDENTITY_REGISTRY.md). |
 | Generic scopes and verification-session API | **Planned** | [#186](https://github.com/leonard1thecoder/king-sparkon-eye/issues/186). |
 | Durable asynchronous verification jobs | **Planned** | [#187](https://github.com/leonard1thecoder/king-sparkon-eye/issues/187). Existing outbox persistence primitives are not an async verification worker runtime. |
 | Signed webhooks | **Planned** | [#188](https://github.com/leonard1thecoder/king-sparkon-eye/issues/188). |
@@ -137,6 +137,8 @@ These are the existing routes plus the machine-authenticated identity-registry r
 | GET | `/v1/identities/{identity_id}` | Machine credential with `identities:read`; tenant-scoped lookup. |
 | POST | `/v1/identities/{identity_id}/revoke` | Machine credential with `identities:write`; audited revocation. |
 | DELETE | `/v1/identities/{identity_id}` | Machine credential with `identities:write`; audited soft deletion. |
+| POST | `/v1/identities/{identity_id}/face-enrollments` | Machine credential with `identities:write`; creates an idempotent intent, currently `BLOCKED_EVALUATION` by #95. |
+| GET | `/v1/identities/{identity_id}/face-enrollments/{enrollment_id}` | Machine credential with `identities:read`; reads tenant-scoped enrollment state. |
 | POST | `/v1/auth/register` | Account registration. |
 | POST | `/v1/auth/login` | Password login and token issuance. |
 | POST | `/v1/auth/refresh` | Refresh-token rotation. |
@@ -287,7 +289,7 @@ The standalone platform is tracked by [epic #181](https://github.com/leonard1the
 1. [#182 — architecture and API design rules](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182)
 2. [#183 — tenant-isolated persistence](https://github.com/leonard1thecoder/king-sparkon-eye/issues/183)
 3. [#184 — tenant-bound API clients and permissions](https://github.com/leonard1thecoder/king-sparkon-eye/issues/184)
-4. [#185 — identity registry and face enrollment](https://github.com/leonard1thecoder/king-sparkon-eye/issues/185) — registry routes are partial; face enrollment remains gated by consented evaluation and durable async processing.
+4. [#185 — identity registry and face enrollment](https://github.com/leonard1thecoder/king-sparkon-eye/issues/185) — registry and durable blocked-intent/status routes are partial; capture admission remains gated by #95 and #189, with worker execution in #187.
 5. [#186 — identity scopes and verification-session API](https://github.com/leonard1thecoder/king-sparkon-eye/issues/186)
 6. [#187 — durable asynchronous jobs and result finalization](https://github.com/leonard1thecoder/king-sparkon-eye/issues/187)
 7. [#188 — signed webhooks](https://github.com/leonard1thecoder/king-sparkon-eye/issues/188)
