@@ -59,7 +59,7 @@ async fn identities_are_tenant_unique_and_cross_tenant_reads_are_non_disclosing(
 
     let identity = create_identity(
         &pool, &tenant_a, "external-user-42", json!({"source":"integration"}),
-        1_800_000_000_001,
+        &_client_a, &owner_a, 1_800_000_000_001,
     ).await.expect("create identity");
 
     assert_eq!(
@@ -67,13 +67,15 @@ async fn identities_are_tenant_unique_and_cross_tenant_reads_are_non_disclosing(
         IdentityStoreError::NotFound
     );
     assert_eq!(
-        create_identity(&pool, &tenant_a, "external-user-42", json!({}), 1_800_000_000_002)
+        create_identity(&pool, &tenant_a, "external-user-42", json!({}),
+            &_client_a, &owner_a, 1_800_000_000_002)
             .await.unwrap_err(),
         IdentityStoreError::Conflict
     );
     // The same external reference is valid in a different tenant.
     let other = create_identity(
-        &pool, &tenant_b, "external-user-42", json!({}), 1_800_000_000_003,
+        &pool, &tenant_b, "external-user-42", json!({}),
+        &_client_b, &owner_b, 1_800_000_000_003,
     ).await.expect("tenant-local external reference");
     assert_ne!(identity.identity_id, other.identity_id);
 }
@@ -85,7 +87,8 @@ async fn revocation_and_deletion_are_audited_and_non_reactivating() {
     let tenant_id = tenant(&pool, &owner).await;
     let client_id = client(&pool, &tenant_id, &owner).await;
     let identity = create_identity(
-        &pool, &tenant_id, "revocable-subject", json!({}), 1_800_000_000_010,
+        &pool, &tenant_id, "revocable-subject", json!({}),
+        &client_id, &owner, 1_800_000_000_010,
     ).await.expect("create identity");
 
     let revoked = revoke_identity(
@@ -111,5 +114,5 @@ async fn revocation_and_deletion_are_audited_and_non_reactivating() {
         "SELECT action FROM eye_identity_audit WHERE tenant_id=$1 AND identity_id=$2 ORDER BY audit_id",
     ).bind(tenant_id.as_str()).bind(&identity.identity_id)
         .fetch_all(&pool).await.expect("read identity audit");
-    assert_eq!(actions, vec!["IDENTITY_REVOKED", "IDENTITY_DELETED"]);
+    assert_eq!(actions, vec!["IDENTITY_CREATED", "IDENTITY_REVOKED", "IDENTITY_DELETED"]);
 }
