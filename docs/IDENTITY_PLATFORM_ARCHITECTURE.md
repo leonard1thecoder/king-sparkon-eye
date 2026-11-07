@@ -69,7 +69,7 @@ Approved design rules:
 2. Capture submission is asynchronous: acceptance means the request was durably accepted, not that inference has completed. The API returns a reference that can be used to retrieve status/result.
 3. Resource IDs are opaque. Resource lookup is always tenant-scoped and must not disclose whether another tenant owns a referenced ID.
 4. API errors are typed, stable and privacy-safe. They must not expose stack traces, SQL details, filesystem paths, credentials, biometric material or provider payloads. Exact envelope and field names belong in the OpenAPI contract.
-5. Mutating operations that may be retried need explicit idempotency semantics. Exact header names, retention windows and conflict behavior must be fixed in #186 before clients depend on them.
+5. Mutating operations that may be retried need explicit idempotency semantics. #186 owns session idempotency; #189 owns tenant-configured retention policies and idempotent deletion requests. No retention period is assumed without an approved tenant policy.
 6. Breaking changes require a new major API version. Additive compatible changes may be made within the current version; deprecations require published notice and a migration window defined before enforcement.
 7. Webhook event schemas are independently versioned. Delivery is at-least-once; consumers deduplicate using a stable event identifier. Webhook signatures cover the exact transmitted body and timestamp.
 8. Do not expose proposed endpoints, fields, status values or examples as implemented behavior. The OpenAPI document and contract tests are authoritative once finalized.
