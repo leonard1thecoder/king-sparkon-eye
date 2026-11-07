@@ -55,11 +55,6 @@ pub fn connect_lazy(database_url: &str) -> Result<PgPool, sqlx::Error> {
 /// at request time.
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
-/// Open a pool to Eye's PostgreSQL database.
-pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
-    PgPool::connect(database_url).await
-}
-
 /// Apply all pending migrations. Idempotent.
 pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     MIGRATOR.run(pool).await
