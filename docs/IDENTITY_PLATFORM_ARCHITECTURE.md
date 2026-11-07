@@ -59,7 +59,7 @@ The processing lifecycle distinguishes **processing state** from **verification 
 
 ## 4. API design and compatibility rules
 
-The canonical public contract is the OpenAPI contract produced by #182/#186. The existing `openapi/eye.openapi.json` describes a legacy photo-assessment/gate-identification surface and must not be presented as the canonical standalone platform API.
+The canonical public contract is `openapi/eye.openapi.json`, updated by #186 with tenant-owned identity scopes and asynchronous verification-session metadata APIs. Legacy photo-assessment and event/gate-identification operations remain in the document for compatibility and are marked deprecated; they are not the generic platform contract. The #186 implementation is partial: capture ingress returns `503 evaluation_gate_closed` before reading bytes until #95 and #189 prerequisites are resolved and #187 durable processing is integrated.
 
 Approved design rules:
 
@@ -72,7 +72,7 @@ Approved design rules:
 7. Webhook event schemas are independently versioned. Delivery is at-least-once; consumers deduplicate using a stable event identifier. Webhook signatures cover the exact transmitted body and timestamp.
 8. Do not expose proposed endpoints, fields, status values or examples as implemented behavior. The OpenAPI document and contract tests are authoritative once finalized.
 
-This record intentionally does not finalize endpoint payload schemas, error envelope fields, idempotency header spelling, retention periods, recognition thresholds or webhook event names. Those require implementation-level review and are tracked by #184–#188.
+The #186 OpenAPI update finalizes the initial scope/session metadata payloads, tenant/client-scoped Idempotency-Key behavior and stable response shapes. Capture success semantics, actual asynchronous job admission, retention periods, recognition thresholds and webhook event names remain gated or separately owned by #95, #187, #189 and #188.
 
 ## 5. Security and privacy threat model
 
