@@ -150,7 +150,10 @@ fn now_ms() -> u64 {
 
 fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, Response> {
     let oauth = state.config.oauth.as_ref().ok_or_else(|| {
-        error(StatusCode::SERVICE_UNAVAILABLE, "credential_storage_unavailable")
+        error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "credential_storage_unavailable",
+        )
     })?;
     let secret = oauth.jwt_signing_secret.expose();
     if secret.len() < 32 {
@@ -166,13 +169,8 @@ fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, R
         .map(|(_, token)| token.trim())
         .filter(|token| !token.is_empty())
         .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
-    let claims = verify_access_token(
-        token,
-        &oauth.jwt_kid,
-        secret.as_bytes(),
-        now_ms() / 1000,
-    )
-    .map_err(|_| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
+    let claims = verify_access_token(token, &oauth.jwt_kid, secret.as_bytes(), now_ms() / 1000)
+        .map_err(|_| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
     if !claims.sub.starts_with("usr_") {
         return Err(error(StatusCode::UNAUTHORIZED, "unauthorized"));
     }
@@ -180,8 +178,7 @@ fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, R
 }
 
 fn tenant_id(raw: &str) -> Result<TenantId, Response> {
-    TenantId::parse(raw.to_owned())
-        .map_err(|_| error(StatusCode::NOT_FOUND, "not_found"))
+    TenantId::parse(raw.to_owned()).map_err(|_| error(StatusCode::NOT_FOUND, "not_found"))
 }
 
 fn map_store_error(error_value: ApiCredentialError) -> Response {
@@ -191,7 +188,9 @@ fn map_store_error(error_value: ApiCredentialError) -> Response {
         ApiCredentialError::InvalidCredential => error(StatusCode::UNAUTHORIZED, "unauthorized"),
         ApiCredentialError::InsufficientScope => error(StatusCode::FORBIDDEN, "insufficient_scope"),
         ApiCredentialError::RateLimited => error(StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
-        ApiCredentialError::Unavailable => error(StatusCode::SERVICE_UNAVAILABLE, "storage_unavailable"),
+        ApiCredentialError::Unavailable => {
+            error(StatusCode::SERVICE_UNAVAILABLE, "storage_unavailable")
+        }
     }
 }
 
@@ -277,15 +276,9 @@ async fn revoke_credential(
 ) -> Result<StatusCode, Response> {
     let actor = human_actor(&state, &headers)?;
     let tenant = tenant_id(&raw_tenant)?;
-    api_credentials::revoke_api_credential(
-        &state.pool,
-        &tenant,
-        &credential_id,
-        &actor,
-        now_ms(),
-    )
-    .await
-    .map_err(map_store_error)?;
+    api_credentials::revoke_api_credential(&state.pool, &tenant, &credential_id, &actor, now_ms())
+        .await
+        .map_err(map_store_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
