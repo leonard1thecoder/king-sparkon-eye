@@ -1,0 +1,4 @@
+[migrate]
+# Keep Eye's migration ledger separate from other applications sharing this database.
+table-name = "eye._sqlx_migrations"
+create-schemas = ["eye"]

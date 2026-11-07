@@ -7,6 +7,7 @@
 use std::net::SocketAddr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::persistence;
 use axum::extract::{ConnectInfo, Query, State};
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -17,7 +18,7 @@ use axum::{
 };
 use reqwest::Client;
 use serde::Deserialize;
-use sqlx::postgres::PgPoolOptions;
+use crate::persistence;
 use tokio::sync::RwLock;
 
 use crate::api::AppState;
@@ -126,9 +127,7 @@ impl OAuthRuntime {
             .map_err(|_| ApiError::ServiceUnavailable)?;
         Ok(Self {
             store: {
-                let pool = PgPoolOptions::new()
-                    .max_connections(10)
-                    .connect_lazy(&config.database_url)
+                let pool = persistence::connect_lazy(&config.database_url)
                     .map_err(|_| ApiError::ServiceUnavailable)?;
                 DurableEyeStore::new(pool, &config).map_err(|_| ApiError::ServiceUnavailable)?
             },
