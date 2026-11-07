@@ -74,8 +74,8 @@ async fn concurrent_workers_claim_disjoint_jobs_and_finalize_once_with_outbox() 
     assert_eq!(claims.len(),1,"SKIP LOCKED must yield one owner for a single job");
     let claim=claims.remove(0);
     assert_eq!(claim.job.job_id,job.job_id);
-    assert_eq!(store.heartbeat(&job.job_id,claim.lease_token,"worker-a",1_800_000_000_022,30_000).await.unwrap(),1_800_000_030_022);
-    assert!(store.finalize(&job.job_id,claim.lease_token,"worker-a","COMPLETED",Some(json!({"outcome":"inconclusive"})),1_800_000_000_023).await.unwrap());
+    assert_eq!(store.heartbeat(&job.job_id,claim.lease_token,&claim.worker_id,1_800_000_000_022,30_000).await.unwrap(),1_800_000_030_022);
+    assert!(store.finalize(&job.job_id,claim.lease_token,&claim.worker_id,"COMPLETED",Some(json!({"outcome":"inconclusive"})),1_800_000_000_023).await.unwrap());
     assert_eq!(store.finalize(&job.job_id,claim.lease_token,"worker-a","COMPLETED",Some(json!({"outcome":"verified"})),1_800_000_000_024).await.unwrap_err(),
         king_sparkon_eye::persistence::jobs::JobStoreError::LeaseLost);
     let done=store.get(&tenant,&job.job_id).await.unwrap();
