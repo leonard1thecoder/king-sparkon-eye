@@ -277,12 +277,22 @@ pub async fn authenticate_api_credential(
         return Err(ApiCredentialError::InvalidCredential);
     }
     let key_id = raw_secret.chars().take(KEY_ID_LEN).collect::<String>();
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "SELECT c.credential_id, c.tenant_id, c.client_id, c.key_hash, c.salt, c.scopes,                 a.owner_user_id, a.scopes AS client_scopes          FROM eye_api_credentials c          JOIN eye_api_clients a ON a.tenant_id=c.tenant_id AND a.client_id=c.client_id          JOIN eye_tenants t ON t.tenant_id=c.tenant_id          JOIN eye_auth_users u ON u.user_id=a.owner_user_id          WHERE c.key_id=$1 AND c.revoked_at_ms IS NULL            AND (c.expires_at_ms IS NULL OR c.expires_at_ms > $2)            AND a.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE",
+        "SELECT c.credential_id, c.tenant_id, c.client_id, c.key_hash, c.salt, c.scopes, \
+                a.owner_user_id, a.scopes AS client_scopes \
+         FROM eye_api_credentials c \
+         JOIN eye_api_clients a ON a.tenant_id=c.tenant_id AND a.client_id=c.client_id \
+         JOIN eye_tenants t ON t.tenant_id=c.tenant_id \
+         JOIN eye_auth_users u ON u.user_id=a.owner_user_id \
+         WHERE c.key_id=$1 AND c.revoked_at_ms IS NULL \
+           AND (c.expires_at_ms IS NULL OR c.expires_at_ms > $2) \
+           AND a.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE \
+         FOR UPDATE OF c",
     )
     .bind(&key_id)
     .bind(to_i64(now_ms)?)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or(ApiCredentialError::InvalidCredential)?;
 
