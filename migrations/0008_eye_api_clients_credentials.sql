@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS eye_api_clients (
     tenant_id TEXT NOT NULL,
     owner_user_id TEXT NOT NULL,
     display_name TEXT NOT NULL CHECK (length(display_name) BETWEEN 1 AND 120),
-    scopes TEXT[] NOT NULL DEFAULT '{}'::text[],
+    scopes TEXT[] NOT NULL DEFAULT '{}'::text[] CHECK (cardinality(scopes) > 0 AND scopes <@ ARRAY['identities:read','identities:write','scopes:read','scopes:write','verification:create','verification:read','evidence:read','webhooks:manage']::text[]),
     status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED')),
     rate_limit_per_minute INTEGER NOT NULL DEFAULT 600
         CHECK (rate_limit_per_minute BETWEEN 1 AND 100000),
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS eye_api_credentials (
     key_id TEXT NOT NULL UNIQUE CHECK (length(key_id) BETWEEN 16 AND 32),
     key_hash TEXT NOT NULL CHECK (key_hash ~ '^[0-9a-f]{64}$'),
     salt TEXT NOT NULL CHECK (salt ~ '^[0-9a-f]{32}$'),
-    scopes TEXT[] NOT NULL DEFAULT '{}'::text[],
+    scopes TEXT[] NOT NULL DEFAULT '{}'::text[] CHECK (cardinality(scopes) > 0 AND scopes <@ ARRAY['identities:read','identities:write','scopes:read','scopes:write','verification:create','verification:read','evidence:read','webhooks:manage']::text[]),
     expires_at_ms BIGINT,
     created_at_ms BIGINT NOT NULL CHECK (created_at_ms > 0),
     last_used_at_ms BIGINT,
