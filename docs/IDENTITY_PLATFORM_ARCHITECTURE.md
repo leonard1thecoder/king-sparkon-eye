@@ -115,7 +115,7 @@ Persistence, queue and storage technologies must be selected based on durable se
 This record approves architecture and design constraints; it does not certify implementation. At the review date:
 
 - Implemented: Rust/Axum service, account/authentication routes, bounded image ingress, synchronous photo assessment and YuNet face detection.
-- Not yet established end to end: tenant-isolated persistence and machine credentials, identity enrollment, generic scopes, 1:1/1:N verification sessions, durable async processing, signed webhook delivery and authenticated developer-console workflows.
+- In progress: the canonical tenant registry, Eye-account ownership reference, enrollment/outbox tenant foreign keys, and transaction-local tenant context are introduced by #183. Tenant-scoped repository enforcement, RLS policy rollout, and pooled-connection isolation verification are still required before tenant isolation is complete. Machine credentials, identity enrollment, generic scopes, 1:1/1:N verification sessions, durable async processing, signed webhook delivery and authenticated developer-console workflows are not yet established end to end.
 - The current OpenAPI file is legacy and must not be used as a production integration contract for the standalone platform.
 
 Track implementation evidence in the README and task issues. Update this record when a new architecture decision is explicitly approved.

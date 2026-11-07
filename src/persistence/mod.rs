@@ -7,6 +7,7 @@ pub mod billing_accounts;
 pub mod enrollment_outbox;
 pub mod identity;
 pub mod oauth;
+pub mod tenants;
 pub mod usage_ledger;
 
 use sqlx::{PgPool, postgres::PgPoolOptions};
