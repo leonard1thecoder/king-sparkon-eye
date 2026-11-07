@@ -18,7 +18,7 @@ ALTER TABLE eye_identity_audit
     ADD CONSTRAINT eye_identity_audit_action_check
     CHECK (action IN (
         'IDENTITY_CREATED', 'IDENTITY_REVOKED', 'IDENTITY_DELETED',
-        'ENROLLMENT_BLOCKED', 'ENROLLMENT_REVOKED'
+        'ENROLLMENT_BLOCKED', 'ENROLLMENT_REVOKED', 'ENROLLMENT_DELETED'
     ));
 
 CREATE TABLE IF NOT EXISTS eye_identity_enrollments (
@@ -75,16 +75,36 @@ CREATE INDEX IF NOT EXISTS ix_eye_identity_enrollments_blocked
 -- Revoking or deleting an identity also revokes every associated enrollment intent.
 CREATE OR REPLACE FUNCTION eye_revoke_identity_enrollments()
 RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    enrollment_row RECORD;
+    audit_action TEXT;
 BEGIN
-    IF NEW.status IN ('REVOKED', 'DELETED') AND OLD.status NOT IN ('REVOKED', 'DELETED') THEN
+    IF NEW.status = 'DELETED' AND OLD.status <> 'DELETED' THEN
+        audit_action := 'ENROLLMENT_DELETED';
+    ELSIF NEW.status = 'REVOKED' AND OLD.status = 'ACTIVE' THEN
+        audit_action := 'ENROLLMENT_REVOKED';
+    ELSE
+        RETURN NEW;
+    END IF;
+
+    FOR enrollment_row IN
         UPDATE eye_identity_enrollments
            SET status = CASE WHEN NEW.status = 'DELETED' THEN 'DELETED' ELSE 'REVOKED' END,
                blocked_reason = NULL,
                updated_at_ms = NEW.updated_at_ms
          WHERE tenant_id = NEW.tenant_id
            AND identity_id = NEW.identity_id
-           AND status NOT IN ('REVOKED', 'DELETED');
-    END IF;
+           AND status NOT IN ('REVOKED', 'DELETED')
+         RETURNING enrollment_id, client_id, actor_user_id
+    LOOP
+        INSERT INTO eye_identity_audit (
+            tenant_id, identity_id, client_id, actor_user_id, action, created_at_ms, metadata
+        ) VALUES (
+            NEW.tenant_id, NEW.identity_id, enrollment_row.client_id,
+            enrollment_row.actor_user_id, audit_action, NEW.updated_at_ms,
+            jsonb_build_object('enrollmentId', enrollment_row.enrollment_id)
+        );
+    END LOOP;
     RETURN NEW;
 END;
 $$;
