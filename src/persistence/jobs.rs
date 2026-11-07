@@ -59,6 +59,18 @@ pub struct ClaimedJob {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnqueueOutcome { Created, Existing }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClaimedOutboxEvent {
+    pub event_id: String,
+    pub tenant_id: TenantId,
+    pub job_id: String,
+    pub event_type: String,
+    pub payload: Value,
+    pub attempts: i32,
+    pub lease_token: Uuid,
+    pub lease_until_ms: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailureClass { Retryable, Permanent }
 
@@ -154,7 +166,7 @@ impl JobStore {
             return Err(JobStoreError::InvalidInput);
         }
         let rows = sqlx::query(
-            "WITH due AS (SELECT job_id FROM eye_processing_jobs WHERE (status='QUEUED' AND available_at_ms <= $1) OR (status='PROCESSING' AND lease_until_ms <= $1 AND attempts < max_attempts) ORDER BY available_at_ms,created_at_ms FOR UPDATE SKIP LOCKED LIMIT $2), claimed AS (UPDATE eye_processing_jobs j SET status='PROCESSING',attempts=j.attempts+1,lease_token=gen_random_uuid(),worker_id=$3,lease_until_ms=$1+$4,heartbeat_at_ms=$1,started_at_ms=COALESCE(started_at_ms,$1),updated_at_ms=$1 FROM due WHERE j.job_id=due.job_id RETURNING j.*) SELECT c.*, c.lease_token, c.worker_id, c.lease_until_ms FROM claimed c ORDER BY c.created_at_ms"
+            "WITH due AS (SELECT job_id FROM eye_processing_jobs WHERE (status='QUEUED' AND available_at_ms <= $1) OR (status='PROCESSING' AND lease_until_ms <= $1 AND attempts < max_attempts) ORDER BY available_at_ms,created_at_ms LIMIT $2 FOR UPDATE SKIP LOCKED), claimed AS (UPDATE eye_processing_jobs j SET status='PROCESSING',attempts=j.attempts+1,lease_token=gen_random_uuid(),worker_id=$3,lease_until_ms=$1+$4,heartbeat_at_ms=$1,started_at_ms=COALESCE(started_at_ms,$1),updated_at_ms=$1 FROM due WHERE j.job_id=due.job_id RETURNING j.*) SELECT c.*, c.lease_token, c.worker_id, c.lease_until_ms FROM claimed c ORDER BY c.created_at_ms"
         ).bind(now_ms).bind(limit).bind(worker_id).bind(lease_ms).fetch_all(&self.pool).await?;
         rows.into_iter().map(|row| {
             let lease_token: Uuid = row.try_get("lease_token")?;
@@ -249,6 +261,58 @@ impl JobStore {
         }
         tx.commit().await?;
         Ok(next.to_owned())
+    }
+
+
+    /// Reaps crashed jobs that exhausted their attempt budget and emits failure atomically.
+    pub async fn recover_exhausted_leases(&self, now_ms: i64, limit: i64) -> Result<u64, JobStoreError> {
+        if now_ms <= 0 || !(1..=MAX_BATCH).contains(&limit) { return Err(JobStoreError::InvalidInput); }
+        let mut tx = self.pool.begin().await?;
+        let rows = sqlx::query("SELECT job_id,tenant_id,resource_type,resource_id FROM eye_processing_jobs WHERE status='PROCESSING' AND lease_until_ms <= $1 AND attempts >= max_attempts ORDER BY lease_until_ms LIMIT $2 FOR UPDATE SKIP LOCKED")
+            .bind(now_ms).bind(limit).fetch_all(&mut *tx).await?;
+        for row in &rows {
+            let job_id: String = row.try_get("job_id")?;
+            let tenant_id: String = row.try_get("tenant_id")?;
+            let resource_type: String = row.try_get("resource_type")?;
+            let resource_id: String = row.try_get("resource_id")?;
+            sqlx::query("UPDATE eye_processing_jobs SET status='FAILED',error_category='LEASE_EXPIRED',lease_token=NULL,worker_id=NULL,lease_until_ms=NULL,completed_at_ms=$2,updated_at_ms=$2 WHERE job_id=$1")
+                .bind(&job_id).bind(now_ms).execute(&mut *tx).await?;
+            let event_id = format!("evt_{}", Uuid::new_v4().simple());
+            let payload = serde_json::json!({"eventId":event_id,"eventType":"job.failed.v1","eventVersion":"1.0.0","jobId":job_id,"resourceType":resource_type,"resourceId":resource_id,"status":"FAILED","errorCategory":"LEASE_EXPIRED","occurredAtMs":now_ms});
+            sqlx::query("INSERT INTO eye_platform_outbox(event_id,tenant_id,job_id,event_type,payload,status,attempts,next_attempt_at_ms,created_at_ms,updated_at_ms) VALUES($1,$2,$3,'job.failed.v1',$4,'PENDING',0,$5,$5,$5)")
+                .bind(event_id).bind(tenant_id).bind(&job_id).bind(payload).bind(now_ms).execute(&mut *tx).await?;
+        }
+        let count = rows.len() as u64;
+        tx.commit().await?;
+        Ok(count)
+    }
+
+    /// Claims result events with a fencing token; delivery is at-least-once.
+    pub async fn claim_outbox(&self, worker_id: &str, now_ms: i64, lease_ms: i64, limit: i64) -> Result<Vec<ClaimedOutboxEvent>, JobStoreError> {
+        if !valid_worker(worker_id) || now_ms <= 0 || lease_ms <= 0 || lease_ms > MAX_LEASE_MS || !(1..=MAX_BATCH).contains(&limit) { return Err(JobStoreError::InvalidInput); }
+        let rows = sqlx::query("WITH due AS (SELECT event_id FROM eye_platform_outbox WHERE (status='PENDING' AND next_attempt_at_ms <= $1) OR (status='IN_FLIGHT' AND lease_until_ms <= $1) ORDER BY next_attempt_at_ms,created_at_ms LIMIT $2 FOR UPDATE SKIP LOCKED), claimed AS (UPDATE eye_platform_outbox o SET status='IN_FLIGHT',attempts=o.attempts+1,lease_token=gen_random_uuid(),lease_until_ms=$1+$3,updated_at_ms=$1 FROM due WHERE o.event_id=due.event_id RETURNING o.event_id,o.tenant_id,o.job_id,o.event_type,o.payload,o.attempts,o.lease_token,o.lease_until_ms) SELECT * FROM claimed ORDER BY event_id")
+            .bind(now_ms).bind(limit).bind(lease_ms).fetch_all(&self.pool).await?;
+        rows.into_iter().map(|row| Ok(ClaimedOutboxEvent {
+            event_id: row.try_get("event_id")?,
+            tenant_id: TenantId::parse(row.try_get::<String,_>("tenant_id")?).map_err(|_| JobStoreError::Unavailable)?,
+            job_id: row.try_get("job_id")?, event_type: row.try_get("event_type")?,
+            payload: row.try_get("payload")?, attempts: row.try_get("attempts")?,
+            lease_token: row.try_get("lease_token")?, lease_until_ms: row.try_get("lease_until_ms")?,
+        })).collect()
+    }
+
+    pub async fn acknowledge_outbox(&self, event_id: &str, lease_token: Uuid, now_ms: i64) -> Result<bool, JobStoreError> {
+        if !valid_identifier(event_id) || now_ms <= 0 { return Err(JobStoreError::InvalidInput); }
+        let result = sqlx::query("UPDATE eye_platform_outbox SET status='DELIVERED',delivered_at_ms=$3,lease_token=NULL,lease_until_ms=NULL,last_error_category=NULL,updated_at_ms=$3 WHERE event_id=$1 AND lease_token=$2 AND status='IN_FLIGHT' AND lease_until_ms>$3")
+            .bind(event_id).bind(lease_token).bind(now_ms).execute(&self.pool).await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub async fn retry_outbox(&self, event_id: &str, lease_token: Uuid, error_category: &str, now_ms: i64, delay_ms: i64, max_attempts: i32) -> Result<bool, JobStoreError> {
+        if !valid_identifier(event_id) || !valid_error(error_category) || now_ms <= 0 || delay_ms < 0 || !(1..=20).contains(&max_attempts) { return Err(JobStoreError::InvalidInput); }
+        let result = sqlx::query("UPDATE eye_platform_outbox SET status=CASE WHEN attempts >= $5 THEN 'DEAD_LETTER' ELSE 'PENDING' END,next_attempt_at_ms=$3+$4,lease_token=NULL,lease_until_ms=NULL,last_error_category=$6,updated_at_ms=$3 WHERE event_id=$1 AND lease_token=$2 AND status='IN_FLIGHT' AND lease_until_ms>$3")
+            .bind(event_id).bind(lease_token).bind(now_ms).bind(delay_ms).bind(max_attempts).bind(error_category).execute(&self.pool).await?;
+        Ok(result.rows_affected() == 1)
     }
 
     /// Lease-safe cancellation. A processing worker cannot subsequently finalize.
