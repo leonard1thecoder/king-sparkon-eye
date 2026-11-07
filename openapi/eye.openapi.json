@@ -534,7 +534,7 @@
             }
           },
           "403": {
-            "description": "Credential lacks identity_scopes:write.",
+            "description": "Credential lacks scopes:write.",
             "content": {
               "application/json": {
                 "schema": {
@@ -628,7 +628,7 @@
             }
           },
           "403": {
-            "description": "Credential lacks identity_scopes:write.",
+            "description": "Credential lacks scopes:write.",
             "content": {
               "application/json": {
                 "schema": {
@@ -700,7 +700,7 @@
             }
           },
           "403": {
-            "description": "Credential lacks identity_scopes:write.",
+            "description": "Credential lacks scopes:write.",
             "content": {
               "application/json": {
                 "schema": {
@@ -832,7 +832,7 @@
             }
           },
           "403": {
-            "description": "Credential lacks verification:write.",
+            "description": "Credential lacks verification:create.",
             "content": {
               "application/json": {
                 "schema": {
@@ -996,7 +996,7 @@
             }
           },
           "403": {
-            "description": "Credential lacks verification:write.",
+            "description": "Credential lacks verification:create.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1101,7 +1101,7 @@
             }
           },
           "403": {
-            "description": "Credential lacks verification:write.",
+            "description": "Credential lacks verification:create.",
             "content": {
               "application/json": {
                 "schema": {
