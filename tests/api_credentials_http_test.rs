@@ -228,7 +228,7 @@ async fn http_management_rotation_machine_auth_and_cross_tenant_rejection() {
     // Credential lacking identities:read is denied at the actual HTTP authorization layer.
     let (status, restricted) = post_json(
         &app,
-        &credential_uri.replace(tenant_b.as_str(), tenant_a.as_str()),
+        &credential_uri,
         &owner_a_token,
         json!({"scopes": ["verification:create"], "environment": "test"}),
     )
