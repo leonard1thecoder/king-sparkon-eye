@@ -4,7 +4,7 @@
 
 King Sparkon Eye (Eye) is a Rust service and platform foundation for applications that need face-only identity verification through versioned APIs. A tenant owns its identities and scopes; an integrating application owns its customers, employees, tickets, events, orders, permissions, and business workflows. Eye returns a probabilistic verification result. It does not decide whether a person is entitled to a service or action.
 
-> **Implementation status — 6 November 2026:** The repository contains a working Axum service, account/authentication routes, bounded image ingress, and a YuNet/ONNX face-detection assessment path. The standalone multi-tenant identity API described below is the approved product direction, not a shipped end-to-end capability. Tenant isolation, identity lifecycle, 1:1 matching, scoped 1:N identification, durable asynchronous verification sessions, and signed webhooks remain implementation work tracked by [epic #181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and [issues #182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182).
+> **Implementation status — 7 November 2026:** The repository contains a working Axum service, account/authentication routes, bounded image ingress, and a YuNet/ONNX face-detection assessment path. Tenant-bound machine credentials and a first machine-authenticated identity-registry slice are merged/in progress. The complete identity/enrollment lifecycle, repository-wide tenant isolation, 1:1 matching, scoped 1:N identification, durable asynchronous verification sessions, and signed webhooks are not yet end-to-end capabilities; see [epic #181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and [issues #182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182).
 
 ## Security authorization status
 
@@ -79,8 +79,8 @@ The distinction below is deliberate: a proposed API or repository abstraction is
 | Photo-quality assessment | **Partial / not calibrated** | Deterministic checks exist, but nominal passes are conservatively downgraded to `ASSESSMENT_UNAVAILABLE` pending consented evaluation and threshold calibration. |
 | Face embeddings and 1:1 matching | **Not implemented** | SFace is a documented target contract; weights/adapter and evaluation are not complete. |
 | Scoped 1:N identification | **Not implemented** | Legacy gate-identification contracts are not a live platform API. No global search exists. |
-| Tenant isolation and tenant API credentials | **Planned** | Tracked by [#183](https://github.com/leonard1thecoder/king-sparkon-eye/issues/183) and [#184](https://github.com/leonard1thecoder/king-sparkon-eye/issues/184). Current account authentication is not a completed tenant machine-credential system. |
-| Identity registry and enrollment lifecycle | **Planned** | [#185](https://github.com/leonard1thecoder/king-sparkon-eye/issues/185). The current photo-assessment route does not enroll or persist an identity. |
+| Tenant API credentials | **Implemented foundation** | Human JWT management and machine credential issuance/authentication, scopes, rotation, revocation and rate limits are merged in [#184](https://github.com/leonard1thecoder/king-sparkon-eye/issues/184). Full repository-wide tenant scoping and PostgreSQL RLS remain in [#260](https://github.com/leonard1thecoder/king-sparkon-eye/issues/260). |
+| Identity registry | **Partial implementation (issue #185 branch)** | Machine-authenticated create/read/revoke/soft-delete routes plus durable, idempotent enrollment intents and tenant-scoped status reads are implemented on the issue branch. Enrollment intents remain `BLOCKED_EVALUATION` while #95 is open; no capture/template is stored and no job is queued. Worker execution belongs to #187, and retention/deletion controls to #189; see [identity registry contract/status](docs/IDENTITY_REGISTRY.md). |
 | Generic scopes and verification-session API | **Planned** | [#186](https://github.com/leonard1thecoder/king-sparkon-eye/issues/186). |
 | Durable asynchronous verification jobs | **Planned** | [#187](https://github.com/leonard1thecoder/king-sparkon-eye/issues/187). Existing outbox persistence primitives are not an async verification worker runtime. |
 | Signed webhooks | **Planned** | [#188](https://github.com/leonard1thecoder/king-sparkon-eye/issues/188). |
@@ -123,7 +123,7 @@ The optional Meta Muse Spark adapter is supplementary visual-quality guidance on
 
 ## Current HTTP surface
 
-These are the relevant routes mounted by the current Rust service. They are not the proposed standalone identity API.
+These are the existing routes plus the machine-authenticated identity-registry routes implemented on the unmerged #185 branch. The identity routes are not available on main until that PR is merged.
 
 | Method | Path | Current behavior |
 |---|---|---|
@@ -133,6 +133,12 @@ These are the relevant routes mounted by the current Rust service. They are not 
 | GET | `/health/live` | Process liveness response. |
 | GET | `/health/ready` | Readiness and dependency status. |
 | POST | `/v1/enrollment/photo-assessments` | Authenticated, synchronous photo assessment; no identity enrollment or persistence. |
+| POST | `/v1/identities` | Machine credential with `identities:write`; creates a tenant-owned opaque identity. |
+| GET | `/v1/identities/{identity_id}` | Machine credential with `identities:read`; tenant-scoped lookup. |
+| POST | `/v1/identities/{identity_id}/revoke` | Machine credential with `identities:write`; audited revocation. |
+| DELETE | `/v1/identities/{identity_id}` | Machine credential with `identities:write`; audited soft deletion. |
+| POST | `/v1/identities/{identity_id}/face-enrollments` | Machine credential with `identities:write`; creates an idempotent intent, currently `BLOCKED_EVALUATION` by #95. |
+| GET | `/v1/identities/{identity_id}/face-enrollments/{enrollment_id}` | Machine credential with `identities:read`; reads tenant-scoped enrollment state. |
 | POST | `/v1/auth/register` | Account registration. |
 | POST | `/v1/auth/login` | Password login and token issuance. |
 | POST | `/v1/auth/refresh` | Refresh-token rotation. |
@@ -143,9 +149,9 @@ These are the relevant routes mounted by the current Rust service. They are not 
 | POST | `/v1/auth/password-reset/confirm` | Confirm a password reset. |
 | GET | `/auth/sign-in`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/callback` | Browser account pages. |
 
-The current photo-assessment response is synchronous and includes an assessment identifier, request identifier, suitability, reason codes, persistence status, model version and policy version. It reports `persistence: NOT_REQUESTED`; it does not create an identity, save a face template, create an asynchronous verification session, or publish a result event.
+The current photo-assessment response is synchronous and includes an assessment identifier, request identifier, suitability, reason codes, persistence status, model version and policy version. It reports `persistence: NOT_REQUESTED`; it does not enroll a face, save a face template, create an asynchronous verification session, or publish a result event. The #185 identity registry does not yet accept biometric material.
 
-The existing [OpenAPI document](openapi/eye.openapi.json) describes the earlier photo-assessment / gate-identification contract. It is **not yet the canonical contract for the new standalone platform**. The architecture and API contract work is tracked by [#182](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182) and [#186](https://github.com/leonard1thecoder/king-sparkon-eye/issues/186). Until that contract is implemented and verified, this README intentionally does not provide a working identity-verification quick start or invent request/response examples.
+The existing [OpenAPI document](openapi/eye.openapi.json) describes the earlier photo-assessment / gate-identification contract. The #185 registry route details and current limitations are documented in [docs/IDENTITY_REGISTRY.md](docs/IDENTITY_REGISTRY.md). It is **not yet the canonical contract for the new standalone platform**. The architecture and API contract work is tracked by [#182](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182) and [#186](https://github.com/leonard1thecoder/king-sparkon-eye/issues/186). Until that contract is implemented and verified, this README intentionally does not provide a working identity-verification quick start or invent request/response examples.
 
 
 ## Public-site SEO baseline
@@ -185,7 +191,7 @@ These are target contract semantics from [#186](https://github.com/leonard1theco
 
 ## Tenant isolation, privacy and security
 
-Tenant isolation is a non-negotiable design requirement, but the complete enforcement is still planned.
+Tenant-bound credentials and the initial identity registry enforce tenant ownership in their persistence operations. Complete repository-wide isolation and PostgreSQL RLS are still outstanding in [#260](https://github.com/leonard1thecoder/king-sparkon-eye/issues/260).
 
 - Tenant context must be derived from validated credentials, never trusted from a request-supplied tenant ID or header.
 - Identity, template, scope, session, result, evidence, webhook and audit access must be tenant-scoped.
@@ -283,7 +289,7 @@ The standalone platform is tracked by [epic #181](https://github.com/leonard1the
 1. [#182 — architecture and API design rules](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182)
 2. [#183 — tenant-isolated persistence](https://github.com/leonard1thecoder/king-sparkon-eye/issues/183)
 3. [#184 — tenant-bound API clients and permissions](https://github.com/leonard1thecoder/king-sparkon-eye/issues/184)
-4. [#185 — identity registry and face enrollment](https://github.com/leonard1thecoder/king-sparkon-eye/issues/185)
+4. [#185 — identity registry and face enrollment](https://github.com/leonard1thecoder/king-sparkon-eye/issues/185) — registry and durable blocked-intent/status routes are partial; capture admission remains gated by #95 and #189, with worker execution in #187.
 5. [#186 — identity scopes and verification-session API](https://github.com/leonard1thecoder/king-sparkon-eye/issues/186)
 6. [#187 — durable asynchronous jobs and result finalization](https://github.com/leonard1thecoder/king-sparkon-eye/issues/187)
 7. [#188 — signed webhooks](https://github.com/leonard1thecoder/king-sparkon-eye/issues/188)

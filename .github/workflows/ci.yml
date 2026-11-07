@@ -104,3 +104,5 @@ jobs:
           cargo test --locked --test tenant_persistence_test -- --nocapture
           cargo test --locked --test api_credential_persistence_test -- --nocapture
           cargo test --locked --test api_credentials_http_test -- --nocapture
+          cargo test --locked --test identity_registry_test -- --nocapture
+          cargo test --locked --test identity_http_test -- --nocapture
