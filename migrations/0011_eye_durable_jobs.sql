@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS eye_processing_jobs (
     started_at_ms BIGINT,
     completed_at_ms BIGINT,
     CONSTRAINT uq_eye_processing_job_idempotency UNIQUE (tenant_id, resource_type, resource_id, idempotency_key),
+    CONSTRAINT uq_eye_processing_job_tenant_id UNIQUE (tenant_id, job_id),
     CONSTRAINT ck_eye_processing_job_lease CHECK (
         (status = 'PROCESSING' AND lease_token IS NOT NULL AND worker_id IS NOT NULL AND lease_until_ms IS NOT NULL)
         OR (status <> 'PROCESSING' AND lease_token IS NULL AND worker_id IS NULL AND lease_until_ms IS NULL)
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS eye_platform_outbox (
     updated_at_ms BIGINT NOT NULL CHECK (updated_at_ms >= created_at_ms),
     delivered_at_ms BIGINT,
     CONSTRAINT uq_eye_platform_outbox_job_event UNIQUE (job_id, event_type),
+    CONSTRAINT fk_eye_platform_outbox_job_tenant FOREIGN KEY (tenant_id, job_id) REFERENCES eye_processing_jobs(tenant_id, job_id) ON DELETE RESTRICT,
     CONSTRAINT ck_eye_platform_outbox_lease CHECK (
         (status = 'IN_FLIGHT' AND lease_until_ms IS NOT NULL AND lease_token IS NOT NULL)
         OR (status <> 'IN_FLIGHT' AND lease_until_ms IS NULL AND lease_token IS NULL)
