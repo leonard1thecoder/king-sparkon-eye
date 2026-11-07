@@ -113,9 +113,9 @@ async fn principal(
     Ok(principal)
 }
 
-fn map_credential_error(error: api_credentials::ApiCredentialError) -> Response {
+fn map_credential_error(error_value: api_credentials::ApiCredentialError) -> Response {
     use api_credentials::ApiCredentialError as E;
-    match error {
+    match error_value {
         E::InvalidInput => error(StatusCode::BAD_REQUEST, "invalid_request"),
         E::NotFound => error(StatusCode::NOT_FOUND, "not_found"),
         E::InvalidCredential => error(StatusCode::UNAUTHORIZED, "unauthorized"),
