@@ -74,3 +74,35 @@ CREATE TABLE IF NOT EXISTS eye_verification_session_audit (
     FOREIGN KEY (tenant_id,session_id) REFERENCES eye_verification_sessions(tenant_id,session_id) ON DELETE RESTRICT,
     FOREIGN KEY (tenant_id,client_id) REFERENCES eye_api_clients(tenant_id,client_id) ON DELETE RESTRICT
 );
+
+-- Identity revocation/deletion prevents any not-yet-processed verification session from
+-- remaining eligible for future capture. No processing job is admitted by this migration.
+CREATE OR REPLACE FUNCTION eye_cancel_pending_verification_sessions_for_identity()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    session_row RECORD;
+BEGIN
+    IF NEW.status NOT IN ('REVOKED','DELETED') OR OLD.status IN ('REVOKED','DELETED') THEN
+        RETURN NEW;
+    END IF;
+    FOR session_row IN
+        UPDATE eye_verification_sessions
+           SET status='CANCELLED',
+               reason_code='SESSION_CANCELLED',
+               updated_at_ms=NEW.updated_at_ms
+         WHERE tenant_id=NEW.tenant_id
+           AND identity_id=NEW.identity_id
+           AND status IN ('AWAITING_CAPTURE','BLOCKED_EVALUATION')
+         RETURNING session_id,tenant_id,client_id
+    LOOP
+        INSERT INTO eye_verification_session_audit(tenant_id,session_id,client_id,action,created_at_ms,metadata)
+        VALUES(session_row.tenant_id,session_row.session_id,session_row.client_id,'SESSION_CANCELLED',NEW.updated_at_ms,
+               jsonb_build_object('reason','IDENTITY_REVOKED_OR_DELETED'));
+    END LOOP;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_eye_cancel_pending_sessions_for_identity ON eye_identities;
+CREATE TRIGGER trg_eye_cancel_pending_sessions_for_identity
+AFTER UPDATE OF status ON eye_identities
+FOR EACH ROW EXECUTE FUNCTION eye_cancel_pending_verification_sessions_for_identity();
