@@ -128,12 +128,7 @@ impl JobStore {
             return Err(JobStoreError::InvalidInput);
         }
         let mut tx = self.pool.begin().await?;
-        if resource_type == "IDENTITY_ENROLLMENT" {
-            let eligible = sqlx::query_scalar::<_, bool>(
-                "SELECT EXISTS(SELECT 1 FROM eye_identity_enrollments WHERE tenant_id=$1 AND enrollment_id=$2 AND status='QUEUED')"
-            ).bind(tenant_id.as_str()).bind(resource_id).fetch_one(&mut *tx).await?;
-            if !eligible { return Err(JobStoreError::NotFound); }
-        }
+        // Resolve idempotent retries before checking mutable aggregate state.
         let existing = sqlx::query(&format!(
             "SELECT {JOB_COLUMNS} FROM eye_processing_jobs WHERE tenant_id=$1 AND resource_type=$2 AND resource_id=$3 AND idempotency_key=$4 FOR UPDATE"
         )).bind(tenant_id.as_str()).bind(resource_type).bind(resource_id)
@@ -147,6 +142,13 @@ impl JobStore {
             tx.commit().await?;
             return Ok((EnqueueOutcome::Existing, job));
         }
+        // #186 has not supplied the authoritative verification-session aggregate.
+        // Fail closed rather than enqueue arbitrary caller-selected session references.
+        if resource_type != "IDENTITY_ENROLLMENT" { return Err(JobStoreError::NotFound); }
+        let eligible = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM eye_identity_enrollments WHERE tenant_id=$1 AND enrollment_id=$2 AND status='QUEUED')"
+        ).bind(tenant_id.as_str()).bind(resource_id).fetch_one(&mut *tx).await?;
+        if !eligible { return Err(JobStoreError::NotFound); }
         let job_id = format!("job_{}", Uuid::new_v4().simple());
         let row = sqlx::query(&format!(
             "INSERT INTO eye_processing_jobs (job_id,tenant_id,resource_type,resource_id,idempotency_key,status,attempts,max_attempts,available_at_ms,input_metadata,created_at_ms,updated_at_ms) VALUES ($1,$2,$3,$4,$5,'QUEUED',0,$6,$7,$8,$7,$7) RETURNING {JOB_COLUMNS}"
