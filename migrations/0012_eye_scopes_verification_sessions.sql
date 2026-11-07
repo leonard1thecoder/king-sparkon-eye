@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS eye_verification_sessions (
     CONSTRAINT fk_eye_verification_session_client FOREIGN KEY (tenant_id,client_id) REFERENCES eye_api_clients(tenant_id,client_id) ON DELETE RESTRICT,
     CONSTRAINT fk_eye_verification_session_identity FOREIGN KEY (tenant_id,identity_id) REFERENCES eye_identities(tenant_id,identity_id) ON DELETE RESTRICT,
     CONSTRAINT fk_eye_verification_session_scope FOREIGN KEY (tenant_id,scope_id) REFERENCES eye_identity_scopes(tenant_id,scope_id) ON DELETE RESTRICT,
-    CONSTRAINT uq_eye_verification_session_idempotency UNIQUE (tenant_id,idempotency_key),
+    CONSTRAINT uq_eye_verification_session_idempotency UNIQUE (tenant_id,client_id,idempotency_key),
     CONSTRAINT uq_eye_verification_session_tenant_id UNIQUE (tenant_id,session_id),
     CONSTRAINT ck_eye_verification_session_target CHECK (
         (mode='MATCH' AND identity_id IS NOT NULL AND scope_id IS NULL)
