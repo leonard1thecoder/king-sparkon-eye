@@ -10,6 +10,7 @@ pub mod identity;
 pub mod identity_registry;
 pub mod jobs;
 pub mod oauth;
+pub mod privacy;
 pub mod tenants;
 pub mod verification;
 pub mod usage_ledger;
