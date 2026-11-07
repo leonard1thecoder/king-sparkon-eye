@@ -4,7 +4,7 @@
 
 King Sparkon Eye (Eye) is a Rust service and platform foundation for applications that need face-only identity verification through versioned APIs. A tenant owns its identities and scopes; an integrating application owns its customers, employees, tickets, events, orders, permissions, and business workflows. Eye returns a probabilistic verification result. It does not decide whether a person is entitled to a service or action.
 
-> **Implementation status — 7 November 2026:** The repository contains a working Axum service, account/authentication routes, bounded image ingress, and a YuNet/ONNX face-detection assessment path. Tenant-bound machine credentials and a first machine-authenticated identity-registry slice are merged/in progress. The complete identity/enrollment lifecycle, repository-wide tenant isolation, 1:1 matching, scoped 1:N identification, durable asynchronous verification sessions, and signed webhooks are not yet end-to-end capabilities; see [epic #181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and [issues #182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182).
+> **Implementation status — 7 November 2026:** The repository contains a working Axum service, account/authentication routes, bounded image ingress, and a YuNet/ONNX face-detection assessment path. Tenant-bound machine credentials and a first machine-authenticated identity-registry slice are merged/in progress. The identity-scope and verification-session metadata APIs are now partially implemented on draft PR #264; capture ingress remains blocked by #95, durable processing integration depends on #187, repository-wide tenant isolation remains tracked in #260, and matching/identification inference plus signed webhooks are not yet end-to-end capabilities; see [epic #181](https://github.com/leonard1thecoder/king-sparkon-eye/issues/181) and [issues #182–#192](https://github.com/leonard1thecoder/king-sparkon-eye/issues/182).
 
 ## Security authorization status
 
@@ -36,6 +36,14 @@ Eye is designed to provide reusable identity-verification primitives to unrelate
 - The final business decision after receiving Eye's probabilistic result.
 
 An identity scope is a search boundary, not an Eye-owned event, ticket, employee or customer workflow. No tenant may search another tenant's identities, templates, evidence or candidate set. There is no global face search.
+
+## Identity scopes and verification sessions (#186)
+
+The draft #186 implementation adds tenant-owned identity scopes and membership operations, plus versioned 1:1 `MATCH` and scoped 1:N `IDENTIFY` session resources. The authenticated machine credential determines the tenant. Match sessions require exactly one active identity; identify sessions require exactly one active scope. Session creation is idempotent per tenant and API client, returns an opaque session reference, and stores only bounded metadata. Session expiry and pre-processing cancellation are persisted and audited.
+
+**Capture and inference are intentionally not enabled.** The capture route validates the machine credential, idempotency header and tenant-owned session, then fails closed with `503 evaluation_gate_closed` before reading the request body. No image bytes, embeddings, templates, similarity scores or inference jobs are accepted or stored. #95 must approve the consented real-face evaluation dataset and operating thresholds; #189 must settle retention/deletion controls; #187 must provide the merged durable worker/outbox runtime before asynchronous capture can be admitted. A created session is a resource reservation, not a completed or queued verification.
+
+The canonical OpenAPI contract is `openapi/eye.openapi.json`. Legacy event/gate-specific routes remain marked deprecated and are not the generic identity API. #30 remains a separate legacy reconciliation item; it does not authorize global or event-specific search in the new platform.
 
 ## Architecture
 
