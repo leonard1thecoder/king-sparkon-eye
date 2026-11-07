@@ -148,7 +148,10 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, StatusCode> {
+fn human_actor(
+    state: &CredentialState,
+    headers: &HeaderMap,
+) -> Result<String, axum::http::StatusCode> {
     let oauth = state
         .config
         .oauth
@@ -176,7 +179,7 @@ fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, S
     Ok(claims.sub)
 }
 
-fn map_human_error(status: StatusCode) -> Response {
+fn map_human_error(status: axum::http::StatusCode) -> Response {
     let code = if status == StatusCode::SERVICE_UNAVAILABLE {
         "credential_storage_unavailable"
     } else {
@@ -185,7 +188,7 @@ fn map_human_error(status: StatusCode) -> Response {
     error(status, code)
 }
 
-fn tenant_id(raw: &str) -> Result<TenantId, StatusCode> {
+fn tenant_id(raw: &str) -> Result<TenantId, axum::http::StatusCode> {
     TenantId::parse(raw.to_owned()).map_err(|_| StatusCode::NOT_FOUND)
 }
 
@@ -282,8 +285,8 @@ async fn revoke_credential(
     Path((raw_tenant, credential_id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<StatusCode, Response> {
-    let actor = human_actor(&state, &headers)?;
-    let tenant = tenant_id(&raw_tenant)?;
+    let actor = human_actor(&state, &headers).map_err(map_human_error)?;
+    let tenant = tenant_id(&raw_tenant).map_err(|status| error(status, "not_found"))?;
     api_credentials::revoke_api_credential(&state.pool, &tenant, &credential_id, &actor, now_ms())
         .await
         .map_err(map_store_error)?;
