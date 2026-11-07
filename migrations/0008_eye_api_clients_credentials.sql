@@ -39,14 +39,15 @@ CREATE TABLE IF NOT EXISTS eye_api_credentials (
     last_used_at_ms BIGINT,
     revoked_at_ms BIGINT,
     rotated_from_credential_id TEXT,
+    CONSTRAINT uq_eye_api_credential_tenant_id UNIQUE (tenant_id, credential_id),
     CONSTRAINT ck_eye_api_credential_expiry
         CHECK (expires_at_ms IS NULL OR expires_at_ms > created_at_ms),
     CONSTRAINT fk_eye_api_credential_client
         FOREIGN KEY (tenant_id, client_id)
         REFERENCES eye_api_clients(tenant_id, client_id) ON DELETE RESTRICT,
     CONSTRAINT fk_eye_api_credential_rotation
-        FOREIGN KEY (rotated_from_credential_id)
-        REFERENCES eye_api_credentials(credential_id) ON DELETE RESTRICT
+        FOREIGN KEY (tenant_id, rotated_from_credential_id)
+        REFERENCES eye_api_credentials(tenant_id, credential_id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS ix_eye_api_credentials_tenant_client
@@ -68,8 +69,8 @@ CREATE TABLE IF NOT EXISTS eye_api_credential_audit (
         FOREIGN KEY (tenant_id, client_id)
         REFERENCES eye_api_clients(tenant_id, client_id) ON DELETE RESTRICT,
     CONSTRAINT fk_eye_api_credential_audit_credential
-        FOREIGN KEY (credential_id)
-        REFERENCES eye_api_credentials(credential_id) ON DELETE RESTRICT
+        FOREIGN KEY (tenant_id, credential_id)
+        REFERENCES eye_api_credentials(tenant_id, credential_id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS ix_eye_api_credential_audit_tenant_time
     ON eye_api_credential_audit(tenant_id, created_at_ms DESC);
@@ -78,12 +79,16 @@ CREATE TABLE IF NOT EXISTS eye_api_rate_limit_buckets (
     tenant_id TEXT NOT NULL REFERENCES eye_tenants(tenant_id) ON DELETE RESTRICT,
     dimension TEXT NOT NULL CHECK (dimension IN ('TENANT', 'CREDENTIAL')),
     subject_id TEXT NOT NULL,
+    credential_id TEXT,
     window_start_ms BIGINT NOT NULL,
     request_count INTEGER NOT NULL CHECK (request_count > 0),
     PRIMARY KEY (tenant_id, dimension, subject_id, window_start_ms),
+    CONSTRAINT fk_eye_api_rate_limit_credential
+        FOREIGN KEY (tenant_id, credential_id)
+        REFERENCES eye_api_credentials(tenant_id, credential_id) ON DELETE RESTRICT,
     CHECK (
-        (dimension = 'TENANT' AND subject_id = tenant_id)
-        OR (dimension = 'CREDENTIAL' AND subject_id LIKE 'crd_%')
+        (dimension = 'TENANT' AND subject_id = tenant_id AND credential_id IS NULL)
+        OR (dimension = 'CREDENTIAL' AND subject_id = credential_id AND credential_id IS NOT NULL)
     )
 );
 CREATE INDEX IF NOT EXISTS ix_eye_api_rate_limit_cleanup
