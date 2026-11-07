@@ -84,3 +84,46 @@ async fn match_session_requires_exact_active_identity_and_identify_requires_scop
  assert_eq!(send(&app,"POST","/v1/verification-sessions",&key,Some(json!({"mode":"IDENTIFY"})),Some("missing-scope")).await.0,StatusCode::BAD_REQUEST);
  assert_eq!(send(&app,"POST","/v1/verification-sessions",&key,Some(json!({"mode":"MATCH","identityId":"idy_00000000000000000000000000000000"})),Some("missing-identity")).await.0,StatusCode::NOT_FOUND);
 }
+
+
+#[tokio::test]
+async fn scope_and_session_tables_enforce_tenant_rls() {
+    let Some(pool)=pool().await else{return};
+    let (is_superuser,bypass_rls):(bool,bool)=sqlx::query_as(
+        "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user"
+    ).fetch_one(&pool).await.unwrap();
+    assert!(!is_superuser,"test connection must not be superuser");
+    assert!(!bypass_rls,"test connection must not have BYPASSRLS");
+
+    let owner_a=owner(&pool).await;
+    let owner_b=owner(&pool).await;
+    let tenant_a=create_tenant(&pool,&owner_a,"RLS scope tenant A",1_800_000_000_000).await.unwrap().tenant_id;
+    let tenant_b=create_tenant(&pool,&owner_b,"RLS scope tenant B",1_800_000_000_000).await.unwrap().tenant_id;
+    let key_a=client_key(&pool,&tenant_a,&owner_a).await;
+    let app=identity::router(config(std::env::var("EYE_TEST_DATABASE_URL").unwrap()));
+    let (status,identity)=send(&app,"POST","/v1/identities",&key_a,Some(json!({"externalReference":"rls-person"})),None).await;
+    assert_eq!(status,StatusCode::CREATED);
+    let identity_id=identity["identityId"].as_str().unwrap();
+    let (status,scope)=send(&app,"POST","/v1/identity-scopes",&key_a,Some(json!({"externalReference":"rls-scope","displayName":"RLS scope"})),None).await;
+    assert_eq!(status,StatusCode::CREATED);
+    let scope_id=scope["scopeId"].as_str().unwrap();
+    let member_path=format!("/v1/identity-scopes/{scope_id}/members/{identity_id}");
+    assert_eq!(send(&app,"PUT",&member_path,&key_a,None,None).await.0,StatusCode::NO_CONTENT);
+    let (status,session)=send(&app,"POST","/v1/verification-sessions",&key_a,Some(json!({
+        "mode":"IDENTIFY","scopeId":scope_id,"expiresInMs":300000
+    })),Some("rls-session-key")).await;
+    assert_eq!(status,StatusCode::CREATED);
+    let session_id=session["sessionId"].as_str().unwrap();
+
+    let visible_without_context:i64=sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM eye_identity_scopes)+(SELECT count(*) FROM eye_identity_scope_members)+(SELECT count(*) FROM eye_verification_sessions)+(SELECT count(*) FROM eye_verification_session_audit)"
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(visible_without_context,0,"all scope/session tables must fail closed without context");
+
+    let mut tx=king_sparkon_eye::persistence::tenants::begin_tenant_transaction(&pool,&tenant_b).await.unwrap();
+    let visible_b:i64=sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM eye_identity_scopes WHERE scope_id=$1)+(SELECT count(*) FROM eye_identity_scope_members WHERE scope_id=$1)+(SELECT count(*) FROM eye_verification_sessions WHERE session_id=$2)+(SELECT count(*) FROM eye_verification_session_audit WHERE session_id=$2)"
+    ).bind(scope_id).bind(session_id).fetch_one(&mut *tx).await.unwrap();
+    assert_eq!(visible_b,0,"tenant B must not see tenant A scopes, memberships, sessions or audit");
+    tx.rollback().await.unwrap();
+}
