@@ -148,48 +148,37 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn human_actor(
-    state: &CredentialState,
-    headers: &HeaderMap,
-) -> Result<String, axum::http::StatusCode> {
-    let oauth = state
-        .config
-        .oauth
-        .as_ref()
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, Response> {
+    let oauth = state.config.oauth.as_ref().ok_or_else(|| {
+        error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "credential_storage_unavailable",
+        )
+    })?;
     let secret = oauth.jwt_signing_secret.expose();
     if secret.len() < 32 {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(error(StatusCode::UNAUTHORIZED, "unauthorized"));
     }
     let value = headers
         .get(AUTHORIZATION)
         .and_then(|header| header.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
     let token = value
         .split_once(' ')
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
         .map(|(_, token)| token.trim())
         .filter(|token| !token.is_empty())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
     let claims = verify_access_token(token, &oauth.jwt_kid, secret.as_bytes(), now_ms() / 1000)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
     if !claims.sub.starts_with("usr_") {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(error(StatusCode::UNAUTHORIZED, "unauthorized"));
     }
     Ok(claims.sub)
 }
 
-fn map_human_error(status: axum::http::StatusCode) -> Response {
-    let code = if status == StatusCode::SERVICE_UNAVAILABLE {
-        "credential_storage_unavailable"
-    } else {
-        "unauthorized"
-    };
-    error(status, code)
-}
-
-fn tenant_id(raw: &str) -> Result<TenantId, axum::http::StatusCode> {
-    TenantId::parse(raw.to_owned()).map_err(|_| StatusCode::NOT_FOUND)
+fn tenant_id(raw: &str) -> Result<TenantId, Response> {
+    TenantId::parse(raw.to_owned()).map_err(|_| error(StatusCode::NOT_FOUND, "not_found"))
 }
 
 fn map_store_error(error_value: ApiCredentialError) -> Response {
@@ -211,8 +200,8 @@ async fn create_client(
     headers: HeaderMap,
     Json(request): Json<CreateClientRequest>,
 ) -> Result<Json<ClientResponse>, Response> {
-    let actor = human_actor(&state, &headers).map_err(map_human_error)?;
-    let tenant = tenant_id(&raw_tenant).map_err(|status| error(status, "not_found"))?;
+    let actor = human_actor(&state, &headers)?;
+    let tenant = tenant_id(&raw_tenant)?;
     let client = api_credentials::create_api_client(
         &state.pool,
         &tenant,
