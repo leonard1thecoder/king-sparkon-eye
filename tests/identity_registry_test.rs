@@ -4,7 +4,7 @@
 use king_sparkon_eye::persistence::{
     api_credentials::create_api_client,
     connect, migrate,
-    identity_registry::{create_identity, delete_identity, get_identity, revoke_identity, IdentityStoreError},
+    identity_registry::{create_enrollment_intent, create_identity, delete_identity, get_identity, get_enrollment_intent, revoke_identity, EnrollmentIntentOutcome, IdentityStoreError},
     tenants::{TenantId, create_tenant},
 };
 use serde_json::json;
@@ -115,4 +115,64 @@ async fn revocation_and_deletion_are_audited_and_non_reactivating() {
     ).bind(tenant_id.as_str()).bind(&identity.identity_id)
         .fetch_all(&pool).await.expect("read identity audit");
     assert_eq!(actions, vec!["IDENTITY_CREATED", "IDENTITY_REVOKED", "IDENTITY_DELETED"]);
+}
+
+#[tokio::test]
+async fn enrollment_intents_are_durable_idempotent_and_blocked_by_evaluation_gate() {
+    let Some(pool) = pool().await else { return };
+    let owner_a = seed_user(&pool).await;
+    let owner_b = seed_user(&pool).await;
+    let tenant_a = tenant(&pool, &owner_a).await;
+    let tenant_b = tenant(&pool, &owner_b).await;
+    let client_a = client(&pool, &tenant_a, &owner_a).await;
+    let _client_b = client(&pool, &tenant_b, &owner_b).await;
+    let identity = create_identity(
+        &pool, &tenant_a, "enrollment-subject", json!({}),
+        &client_a, &owner_a, 1_800_000_000_100,
+    ).await.expect("create identity");
+
+    let created = create_enrollment_intent(
+        &pool, &tenant_a, &identity.identity_id, &client_a, &owner_a,
+        "consent-ref-001", "consent-policy-v1", "enroll-key-001", 1_800_000_000_101,
+    ).await.expect("persist blocked enrollment intent");
+    let enrollment = match created {
+        EnrollmentIntentOutcome::Created(value) => value,
+        EnrollmentIntentOutcome::Existing(_) => panic!("first request must create"),
+    };
+    assert_eq!(enrollment.status, "BLOCKED_EVALUATION");
+    assert_eq!(enrollment.blocked_reason.as_deref(), Some("EVALUATION_DATA_REQUIRED"));
+
+    let replay = create_enrollment_intent(
+        &pool, &tenant_a, &identity.identity_id, &client_a, &owner_a,
+        "consent-ref-001", "consent-policy-v1", "enroll-key-001", 1_800_000_000_102,
+    ).await.expect("idempotent replay");
+    let replayed = match replay {
+        EnrollmentIntentOutcome::Existing(value) => value,
+        EnrollmentIntentOutcome::Created(_) => panic!("retry must return existing resource"),
+    };
+    assert_eq!(replayed.enrollment_id, enrollment.enrollment_id);
+
+    assert_eq!(
+        create_enrollment_intent(
+            &pool, &tenant_a, &identity.identity_id, &client_a, &owner_a,
+            "different-consent-001", "consent-policy-v1", "enroll-key-001", 1_800_000_000_103,
+        ).await.unwrap_err(),
+        IdentityStoreError::Conflict
+    );
+
+    assert_eq!(
+        get_enrollment_intent(&pool, &tenant_b, &identity.identity_id, &enrollment.enrollment_id)
+            .await.unwrap_err(),
+        IdentityStoreError::NotFound
+    );
+
+    let identity_after = get_identity(&pool, &tenant_a, &identity.identity_id)
+        .await.expect("read identity state");
+    assert_eq!(identity_after.enrollment_status, "BLOCKED_EVALUATION");
+
+    let persisted_status: String = sqlx::query_scalar(
+        "SELECT status FROM eye_identity_enrollments WHERE tenant_id=$1 AND enrollment_id=$2",
+    ).bind(tenant_a.as_str()).bind(&enrollment.enrollment_id)
+        .fetch_one(&pool).await.expect("read durable enrollment");
+    assert_eq!(persisted_status, "BLOCKED_EVALUATION");
 }
