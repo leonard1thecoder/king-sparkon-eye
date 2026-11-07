@@ -79,6 +79,8 @@ pub async fn create_identity(
     tenant_id: &TenantId,
     external_reference: &str,
     metadata: Value,
+    client_id: &str,
+    actor_user_id: &str,
     now_ms: i64,
 ) -> Result<Identity, IdentityStoreError> {
     if !validate_external_reference(external_reference)
@@ -91,14 +93,26 @@ pub async fn create_identity(
     let query = format!(
         "INSERT INTO eye_identities (identity_id, tenant_id, external_reference, metadata, created_at_ms, updated_at_ms) VALUES ($1,$2,$3,$4,$5,$5) RETURNING {IDENTITY_COLUMNS}"
     );
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(&query)
         .bind(&identity_id)
         .bind(tenant_id.as_str())
         .bind(external_reference)
         .bind(metadata)
         .bind(now_ms)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
+    sqlx::query(
+        "INSERT INTO eye_identity_audit (tenant_id, identity_id, client_id, actor_user_id, action, created_at_ms) VALUES ($1,$2,$3,$4,'IDENTITY_CREATED',$5)",
+    )
+    .bind(tenant_id.as_str())
+    .bind(&identity_id)
+    .bind(client_id)
+    .bind(actor_user_id)
+    .bind(now_ms)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     map_row(row)
 }
 
