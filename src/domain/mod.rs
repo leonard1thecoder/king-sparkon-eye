@@ -1,4 +1,11 @@
-//! Assessment orchestration (issue #26).
+//! Photo-quality assessment orchestration (issue #26).
+//!
+//! BOUNDARY: this module assesses capture suitability only. It is not an identity
+//! verification processor and must never produce or be mapped to #186/#265 identity
+//! outcomes (`verified`, `not_verified`, `identified`, `no_candidate`, `ambiguous`,
+//! `inconclusive`). `FinalAssessment` and its suitability/reason codes are photo-quality
+//! domain types only. Verification inference requires its own separately approved processor
+//! contract and remains blocked by #95 until evaluation approval.
 //!
 //! Combines the deterministic path (face detection, objective quality checks) with the
 //! optional frontier advisory (issue #25). The deterministic path is authoritative. The

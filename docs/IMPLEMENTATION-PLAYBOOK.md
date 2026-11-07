@@ -45,6 +45,19 @@ The SEO baseline is implemented for the currently mounted public surface; it doe
 - Search Console/Bing verification and sitemap submission are launch tasks. Core Web Vitals are not measured until a production field/lab report is captured; report unknown rather than inventing a baseline.
 - Current sitemap scope is intentionally limited because the expanded public site/API docs/security/privacy/contact pages are not mounted yet. Coordinate those routes with #35, #182, #186, #190 and #191 before indexing them.
 
+## Identity processor enforcement baseline (#185, #186, #265, #95)
+
+This section is a mandatory implementation boundary, not evidence that a production recognizer has been approved or deployed.
+
+- **Processor contract:** implement verification against #186 and #265. `match` must compare one requested identity owned by the authenticated tenant. `identify` must search only the requested scope owned by that tenant. Tenant context comes from verified credentials, never request-selected tenant IDs.
+- **Typed lifecycle:** keep queued/processing/completed/failed/expired/cancelled state distinct from identity outcomes. The only conclusive identity outcomes are `verified`, `not_verified`, `identified`, `no_candidate`, `ambiguous` and `inconclusive`. Technical failures are retry/permanent infrastructure failures, not `not_verified`.
+- **Durability:** capture admission, session transition and job enqueue must commit atomically before returning `202`. Idempotent retries must not duplicate capture, job or result. Enforce cancellation/expiry races, lease fencing, bounded retries and unique terminal finalization.
+- **Enrollment:** #185 owns tenant-scoped identity lifecycle and asynchronous enrollment. Keep consent reference/version attached to the enrollment request, but never interpret those opaque values as legal consent validation. Revocation/deletion must schedule privacy-governed cleanup.
+- **Hard gate:** #95 remains closed until consented/licence-cleared evaluation data, provenance and operating requirements are explicitly approved. While closed, no biometric bytes may be admitted/read/stored, no template may be created or updated, no inference job may be queued, and no enrollment may become active. No environment variable, request field, tenant metadata or operator override may bypass this gate.
+- **No domain substitution:** `domain::assess` is photo-quality assessment only. Its `FinalAssessment`, `ASSESSMENT_PASSED`, `RETAKE_REQUIRED`, quality measurements and advisory output must never be translated into or treated as identity outcomes. Do not inject it as a `JobProcessor` for verification jobs.
+- **Data minimization:** do not expose numeric similarity scores, embeddings, templates or biometric payloads in public APIs, logs, audit metadata or outbox events without a separately approved contract and security review.
+- **No fabricated processor:** do not add a placeholder recognizer that returns success, failure or an arbitrary score. Until a production processor and evaluation approval exist, verification work must remain unclaimable or fail closed without consuming it as a completed identity decision.
+
 ## 1. Non-negotiable rules
 
 1. **One actionable issue = one branch = one pull request.** Use `issue/<number>-<short-slug>`, branch from the latest `main`, and never commit directly to `main`.

@@ -14,6 +14,17 @@ Eye owns tenant-scoped identity references, face enrollment/templates, face-only
 
 Non-negotiable invariants:
 
+### Identity processor and evaluation boundaries (#185, #186, #265, #95)
+
+- Treat #186 and #265 as the authoritative verification processor contract: `match` compares only one specified tenant-owned identity; `identify` searches only the explicitly supplied tenant-owned scope. Never implement global or cross-tenant candidate search.
+- Keep processing state separate from domain outcome. Only the approved identity processor may produce `verified`, `not_verified`, `identified`, `no_candidate`, `ambiguous` or `inconclusive`. Infrastructure failures, expiry and cancellation are not negative identity outcomes.
+- Verification and enrollment admission must be durable, idempotent and tenant/resource-scoped. Preserve cancellation, expiry, lease fencing, bounded retries and one authoritative terminal result.
+- #185 enrollment owns tenant-scoped identities and opaque external references. Persist consent reference and policy version as caller-supplied evidence only; an opaque reference is not proof of lawful consent. Enrollment is asynchronous; revocation/deletion must trigger governed cleanup.
+- #95 is a hard runtime gate. Until its evaluation data, consent provenance and operating requirements are explicitly approved, do not accept or persist biometric capture bytes, create/update templates, enqueue inference, or activate enrollment. A request header, tenant setting, environment variable, feature flag or operator override must not silently bypass this gate.
+- Do not use `domain::assess`, `FinalAssessment`, photo-quality verdicts or advisory output as an identity-verification processor or identity outcome. Photo quality and identity matching are separate domains and contracts.
+- Do not expose similarity scores, embeddings, templates or biometric payloads in public responses, logs, ordinary audit metadata or outbox events unless a separate approved contract explicitly permits it.
+
+
 - Identity data, templates, scopes, sessions, results, evidence, credentials and audit access are isolated by tenant. Never implement cross-tenant lookup, template reuse, candidate search or global face search.
 - Verification is face-only in the current product scope. Do not add OTP or document verification without an explicit product decision.
 - Asynchronous processing is the target default. Do not describe synchronous photo assessment as an asynchronous verification session.
