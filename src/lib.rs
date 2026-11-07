@@ -22,3 +22,4 @@ pub mod provider;
 pub mod quality;
 pub mod seo;
 pub mod storage;
+pub mod worker;
