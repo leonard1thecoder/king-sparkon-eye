@@ -215,7 +215,8 @@ impl WorkerRuntime {
                         let store = self.store.clone();
                         let transport = self.transport.clone();
                         let max_attempts = self.config.outbox_max_attempts;
-                        tasks.spawn(async move { deliver_claim(store, transport, event, max_attempts).await; });
+                        let delivery_timeout = self.config.execution_timeout;
+                        tasks.spawn(async move { deliver_claim(store, transport, event, max_attempts, delivery_timeout).await; });
                     }
                 }
             }
@@ -264,8 +265,11 @@ async fn execute_claim(store: JobStore, processor: Arc<dyn JobProcessor>, claim:
 }
 
 async fn deliver_claim(store: JobStore, transport: Arc<dyn OutboxTransport>,
-    event: ClaimedOutboxEvent, max_attempts: i32) {
-    let result = transport.deliver(&event).await;
+    event: ClaimedOutboxEvent, max_attempts: i32, delivery_timeout: Duration) {
+    let result = match tokio::time::timeout(delivery_timeout, transport.deliver(&event)).await {
+        Ok(result) => result,
+        Err(_) => Err(TransportFailure { category: "TRANSPORT_TIMEOUT", retryable: true }),
+    };
     let now = now_ms();
     match result {
         Ok(()) => match store.acknowledge_outbox(&event.event_id, event.lease_token, now).await {
