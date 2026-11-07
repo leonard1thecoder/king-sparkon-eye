@@ -189,22 +189,36 @@ pub async fn create_api_client(
     })
 }
 
-async fn insert_credential(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    tenant_id: &TenantId,
-    client_id: &str,
-    actor_user_id: &str,
-    scopes: &[String],
+struct NewCredential<'a> {
+    tenant_id: &'a TenantId,
+    client_id: &'a str,
+    actor_user_id: &'a str,
+    scopes: &'a [String],
     expires_at_ms: Option<i64>,
     now_ms: i64,
-    rotated_from: Option<&str>,
-    environment: &str,
+    rotated_from: Option<&'a str>,
+    environment: &'a str,
+}
+
+async fn insert_credential(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    input: NewCredential<'_>,
 ) -> Result<CreatedApiCredential, ApiCredentialError> {
+    let NewCredential {
+        tenant_id,
+        client_id,
+        actor_user_id,
+        scopes,
+        expires_at_ms,
+        now_ms,
+        rotated_from,
+        environment,
+    } = input;
     let (raw_secret, key_id, salt, hash) = generate_secret(environment)?;
     let credential_id = format!("crd_{}", Uuid::new_v4().simple());
 
     sqlx::query(
-        "INSERT INTO eye_api_credentials (credential_id, tenant_id, client_id, key_id, key_hash, salt, scopes, expires_at_ms, created_at_ms, rotated_from_credential_id)          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        "INSERT INTO eye_api_credentials (credential_id, tenant_id, client_id, key_id, key_hash, salt, scopes, expires_at_ms, created_at_ms, rotated_from_credential_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
     )
     .bind(&credential_id)
     .bind(tenant_id.as_str())
@@ -220,7 +234,7 @@ async fn insert_credential(
     .await?;
 
     sqlx::query(
-        "INSERT INTO eye_api_credential_audit (tenant_id, client_id, credential_id, actor_user_id, action, created_at_ms)          VALUES ($1,$2,$3,$4,'CREDENTIAL_CREATED',$5)",
+        "INSERT INTO eye_api_credential_audit (tenant_id, client_id, credential_id, actor_user_id, action, created_at_ms) VALUES ($1,$2,$3,$4,'CREDENTIAL_CREATED',$5)",
     )
     .bind(tenant_id.as_str())
     .bind(client_id)
@@ -240,24 +254,31 @@ async fn insert_credential(
 }
 
 /// Create a credential. The secret is returned once and never persisted.
+pub struct CreateApiCredentialInput<'a> {
+    pub tenant_id: &'a TenantId,
+    pub client_id: &'a str,
+    pub actor_user_id: &'a str,
+    pub environment: &'a str,
+    pub scopes: Vec<String>,
+    pub ttl_ms: Option<u64>,
+    pub now_ms: u64,
+}
+
+/// Create a credential. The secret is returned once and never persisted.
 pub async fn create_api_credential(
     pool: &PgPool,
-    tenant_id: &TenantId,
-    client_id: &str,
-    actor_user_id: &str,
-    environment: &str,
-    scopes: Vec<String>,
-    ttl_ms: Option<u64>,
-    now_ms: u64,
+    input: CreateApiCredentialInput<'_>,
 ) -> Result<CreatedApiCredential, ApiCredentialError> {
-    validate_scopes(&scopes)?;
-    if !valid_environment(environment) {
+    validate_scopes(&input.scopes)?;
+    if !valid_environment(input.environment) {
         return Err(ApiCredentialError::InvalidInput);
     }
-    let now_ms_i64 = to_i64(now_ms)?;
-    let expires_at_ms = ttl_ms
+    let now_ms_i64 = to_i64(input.now_ms)?;
+    let expires_at_ms = input
+        .ttl_ms
         .map(|ttl| {
-            now_ms
+            input
+                .now_ms
                 .checked_add(ttl)
                 .ok_or(ApiCredentialError::InvalidInput)
         })
@@ -269,26 +290,32 @@ pub async fn create_api_credential(
     let client_scopes: Option<Vec<String>> = sqlx::query_scalar(
         "SELECT a.scopes FROM eye_api_clients a JOIN eye_tenants t ON t.tenant_id=a.tenant_id JOIN eye_auth_users u ON u.user_id=a.owner_user_id WHERE a.tenant_id=$1 AND a.client_id=$2 AND a.owner_user_id=$3 AND a.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE FOR UPDATE OF a",
     )
-    .bind(tenant_id.as_str())
-    .bind(client_id)
-    .bind(actor_user_id)
+    .bind(input.tenant_id.as_str())
+    .bind(input.client_id)
+    .bind(input.actor_user_id)
     .fetch_optional(&mut *tx)
     .await?;
     let client_scopes = client_scopes.ok_or(ApiCredentialError::NotFound)?;
-    if scopes.iter().any(|scope| !client_scopes.contains(scope)) {
+    if input
+        .scopes
+        .iter()
+        .any(|scope| !client_scopes.contains(scope))
+    {
         return Err(ApiCredentialError::InsufficientScope);
     }
 
     let created = insert_credential(
         &mut tx,
-        tenant_id,
-        client_id,
-        actor_user_id,
-        &scopes,
-        expires_at_ms,
-        now_ms_i64,
-        None,
-        environment,
+        NewCredential {
+            tenant_id: input.tenant_id,
+            client_id: input.client_id,
+            actor_user_id: input.actor_user_id,
+            scopes: &input.scopes,
+            expires_at_ms,
+            now_ms: now_ms_i64,
+            rotated_from: None,
+            environment: input.environment,
+        },
     )
     .await?;
     tx.commit().await?;
@@ -462,14 +489,16 @@ pub async fn rotate_api_credential(
 
     let created = insert_credential(
         &mut tx,
-        tenant_id,
-        &client_id,
-        actor_user_id,
-        &scopes,
-        expires_at_ms,
-        now_ms_i64,
-        Some(credential_id),
-        environment,
+        NewCredential {
+            tenant_id,
+            client_id: &client_id,
+            actor_user_id,
+            scopes: &scopes,
+            expires_at_ms,
+            now_ms: now_ms_i64,
+            rotated_from: Some(credential_id),
+            environment,
+        },
     )
     .await?;
 
