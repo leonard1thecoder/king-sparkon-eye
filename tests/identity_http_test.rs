@@ -173,6 +173,11 @@ async fn machine_scope_and_tenant_binding_are_enforced_on_identity_http_routes()
     let (status, revoked) = request_json(&app, "POST", &format!("/v1/identities/{identity_id}/revoke"), &key_a, Some(json!({}))).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(revoked["status"], "REVOKED");
+    let (status, revoked_enrollment) = request_json(
+        &app, "GET", &status_path, &key_a, None
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revoked_enrollment["status"], "REVOKED");
 
     let (status, _) = request_json(&app, "DELETE", &format!("/v1/identities/{identity_id}"), &key_a, None).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
