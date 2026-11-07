@@ -14,14 +14,18 @@ use uuid::Uuid;
 
 
 fn assert_disposable_test_database_url(url: &str) {
-    let parsed = reqwest::Url::parse(url).expect("EYE_TEST_DATABASE_URL must be a valid PostgreSQL URL");
+    let parsed = reqwest::Url::parse(url)
+        .expect("EYE_TEST_DATABASE_URL must be a valid PostgreSQL URL");
     let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
     let username = parsed.username().to_ascii_lowercase();
     let database_name = parsed.path().trim_matches('/').to_ascii_lowercase();
     let loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]");
 
     if loopback {
-        assert!(database_name.contains("test"), "test database name must contain 'test'");
+        assert!(
+            database_name.contains("test"),
+            "test database name must contain 'test'"
+        );
         return;
     }
 
@@ -30,6 +34,12 @@ fn assert_disposable_test_database_url(url: &str) {
         Ok("1"),
         "remote PostgreSQL is blocked; explicitly opt in only for a dedicated Supabase test project"
     );
+    assert_ne!(
+        parsed.port(),
+        Some(6543),
+        "Supabase transaction pooler is not supported by SQLx prepared statements; use the session pooler on port 5432"
+    );
+
     let direct_project_ref = host
         .strip_prefix("db.")
         .and_then(|value| value.strip_suffix(".supabase.co"));
@@ -38,10 +48,12 @@ fn assert_disposable_test_database_url(url: &str) {
     } else {
         None
     };
+    let is_direct_project = direct_project_ref
+        .is_some_and(|project_ref| !project_ref.is_empty() && username == "postgres");
+    let is_session_pooler = pooler_project_ref.is_some_and(|project_ref| !project_ref.is_empty());
     assert!(
-        direct_project_ref.is_some_and(|project_ref| !project_ref.is_empty() && username == "postgres")
-            || pooler_project_ref.is_some_and(|project_ref| !project_ref.is_empty()),
-        "remote test URL must be a Supabase direct host (db.<project-ref>.supabase.co) or pooler host with postgres.<project-ref> user"
+        is_direct_project || is_session_pooler,
+        "remote test URL must be a Supabase direct host (db.<project-ref>.supabase.co) or session pooler with postgres.<project-ref> user"
     );
 }
 
