@@ -54,7 +54,7 @@ fn scopes(values: &[&str]) -> Vec<String> {
 async fn credential_resolves_tenant_from_database_and_enforces_scopes() {
     let Some(pool) = pool().await else { return };
     let owner = seed_owner(&pool).await;
-    let tenant = owned_tenant(&pool, &owner, "Tenant-bound API");
+    let tenant = owned_tenant(&pool, &owner, "Tenant-bound API").await;
     let client = create_api_client(
         &pool,
         &tenant,
@@ -119,7 +119,7 @@ async fn credential_resolves_tenant_from_database_and_enforces_scopes() {
 async fn client_and_credential_scopes_cannot_exceed_the_parent_grant() {
     let Some(pool) = pool().await else { return };
     let owner = seed_owner(&pool).await;
-    let tenant = owned_tenant(&pool, &owner, "Scope boundary");
+    let tenant = owned_tenant(&pool, &owner, "Scope boundary").await;
     let client = create_api_client(
         &pool,
         &tenant,
@@ -152,8 +152,8 @@ async fn another_tenant_owner_cannot_create_or_revoke_credentials_for_a_client()
     let Some(pool) = pool().await else { return };
     let owner_a = seed_owner(&pool).await;
     let owner_b = seed_owner(&pool).await;
-    let tenant_a = owned_tenant(&pool, &owner_a, "Tenant A");
-    let tenant_b = owned_tenant(&pool, &owner_b, "Tenant B");
+    let tenant_a = owned_tenant(&pool, &owner_a, "Tenant A").await;
+    let tenant_b = owned_tenant(&pool, &owner_b, "Tenant B").await;
     let client_a = create_api_client(
         &pool,
         &tenant_a,
@@ -217,7 +217,7 @@ async fn another_tenant_owner_cannot_create_or_revoke_credentials_for_a_client()
 async fn rotation_revokes_old_secret_and_returns_new_secret_once() {
     let Some(pool) = pool().await else { return };
     let owner = seed_owner(&pool).await;
-    let tenant = owned_tenant(&pool, &owner, "Rotation");
+    let tenant = owned_tenant(&pool, &owner, "Rotation").await;
     let client = create_api_client(
         &pool,
         &tenant,
@@ -280,7 +280,7 @@ async fn rotation_revokes_old_secret_and_returns_new_secret_once() {
 async fn tenant_and_credential_rate_limits_are_enforced_independently() {
     let Some(pool) = pool().await else { return };
     let owner = seed_owner(&pool).await;
-    let tenant = owned_tenant(&pool, &owner, "Rate limits");
+    let tenant = owned_tenant(&pool, &owner, "Rate limits").await;
     let client = create_api_client(
         &pool,
         &tenant,
