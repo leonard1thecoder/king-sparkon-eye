@@ -10,6 +10,7 @@ pub mod auth;
 pub mod billing;
 pub mod config;
 pub mod contract;
+pub mod credentials;
 pub mod domain;
 pub mod error;
 pub mod inference;
