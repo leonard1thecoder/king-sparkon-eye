@@ -119,8 +119,8 @@ impl VerificationStore {
         }
         let expires=now.checked_add(ttl_ms).ok_or(VerificationStoreError::InvalidInput)?;
         let mut tx=self.pool.begin().await?;
-        let existing=sqlx::query(&format!("SELECT {SESSION_COLUMNS} FROM eye_verification_sessions WHERE tenant_id=$1 AND idempotency_key=$2 FOR UPDATE"))
-            .bind(tenant.as_str()).bind(key).fetch_optional(&mut *tx).await?;
+        let existing=sqlx::query(&format!("SELECT {SESSION_COLUMNS} FROM eye_verification_sessions WHERE tenant_id=$1 AND client_id=$2 AND idempotency_key=$3 FOR UPDATE"))
+            .bind(tenant.as_str()).bind(client_id).bind(key).fetch_optional(&mut *tx).await?;
         if let Some(row)=existing{
             let session=map_session(row)?;
             let same=session.mode==mode&&session.identity_id.as_deref()==identity_id&&session.scope_id.as_deref()==scope_id
