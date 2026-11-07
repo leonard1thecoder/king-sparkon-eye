@@ -91,7 +91,11 @@ pub async fn create_identity(
     }
     let identity_id = format!("idy_{}", Uuid::new_v4().simple());
     let query = format!(
-        "INSERT INTO eye_identities (identity_id, tenant_id, external_reference, metadata, created_at_ms, updated_at_ms) VALUES ($1,$2,$3,$4,$5,$5) RETURNING {IDENTITY_COLUMNS}"
+        "INSERT INTO eye_identities (identity_id, tenant_id, external_reference, metadata, created_at_ms, updated_at_ms) \
+         SELECT $1, t.tenant_id, $3, $4, $5, $5 FROM eye_tenants t \
+         JOIN eye_api_clients c ON c.tenant_id=t.tenant_id AND c.client_id=$6 AND c.owner_user_id=$7 AND c.status='ACTIVE' \
+         JOIN eye_auth_users u ON u.user_id=c.owner_user_id AND u.is_active=TRUE \
+         WHERE t.tenant_id=$2 AND t.status='ACTIVE' RETURNING {IDENTITY_COLUMNS}"
     );
     let mut tx = pool.begin().await?;
     let row = sqlx::query(&query)
@@ -100,8 +104,11 @@ pub async fn create_identity(
         .bind(external_reference)
         .bind(metadata)
         .bind(now_ms)
-        .fetch_one(&mut *tx)
-        .await?;
+        .bind(client_id)
+        .bind(actor_user_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(IdentityStoreError::NotFound)?;
     sqlx::query(
         "INSERT INTO eye_identity_audit (tenant_id, identity_id, client_id, actor_user_id, action, created_at_ms) VALUES ($1,$2,$3,$4,'IDENTITY_CREATED',$5)",
     )
@@ -146,11 +153,19 @@ pub async fn revoke_identity(
     }
     let mut tx = pool.begin().await?;
     let query = format!(
-        "UPDATE eye_identities SET status='REVOKED', enrollment_status='REVOKED', revoked_at_ms=COALESCE(revoked_at_ms,$3), updated_at_ms=$3 WHERE tenant_id=$1 AND identity_id=$2 AND status='ACTIVE' RETURNING {IDENTITY_COLUMNS}"
+        "UPDATE eye_identities SET status='REVOKED', enrollment_status='REVOKED', revoked_at_ms=COALESCE(revoked_at_ms,$5), updated_at_ms=$5 \
+         WHERE tenant_id=$1 AND identity_id=$2 AND status='ACTIVE' AND EXISTS ( \
+           SELECT 1 FROM eye_api_clients c JOIN eye_tenants t ON t.tenant_id=c.tenant_id \
+           JOIN eye_auth_users u ON u.user_id=c.owner_user_id \
+           WHERE c.tenant_id=$1 AND c.client_id=$3 AND c.owner_user_id=$4 \
+             AND c.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE \
+         ) RETURNING {IDENTITY_COLUMNS}"
     );
     let row = sqlx::query(&query)
         .bind(tenant_id.as_str())
         .bind(identity_id)
+        .bind(client_id)
+        .bind(actor_user_id)
         .bind(now_ms)
         .fetch_optional(&mut *tx)
         .await?
@@ -182,10 +197,18 @@ pub async fn delete_identity(
     }
     let mut tx = pool.begin().await?;
     let updated = sqlx::query(
-        "UPDATE eye_identities SET status='DELETED', enrollment_status='REVOKED', deleted_at_ms=COALESCE(deleted_at_ms,$3), updated_at_ms=$3 WHERE tenant_id=$1 AND identity_id=$2 AND status <> 'DELETED'",
+        "UPDATE eye_identities SET status='DELETED', enrollment_status='REVOKED', deleted_at_ms=COALESCE(deleted_at_ms,$5), updated_at_ms=$5 \
+         WHERE tenant_id=$1 AND identity_id=$2 AND status <> 'DELETED' AND EXISTS ( \
+           SELECT 1 FROM eye_api_clients c JOIN eye_tenants t ON t.tenant_id=c.tenant_id \
+           JOIN eye_auth_users u ON u.user_id=c.owner_user_id \
+           WHERE c.tenant_id=$1 AND c.client_id=$3 AND c.owner_user_id=$4 \
+             AND c.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE \
+         )",
     )
     .bind(tenant_id.as_str())
     .bind(identity_id)
+    .bind(client_id)
+    .bind(actor_user_id)
     .bind(now_ms)
     .execute(&mut *tx)
     .await?
