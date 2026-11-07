@@ -69,6 +69,17 @@ async fn store() -> Option<(PgPool, DurableEyeStore)> {
         .await
         .expect("connect to disposable PostgreSQL database");
     migrate(&pool).await.expect("apply Eye SQLx migrations");
+    let current_schema: String = sqlx::query_scalar("SELECT current_schema()")
+        .fetch_one(&pool)
+        .await
+        .expect("read Eye connection search path");
+    assert_eq!(current_schema, "eye", "Eye queries must resolve in the isolated schema");
+    let eye_migrations: Option<String> =
+        sqlx::query_scalar("SELECT to_regclass('eye._sqlx_migrations')::text")
+            .fetch_one(&pool)
+            .await
+            .expect("read Eye migration ledger");
+    assert_eq!(eye_migrations.as_deref(), Some("eye._sqlx_migrations"));
     let config = OAuthRuntimeConfig {
         google_client_id: "test-client".to_owned(),
         google_redirect_url: "https://eye.example.test/v1/auth/google/callback".to_owned(),
