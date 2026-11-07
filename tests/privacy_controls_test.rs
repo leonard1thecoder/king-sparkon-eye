@@ -113,3 +113,42 @@ async fn privacy_tables_enforce_transaction_local_tenant_rls(){
     assert_eq!(attempted.unwrap_err().as_database_error().and_then(|db|db.code()).as_deref(),Some("42501"));
     tx.rollback().await.unwrap();
 }
+
+
+#[tokio::test]
+async fn evidence_access_is_authorized_tenant_scoped_and_audited_atomically(){
+    let Some(pool)=pool().await else{return};
+    let owner_a=owner(&pool).await;let owner_b=owner(&pool).await;
+    let tenant_a=tenant(&pool,&owner_a).await;let tenant_b=tenant(&pool,&owner_b).await;
+    let store=PrivacyStore::new(pool.clone());
+    store.set_retention_policy(&tenant_a,"EVIDENCE_METADATA",86_400_000,
+        "evidence-access-v1",1_800_000_000_000,1_800_000_000_000).await.unwrap();
+    let evidence_id=store.register_evidence_reference(&tenant_a,"IDENTITY","idy_access_subject",
+        "SUPPORTING_EVIDENCE","private/evidence/access-object",json!({"source":"access-test"}),
+        "API_CLIENT","cli_evidence_reader",1_800_000_000_001).await.unwrap();
+
+    let accessed=store.get_evidence_for_access(&tenant_a,&evidence_id,"cli_evidence_reader",
+        Some("req_evidence_access_1"),1_800_000_000_010).await.unwrap();
+    assert_eq!(accessed.evidence_id,evidence_id);
+    assert_eq!(accessed.status,"ACTIVE");
+    // Evidence metadata DTOs must never contain the private storage key.
+    assert!(!accessed.metadata.to_string().contains("private/evidence/access-object"));
+
+    let mut tx=king_sparkon_eye::persistence::tenants::begin_tenant_transaction(&pool,&tenant_a).await.unwrap();
+    let audit=sqlx::query("SELECT actor_kind,actor_ref,action,resource_kind,resource_ref,request_id,outcome,metadata FROM eye_audit_events WHERE tenant_id=$1 AND action='EVIDENCE_ACCESSED' AND resource_ref=$2")
+        .bind(tenant_a.as_str()).bind(&evidence_id).fetch_one(&mut *tx).await.unwrap();
+    assert_eq!(audit.try_get::<String,_>("actor_kind").unwrap(),"API_CLIENT");
+    assert_eq!(audit.try_get::<String,_>("actor_ref").unwrap(),"cli_evidence_reader");
+    assert_eq!(audit.try_get::<String,_>("request_id").unwrap(),"req_evidence_access_1");
+    assert_eq!(audit.try_get::<String,_>("outcome").unwrap(),"SUCCESS");
+    assert!(!audit.try_get::<serde_json::Value,_>("metadata").unwrap().to_string().contains("storage"));
+    tx.commit().await.unwrap();
+
+    assert_eq!(store.get_evidence_for_access(&tenant_b,&evidence_id,"cli_other_tenant",
+        Some("req_cross_tenant"),1_800_000_000_011).await.unwrap_err(),PrivacyStoreError::NotFound);
+    let mut tx=king_sparkon_eye::persistence::tenants::begin_tenant_transaction(&pool,&tenant_a).await.unwrap();
+    let audit_count:i64=sqlx::query_scalar("SELECT count(*) FROM eye_audit_events WHERE tenant_id=$1 AND action='EVIDENCE_ACCESSED' AND request_id='req_cross_tenant'")
+        .bind(tenant_a.as_str()).fetch_one(&mut *tx).await.unwrap();
+    assert_eq!(audit_count,0,"denied cross-tenant reads must not create success audit events");
+    tx.rollback().await.unwrap();
+}
