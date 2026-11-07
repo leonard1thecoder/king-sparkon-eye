@@ -21,7 +21,6 @@ use uuid::Uuid;
 const NEW_PASSWORD: &str = "brand-new-secure-password-2026";
 const ENCRYPTION_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
-
 fn assert_disposable_test_database_url(url: &str) {
     let parsed = reqwest::Url::parse(url)
         .expect("EYE_TEST_DATABASE_URL must be a valid PostgreSQL URL");
@@ -59,7 +58,8 @@ fn assert_disposable_test_database_url(url: &str) {
     };
     let is_direct_project = direct_project_ref
         .is_some_and(|project_ref| !project_ref.is_empty() && username == "postgres");
-    let is_session_pooler = pooler_project_ref.is_some_and(|project_ref| !project_ref.is_empty());
+    let is_session_pooler =
+        pooler_project_ref.is_some_and(|project_ref| !project_ref.is_empty());
     assert!(
         is_direct_project || is_session_pooler,
         "remote test URL must be a Supabase direct host (db.<project-ref>.supabase.co) or session pooler with postgres.<project-ref> user"
