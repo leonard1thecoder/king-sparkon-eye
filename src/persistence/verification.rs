@@ -169,12 +169,23 @@ impl VerificationStore {
     }
 
     pub async fn cancel_session(&self,tenant:&TenantId,session_id:&str,now:i64)->Result<VerificationSession,VerificationStoreError>{
+        if now<=0{return Err(VerificationStoreError::InvalidInput)}
         let mut tx=self.pool.begin().await?;
-        let row=sqlx::query("SELECT client_id,status FROM eye_verification_sessions WHERE tenant_id=$1 AND session_id=$2 FOR UPDATE")
+        let row=sqlx::query("SELECT client_id,status,expires_at_ms FROM eye_verification_sessions WHERE tenant_id=$1 AND session_id=$2 FOR UPDATE")
             .bind(tenant.as_str()).bind(session_id).fetch_optional(&mut *tx).await?.ok_or(VerificationStoreError::NotFound)?;
         let status:String=row.try_get("status")?;
-        if !matches!(status.as_str(),"AWAITING_CAPTURE"|"BLOCKED_EVALUATION"){return Err(VerificationStoreError::Conflict)}
+        let expires:i64=row.try_get("expires_at_ms")?;
         let client:String=row.try_get("client_id")?;
+        if expires<=now&&matches!(status.as_str(),"AWAITING_CAPTURE"|"BLOCKED_EVALUATION"|"QUEUED"|"PROCESSING"){
+            sqlx::query("UPDATE eye_verification_sessions SET status='EXPIRED',reason_code='SESSION_EXPIRED',updated_at_ms=$3 WHERE tenant_id=$1 AND session_id=$2")
+                .bind(tenant.as_str()).bind(session_id).bind(now).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO eye_verification_session_audit(tenant_id,session_id,client_id,action,created_at_ms) VALUES($1,$2,$3,'SESSION_EXPIRED',$4)")
+                .bind(tenant.as_str()).bind(session_id).bind(&client).bind(now).execute(&mut *tx).await?;
+            let expired=sqlx::query(&format!("SELECT {SESSION_COLUMNS} FROM eye_verification_sessions WHERE tenant_id=$1 AND session_id=$2"))
+                .bind(tenant.as_str()).bind(session_id).fetch_one(&mut *tx).await?;
+            tx.commit().await?;return map_session(expired)
+        }
+        if !matches!(status.as_str(),"AWAITING_CAPTURE"|"BLOCKED_EVALUATION"){return Err(VerificationStoreError::Conflict)}
         sqlx::query("UPDATE eye_verification_sessions SET status='CANCELLED',reason_code='SESSION_CANCELLED',updated_at_ms=$3 WHERE tenant_id=$1 AND session_id=$2")
             .bind(tenant.as_str()).bind(session_id).bind(now).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO eye_verification_session_audit(tenant_id,session_id,client_id,action,created_at_ms) VALUES($1,$2,$3,'SESSION_CANCELLED',$4)")
