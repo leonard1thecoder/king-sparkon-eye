@@ -142,7 +142,7 @@ impl VerificationStore {
             if found.is_none(){return Err(VerificationStoreError::NotFound)}
         }
         let id=format!("vfy_{}",Uuid::new_v4().simple());
-        let row=sqlx::query(&format!("INSERT INTO eye_verification_sessions(session_id,tenant_id,client_id,mode,identity_id,scope_id,status,purpose,context,idempotency_key,expires_at_ms,created_at_ms,updated_at_ms) VALUES($1,$2,$3,$4,$5,$6,'AWAITING_CAPTURE',$7,$8,$9,$10,$11,$11) RETURNING {SESSION_COLUMNS}"))
+        let row=sqlx::query(&format!("INSERT INTO eye_verification_sessions(session_id,tenant_id,client_id,mode,identity_id,scope_id,status,reason_code,purpose,context,idempotency_key,expires_at_ms,created_at_ms,updated_at_ms) VALUES($1,$2,$3,$4,$5,$6,'BLOCKED_EVALUATION','EVALUATION_DATA_REQUIRED',$7,$8,$9,$10,$11,$11) RETURNING {SESSION_COLUMNS}"))
             .bind(&id).bind(tenant.as_str()).bind(client_id).bind(mode).bind(identity_id).bind(scope_id).bind(purpose).bind(context).bind(key).bind(expires).bind(now)
             .fetch_one(&mut *tx).await?;
         sqlx::query("INSERT INTO eye_verification_session_audit(tenant_id,session_id,client_id,action,created_at_ms) VALUES($1,$2,$3,'SESSION_CREATED',$4)")
