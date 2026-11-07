@@ -2,18 +2,18 @@
 //! Requires EYE_TEST_DATABASE_URL pointing at the dedicated Eye PostgreSQL test database.
 
 use axum::{
-    body::{to_bytes, Body},
+    Router,
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
     response::Response,
-    Router,
 };
 use king_sparkon_eye::{
-    auth::{sign_access_token, AccessTokenClaims, UserRole},
+    auth::{AccessTokenClaims, UserRole, sign_access_token},
     config::Config,
     credentials,
     persistence::{connect, migrate, tenants::create_tenant},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use tower::ServiceExt;
 use uuid::Uuid;
