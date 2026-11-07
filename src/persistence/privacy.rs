@@ -39,7 +39,7 @@ fn safe_metadata(value:&Value)->bool {
         match v {
             Value::Object(map)=>map.iter().all(|(k,v)|{
                 let key=k.to_ascii_lowercase();
-                !["image","photo","biometric","embedding","template","token","secret","password","payload","signed_url","storage_key"]
+                !["image","photo","biometric","embedding","template","token","secret","password","payload","signed_url","signedurl","presigned","storage_key","storagekey","object_key","objectkey","s3_key","bucket","url","uri"]
                     .iter().any(|blocked|key.contains(blocked))&&walk(v)
             }),
             Value::Array(items)=>items.iter().all(walk),
