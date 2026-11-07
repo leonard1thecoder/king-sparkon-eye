@@ -167,13 +167,22 @@ fn human_actor(state: &CredentialState, headers: &HeaderMap) -> Result<String, S
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
         .map(|(_, token)| token.trim())
         .filter(|token| !token.is_empty())
-        .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "unauthorized"))?;
+        .ok_or(StatusCode::UNAUTHORIZED)?;
     let claims = verify_access_token(token, &oauth.jwt_kid, secret.as_bytes(), now_ms() / 1000)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
     if !claims.sub.starts_with("usr_") {
-        return Err(error(StatusCode::UNAUTHORIZED, "unauthorized"));
+        return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(claims.sub)
+}
+
+fn map_human_error(status: StatusCode) -> Response {
+    let code = if status == StatusCode::SERVICE_UNAVAILABLE {
+        "credential_storage_unavailable"
+    } else {
+        "unauthorized"
+    };
+    error(status, code)
 }
 
 fn tenant_id(raw: &str) -> Result<TenantId, StatusCode> {
@@ -199,8 +208,7 @@ async fn create_client(
     headers: HeaderMap,
     Json(request): Json<CreateClientRequest>,
 ) -> Result<Json<ClientResponse>, Response> {
-    let actor = human_actor(&state, &headers)
-        .map_err(|status| error(status, "unauthorized"))?;
+    let actor = human_actor(&state, &headers).map_err(map_human_error)?;
     let tenant = tenant_id(&raw_tenant).map_err(|status| error(status, "not_found"))?;
     let client = api_credentials::create_api_client(
         &state.pool,
@@ -228,8 +236,8 @@ async fn create_credential(
     headers: HeaderMap,
     Json(request): Json<CreateCredentialRequest>,
 ) -> Result<Json<CredentialResponse>, Response> {
-    let actor = human_actor(&state, &headers)?;
-    let tenant = tenant_id(&raw_tenant)?;
+    let actor = human_actor(&state, &headers).map_err(map_human_error)?;
+    let tenant = tenant_id(&raw_tenant).map_err(|status| error(status, "not_found"))?;
     let credential = api_credentials::create_api_credential(
         &state.pool,
         CreateApiCredentialInput {
