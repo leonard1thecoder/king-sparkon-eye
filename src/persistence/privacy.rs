@@ -232,6 +232,25 @@ impl PrivacyStore {
         Ok(request)
     }
 
+    /// Converts due evidence references into durable, idempotent deletion work.
+    pub async fn queue_expired_evidence_deletions(&self,tenant:&TenantId,now_ms:i64,limit:i64)
+        ->Result<u64,PrivacyStoreError>{
+        if now_ms<=0||!(1..=MAX_BATCH).contains(&limit){return Err(PrivacyStoreError::InvalidInput);}
+        let rows=sqlx::query("WITH due AS (SELECT evidence_id,tenant_id FROM eye_evidence_references WHERE tenant_id=$1 AND status='ACTIVE' AND retention_expires_at_ms<=$2 ORDER BY retention_expires_at_ms,created_at_ms LIMIT $3 FOR UPDATE SKIP LOCKED), marked AS (UPDATE eye_evidence_references e SET status='DELETE_PENDING' FROM due WHERE e.tenant_id=due.tenant_id AND e.evidence_id=due.evidence_id RETURNING e.tenant_id,e.evidence_id), queued AS (INSERT INTO eye_deletion_requests(deletion_id,tenant_id,target_kind,target_ref,reason_code,actor_kind,actor_ref,idempotency_key,status,next_attempt_at_ms,created_at_ms,updated_at_ms) SELECT 'del_'||md5(m.tenant_id||':'||m.evidence_id),m.tenant_id,'EVIDENCE',m.evidence_id,'RETENTION_EXPIRED','SYSTEM','retention-scheduler','retention-'||m.evidence_id,'QUEUED',$2,$2,$2 FROM marked m ON CONFLICT(tenant_id,target_kind,target_ref,idempotency_key) DO NOTHING RETURNING tenant_id,deletion_id,target_ref) INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,outcome,metadata,created_at_ms) SELECT tenant_id,'SYSTEM','retention-scheduler','RETENTION_DELETION_QUEUED','EVIDENCE',target_ref,'SUCCESS','{}'::jsonb,$2 FROM queued")
+            .bind(tenant.as_str()).bind(now_ms).bind(limit).execute(&self.pool).await?;
+        Ok(rows.rows_affected())
+    }
+
+    /// Marks expired final-attempt leases as failed so cleanup work cannot remain stuck forever.
+    pub async fn recover_exhausted_deletions(&self,tenant:&TenantId,now_ms:i64,limit:i64)
+        ->Result<u64,PrivacyStoreError>{
+        if now_ms<=0||!(1..=MAX_BATCH).contains(&limit){return Err(PrivacyStoreError::InvalidInput);}
+        let mut tx=self.pool.begin().await?;
+        let rows=sqlx::query("WITH due AS (SELECT deletion_id,target_ref FROM eye_deletion_requests WHERE tenant_id=$1 AND status='PROCESSING' AND lease_until_ms<=$2 AND attempts>=max_attempts ORDER BY lease_until_ms LIMIT $3 FOR UPDATE SKIP LOCKED), failed AS (UPDATE eye_deletion_requests d SET status='FAILED',lease_token=NULL,worker_id=NULL,lease_until_ms=NULL,last_error_category='LEASE_EXHAUSTED',updated_at_ms=$2 FROM due WHERE d.deletion_id=due.deletion_id RETURNING d.deletion_id,d.target_ref) INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,outcome,metadata,created_at_ms) SELECT $1,'SYSTEM','deletion-recovery','DELETION_CLEANUP_FAILED','DELETION_REQUEST',deletion_id,'FAILED',jsonb_build_object('targetRef',target_ref,'reason','LEASE_EXHAUSTED'),$2 FROM failed")
+            .bind(tenant.as_str()).bind(now_ms).bind(limit).execute(&mut *tx).await?;
+        let count=rows.rows_affected();tx.commit().await?;Ok(count)
+    }
+
     pub async fn claim_deletions(&self,tenant:&TenantId,worker_id:&str,now_ms:i64,lease_ms:i64,limit:i64)
         ->Result<Vec<ClaimedDeletion>,PrivacyStoreError>{
         if !safe_worker(worker_id)||now_ms<=0||!(1..=MAX_LEASE_MS).contains(&lease_ms)||!(1..=MAX_BATCH).contains(&limit){
