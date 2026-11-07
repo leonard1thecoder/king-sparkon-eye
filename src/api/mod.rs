@@ -605,6 +605,24 @@ pub async fn initialize_auth_storage(config: &Config) -> Result<(), ()> {
         .await
         .map_err(|_| ())?;
     crate::persistence::migrate(&pool).await.map_err(|_| ())?;
+
+    // RLS cannot constrain PostgreSQL superusers or roles with BYPASSRLS.
+    // Refuse to start the API with a privileged application connection.
+    let (is_superuser, bypass_rls): (bool, bool) = sqlx::query_as(
+        "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| ())?;
+    if is_superuser || bypass_rls {
+        tracing::error!(
+            is_superuser,
+            bypass_rls,
+            "Eye runtime database role must not be superuser or BYPASSRLS"
+        );
+        return Err(());
+    }
+
     pool.close().await;
     Ok(())
 }
