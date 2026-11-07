@@ -11,12 +11,12 @@ pub mod usage_ledger;
 
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
-const EYE_SEARCH_PATH: &str = "SET search_path TO eye, public";
+const EYE_SEARCH_PATH: &str = "SET search_path TO eye";
 
 /// Open a pool whose unqualified SQL is confined to Eye's schema.
 ///
-/// The public schema is intentionally retained as a read-only fallback for shared
-/// PostgreSQL installations; Eye migrations and writes resolve in the first schema.
+/// No public-schema fallback is configured: a missing Eye table must fail closed rather
+/// than accidentally resolving to a similarly named table owned by another application.
 pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let pool = PgPoolOptions::new()
         .after_connect(|connection, _metadata| {
