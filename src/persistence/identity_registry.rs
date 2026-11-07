@@ -132,7 +132,7 @@ pub async fn revoke_identity(
     }
     let mut tx = pool.begin().await?;
     let query = format!(
-        "UPDATE eye_identities SET status='REVOKED', enrollment_status='REVOKED', revoked_at_ms=COALESCE(revoked_at_ms,$4), updated_at_ms=$4 WHERE tenant_id=$1 AND identity_id=$2 AND status='ACTIVE' RETURNING {IDENTITY_COLUMNS}"
+        "UPDATE eye_identities SET status='REVOKED', enrollment_status='REVOKED', revoked_at_ms=COALESCE(revoked_at_ms,$3), updated_at_ms=$3 WHERE tenant_id=$1 AND identity_id=$2 AND status='ACTIVE' RETURNING {IDENTITY_COLUMNS}"
     );
     let row = sqlx::query(&query)
         .bind(tenant_id.as_str())
