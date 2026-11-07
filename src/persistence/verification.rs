@@ -119,6 +119,10 @@ impl VerificationStore {
         }
         let expires=now.checked_add(ttl_ms).ok_or(VerificationStoreError::InvalidInput)?;
         let mut tx=self.pool.begin().await?;
+        // Serialize concurrent first submissions for the same tenant/client/key.
+        let lock_key=format!("{}:{}:{}",tenant.as_str(),client_id,key);
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+            .bind(lock_key).execute(&mut *tx).await?;
         let existing=sqlx::query(&format!("SELECT {SESSION_COLUMNS} FROM eye_verification_sessions WHERE tenant_id=$1 AND client_id=$2 AND idempotency_key=$3 FOR UPDATE"))
             .bind(tenant.as_str()).bind(client_id).bind(key).fetch_optional(&mut *tx).await?;
         if let Some(row)=existing{
