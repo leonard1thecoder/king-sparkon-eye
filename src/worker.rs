@@ -229,6 +229,8 @@ async fn execute_claim(store: JobStore, processor: Arc<dyn JobProcessor>, claim:
     let job_id = claim.job.job_id.clone();
     let token = claim.lease_token;
     let mut execution = Box::pin(processor.process(&claim));
+    let timeout = tokio::time::sleep(execution_timeout);
+    tokio::pin!(timeout);
     let heartbeat_every = Duration::from_millis((lease_ms / 3).max(250) as u64);
     let mut heartbeat = interval(heartbeat_every);
     heartbeat.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -237,7 +239,7 @@ async fn execute_claim(store: JobStore, processor: Arc<dyn JobProcessor>, claim:
     let outcome = loop {
         tokio::select! {
             result = &mut execution => break result,
-            _ = tokio::time::sleep(execution_timeout) => {
+            _ = &mut timeout => {
                 warn!(job_id = %job_id, "job execution timed out");
                 break JobExecution::Retryable { category: "PROCESSOR_TIMEOUT", retry_after: Duration::from_secs(5) };
             }
