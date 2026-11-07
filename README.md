@@ -125,7 +125,7 @@ The optional Meta Muse Spark adapter is supplementary visual-quality guidance on
 
 The Rust persistence layer now has a tenant-scoped durable job aggregate and a separate result-event outbox. Jobs are idempotent by tenant/resource/key, claimed with PostgreSQL `SKIP LOCKED`, fenced by worker lease tokens, heartbeated, retried with bounded attempts, cancelled, and finalized with a tenant-scoped outbox event in the same transaction. Expired leases can be reclaimed; exhausted crashed jobs are terminalized through the explicit recovery operation.
 
-This is persistence/runtime infrastructure, not an inference worker deployment or a complete verification-session API. The runtime does not accept biometric bytes, infer identity, or override #95. Identity-enrollment jobs can be enqueued only after the enrollment aggregate is already `QUEUED`; `BLOCKED_EVALUATION` is rejected and cannot be claimed. The legacy `eye_kafka_outbox` from #113 remains separate. Outbox delivery is at-least-once and consumers must deduplicate by event ID.
+This is persistence/runtime infrastructure, not an inference worker deployment or a complete verification-session API. The runtime does not accept biometric bytes, infer identity, or override #95. Identity-enrollment jobs can be enqueued only after the enrollment aggregate is already `QUEUED`; `BLOCKED_EVALUATION` is rejected and cannot be claimed. Verification-session enqueue remains fail-closed until #186 supplies the authoritative session aggregate and ownership contract. The legacy `eye_kafka_outbox` from #113 remains separate. Outbox delivery is at-least-once and consumers must deduplicate by event ID.
 
 ## Current HTTP surface
 
