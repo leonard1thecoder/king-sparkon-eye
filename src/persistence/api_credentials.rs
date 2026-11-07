@@ -87,8 +87,14 @@ impl std::fmt::Debug for CreatedApiCredential {
 
 fn validate_scopes(scopes: &[String]) -> Result<(), ApiCredentialError> {
     if scopes.is_empty()
-        || scopes.iter().any(|scope| !ALLOWED_SCOPES.contains(&scope.as_str()))
-        || scopes.iter().collect::<std::collections::HashSet<_>>().len() != scopes.len()
+        || scopes
+            .iter()
+            .any(|scope| !ALLOWED_SCOPES.contains(&scope.as_str()))
+        || scopes
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != scopes.len()
     {
         return Err(ApiCredentialError::InvalidInput);
     }
@@ -232,7 +238,11 @@ pub async fn create_api_credential(
     validate_scopes(&scopes)?;
     let now_ms_i64 = to_i64(now_ms)?;
     let expires_at_ms = ttl_ms
-        .map(|ttl| now_ms.checked_add(ttl).ok_or(ApiCredentialError::InvalidInput))
+        .map(|ttl| {
+            now_ms
+                .checked_add(ttl)
+                .ok_or(ApiCredentialError::InvalidInput)
+        })
         .transpose()?
         .map(to_i64)
         .transpose()?;
@@ -384,7 +394,11 @@ pub async fn rotate_api_credential(
 ) -> Result<CreatedApiCredential, ApiCredentialError> {
     let now_ms_i64 = to_i64(now_ms)?;
     let expires_at_ms = ttl_ms
-        .map(|ttl| now_ms.checked_add(ttl).ok_or(ApiCredentialError::InvalidInput))
+        .map(|ttl| {
+            now_ms
+                .checked_add(ttl)
+                .ok_or(ApiCredentialError::InvalidInput)
+        })
         .transpose()?
         .map(to_i64)
         .transpose()?;
