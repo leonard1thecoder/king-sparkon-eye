@@ -262,7 +262,7 @@ pub async fn create_api_credential(
 
     let mut tx = pool.begin().await?;
     let client_scopes: Option<Vec<String>> = sqlx::query_scalar(
-        "SELECT scopes FROM eye_api_clients          WHERE tenant_id=$1 AND client_id=$2 AND owner_user_id=$3 AND status='ACTIVE'          FOR UPDATE",
+        "SELECT a.scopes FROM eye_api_clients a JOIN eye_tenants t ON t.tenant_id=a.tenant_id JOIN eye_auth_users u ON u.user_id=a.owner_user_id WHERE a.tenant_id=$1 AND a.client_id=$2 AND a.owner_user_id=$3 AND a.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE FOR UPDATE OF a",
     )
     .bind(tenant_id.as_str())
     .bind(client_id)
@@ -383,7 +383,7 @@ pub async fn revoke_api_credential(
     let now_ms = to_i64(now_ms)?;
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE eye_api_credentials c SET revoked_at_ms=$4          FROM eye_api_clients a          WHERE c.tenant_id=$1 AND c.credential_id=$2 AND c.client_id=a.client_id            AND a.tenant_id=c.tenant_id AND a.owner_user_id=$3 AND c.revoked_at_ms IS NULL          RETURNING c.client_id",
+        "UPDATE eye_api_credentials c SET revoked_at_ms=$4 FROM eye_api_clients a JOIN eye_tenants t ON t.tenant_id=a.tenant_id JOIN eye_auth_users u ON u.user_id=a.owner_user_id WHERE c.tenant_id=$1 AND c.credential_id=$2 AND c.client_id=a.client_id AND a.tenant_id=c.tenant_id AND a.owner_user_id=$3 AND a.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE AND c.revoked_at_ms IS NULL RETURNING c.client_id",
     )
     .bind(tenant_id.as_str())
     .bind(credential_id)
@@ -432,7 +432,7 @@ pub async fn rotate_api_credential(
         .transpose()?;
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "SELECT c.client_id, c.scopes FROM eye_api_credentials c          JOIN eye_api_clients a ON a.tenant_id=c.tenant_id AND a.client_id=c.client_id          WHERE c.tenant_id=$1 AND c.credential_id=$2 AND a.owner_user_id=$3            AND a.status='ACTIVE' AND c.revoked_at_ms IS NULL            AND (c.expires_at_ms IS NULL OR c.expires_at_ms > $4) FOR UPDATE OF c",
+        "SELECT c.client_id, c.scopes FROM eye_api_credentials c JOIN eye_api_clients a ON a.tenant_id=c.tenant_id AND a.client_id=c.client_id JOIN eye_tenants t ON t.tenant_id=c.tenant_id JOIN eye_auth_users u ON u.user_id=a.owner_user_id WHERE c.tenant_id=$1 AND c.credential_id=$2 AND a.owner_user_id=$3 AND a.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE AND c.revoked_at_ms IS NULL AND (c.expires_at_ms IS NULL OR c.expires_at_ms > $4) FOR UPDATE OF c",
     )
     .bind(tenant_id.as_str())
     .bind(credential_id)
