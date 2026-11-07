@@ -799,8 +799,8 @@
               }
             }
           },
-          "202": {
-            "description": "New session accepted as metadata. Capture and inference remain gated; no processing job is enqueued.",
+          "201": {
+            "description": "Session resource created. This does not accept a capture or enqueue inference.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1345,33 +1345,13 @@
       "ErrorBody": {
         "type": "object",
         "required": [
-          "code",
-          "message"
+          "code"
         ],
         "additionalProperties": false,
         "properties": {
           "code": {
             "type": "string",
-            "enum": [
-              "NOT_READY",
-              "NOT_FOUND",
-              "UNAUTHORIZED",
-              "FORBIDDEN",
-              "VALIDATION_FAILED",
-              "PAYLOAD_TOO_LARGE",
-              "UNSUPPORTED_MEDIA_TYPE",
-              "RATE_LIMITED",
-              "SERVICE_UNAVAILABLE",
-              "IMAGE_MALFORMED",
-              "IMAGE_DIMENSIONS_EXCEEDED",
-              "INTERNAL",
-              "INVALID_REQUEST",
-              "IDEMPOTENCY_CONFLICT",
-              "EVALUATION_GATE_CLOSED"
-            ]
-          },
-          "message": {
-            "type": "string"
+            "description": "Stable machine-readable error code."
           }
         }
       },
