@@ -94,7 +94,10 @@ BEGIN
                updated_at_ms = NEW.updated_at_ms
          WHERE tenant_id = NEW.tenant_id
            AND identity_id = NEW.identity_id
-           AND status NOT IN ('REVOKED', 'DELETED')
+           AND (
+               (NEW.status = 'DELETED' AND status <> 'DELETED')
+               OR (NEW.status = 'REVOKED' AND status NOT IN ('REVOKED', 'DELETED'))
+           )
          RETURNING enrollment_id, client_id, actor_user_id
     LOOP
         INSERT INTO eye_identity_audit (
