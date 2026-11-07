@@ -20,8 +20,13 @@ const ALLOWED_SCOPES: &[&str] = &[
     "evidence:read",
     "webhooks:manage",
 ];
-const API_KEY_PREFIX: &str = "kse_live_";
-const KEY_ID_LEN: usize = 21;
+const API_KEY_PREFIX: &str = "kse_";
+const KEY_ID_RANDOM_LEN: usize = 12;
+const SECRET_HEX_LEN: usize = 64;
+
+fn valid_environment(environment: &str) -> bool {
+    matches!(environment, "dev" | "test" | "live")
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ApiCredentialError {
@@ -101,13 +106,16 @@ fn validate_scopes(scopes: &[String]) -> Result<(), ApiCredentialError> {
     Ok(())
 }
 
-fn generate_secret() -> (String, String, String, String) {
+fn generate_secret(environment: &str) -> Result<(String, String, String, String), ApiCredentialError> {
+    if !valid_environment(environment) {
+        return Err(ApiCredentialError::InvalidInput);
+    }
     let random = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-    let raw_secret = format!("{API_KEY_PREFIX}{random}");
-    let key_id = raw_secret.chars().take(KEY_ID_LEN).collect::<String>();
+    let raw_secret = format!("{API_KEY_PREFIX}{environment}_{random}");
+    let key_id = format!("{API_KEY_PREFIX}{environment}_{}", &random[..KEY_ID_RANDOM_LEN]);
     let salt = Uuid::new_v4().simple().to_string();
     let hash = hash_api_key(&raw_secret, &salt);
-    (raw_secret, key_id, salt, hash)
+    Ok((raw_secret, key_id, salt, hash))
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
@@ -185,8 +193,9 @@ async fn insert_credential(
     expires_at_ms: Option<i64>,
     now_ms: i64,
     rotated_from: Option<&str>,
+    environment: &str,
 ) -> Result<CreatedApiCredential, ApiCredentialError> {
-    let (raw_secret, key_id, salt, hash) = generate_secret();
+    let (raw_secret, key_id, salt, hash) = generate_secret(environment)?;
     let credential_id = format!("crd_{}", Uuid::new_v4().simple());
 
     sqlx::query(
@@ -231,11 +240,15 @@ pub async fn create_api_credential(
     tenant_id: &TenantId,
     client_id: &str,
     actor_user_id: &str,
+    environment: &str,
     scopes: Vec<String>,
     ttl_ms: Option<u64>,
     now_ms: u64,
 ) -> Result<CreatedApiCredential, ApiCredentialError> {
     validate_scopes(&scopes)?;
+    if !valid_environment(environment) {
+        return Err(ApiCredentialError::InvalidInput);
+    }
     let now_ms_i64 = to_i64(now_ms)?;
     let expires_at_ms = ttl_ms
         .map(|ttl| {
@@ -270,6 +283,7 @@ pub async fn create_api_credential(
         expires_at_ms,
         now_ms_i64,
         None,
+        environment,
     )
     .await?;
     tx.commit().await?;
@@ -283,10 +297,20 @@ pub async fn authenticate_api_credential(
     required_scope: Option<&str>,
     now_ms: u64,
 ) -> Result<AuthenticatedApiClient, ApiCredentialError> {
-    if !raw_secret.starts_with(API_KEY_PREFIX) || raw_secret.len() < KEY_ID_LEN + 32 {
+    let mut parts = raw_secret.split('_');
+    if parts.next() != Some("kse") {
         return Err(ApiCredentialError::InvalidCredential);
     }
-    let key_id = raw_secret.chars().take(KEY_ID_LEN).collect::<String>();
+    let environment = parts.next().ok_or(ApiCredentialError::InvalidCredential)?;
+    let random = parts.next().ok_or(ApiCredentialError::InvalidCredential)?;
+    if parts.next().is_some()
+        || !valid_environment(environment)
+        || random.len() != SECRET_HEX_LEN
+        || !random.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err(ApiCredentialError::InvalidCredential);
+    }
+    let key_id = format!("{API_KEY_PREFIX}{environment}_{}", &random[..KEY_ID_RANDOM_LEN]);
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "SELECT c.credential_id, c.tenant_id, c.client_id, c.key_hash, c.salt, c.scopes, \
@@ -389,9 +413,13 @@ pub async fn rotate_api_credential(
     tenant_id: &TenantId,
     credential_id: &str,
     actor_user_id: &str,
+    environment: &str,
     ttl_ms: Option<u64>,
     now_ms: u64,
 ) -> Result<CreatedApiCredential, ApiCredentialError> {
+    if !valid_environment(environment) {
+        return Err(ApiCredentialError::InvalidInput);
+    }
     let now_ms_i64 = to_i64(now_ms)?;
     let expires_at_ms = ttl_ms
         .map(|ttl| {
@@ -431,6 +459,7 @@ pub async fn rotate_api_credential(
         expires_at_ms,
         now_ms_i64,
         Some(credential_id),
+        environment,
     )
     .await?;
 
