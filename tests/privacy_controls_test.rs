@@ -77,3 +77,39 @@ async fn deletion_is_idempotent_tenant_scoped_and_lease_fenced(){
     assert_eq!(evidence_after.status,"DELETED");
     assert!(evidence_after.deleted_at_ms.is_some());
 }
+
+
+#[tokio::test]
+async fn privacy_tables_enforce_transaction_local_tenant_rls(){
+    let Some(pool)=pool().await else{return};
+    let (is_superuser,bypass_rls):(bool,bool)=sqlx::query_as(
+        "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user"
+    ).fetch_one(&pool).await.unwrap();
+    assert!(!is_superuser,"test connection must not be superuser");
+    assert!(!bypass_rls,"test connection must not have BYPASSRLS");
+
+    let owner_a=owner(&pool).await;let owner_b=owner(&pool).await;
+    let tenant_a=tenant(&pool,&owner_a).await;let tenant_b=tenant(&pool,&owner_b).await;
+    let store=PrivacyStore::new(pool.clone());
+    store.set_retention_policy(&tenant_a,"EVIDENCE_METADATA",86_400_000,"rls-policy-v1",1_800_000_000_100,1_800_000_000_010).await.unwrap();
+    let evidence=store.register_evidence_reference(&tenant_a,"IDENTITY","idy_rls_subject","SUPPORTING_EVIDENCE",
+        "private/rls/evidence",json!({"source":"rls-test"}),"USER","usr-rls-test",1_800_000_000_011).await.unwrap();
+
+    let visible_without_context:i64=sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM eye_retention_policies)+(SELECT count(*) FROM eye_audit_events)+(SELECT count(*) FROM eye_evidence_references)+(SELECT count(*) FROM eye_deletion_requests)"
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(visible_without_context,0,"privacy tables must fail closed without tenant context");
+
+    let mut tx=king_sparkon_eye::persistence::tenants::begin_tenant_transaction(&pool,&tenant_b).await.unwrap();
+    let visible_b:i64=sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM eye_retention_policies WHERE tenant_id=$1)+(SELECT count(*) FROM eye_audit_events WHERE tenant_id=$1)+(SELECT count(*) FROM eye_evidence_references WHERE evidence_id=$2)+(SELECT count(*) FROM eye_deletion_requests WHERE tenant_id=$1)"
+    ).bind(tenant_a.as_str()).bind(&evidence).fetch_one(&mut *tx).await.unwrap();
+    assert_eq!(visible_b,0,"tenant B must not see tenant A privacy resources");
+    let attempted=sqlx::query(
+        "INSERT INTO eye_evidence_references(evidence_id,tenant_id,resource_kind,resource_ref,data_class,storage_key,metadata,created_at_ms) VALUES($1,$2,'IDENTITY','idy_other','SUPPORTING_EVIDENCE','private/other','{}'::jsonb,$3)"
+    ).bind(format!("evd_{}",Uuid::new_v4().simple())).bind(tenant_a.as_str()).bind(1_800_000_000_200_i64)
+     .execute(&mut *tx).await;
+    assert!(attempted.is_err(),"tenant B context must reject tenant A evidence writes");
+    assert_eq!(attempted.unwrap_err().as_database_error().and_then(|db|db.code()).as_deref(),Some("42501"));
+    tx.rollback().await.unwrap();
+}
