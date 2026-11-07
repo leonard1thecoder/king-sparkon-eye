@@ -151,7 +151,6 @@ pub async fn revoke_identity(
     let row = sqlx::query(&query)
         .bind(tenant_id.as_str())
         .bind(identity_id)
-        .bind(client_id)
         .bind(now_ms)
         .fetch_optional(&mut *tx)
         .await?
