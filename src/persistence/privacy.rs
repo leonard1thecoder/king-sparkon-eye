@@ -81,7 +81,7 @@ impl PrivacyStore {
     pub async fn set_retention_policy(&self,tenant:&TenantId,data_class:&str,retention_ms:i64,
         version:&str,effective_at_ms:i64,now_ms:i64)->Result<RetentionPolicy,PrivacyStoreError>{
         if !matches!(data_class,"ORIGINAL_CAPTURE"|"FACE_TEMPLATE"|"EVIDENCE_METADATA"|"AUDIT_RECORD")
-            ||!(1..=315_360_000_000).contains(&retention_ms)||!safe_ref(version,128)
+            ||retention_ms<=0||!safe_ref(version,128)
             ||effective_at_ms<=0||now_ms<=0||effective_at_ms<now_ms {
             return Err(PrivacyStoreError::InvalidInput);
         }
@@ -148,21 +148,44 @@ impl PrivacyStore {
             return Err(PrivacyStoreError::InvalidInput);
         }
         let mut tx=self.pool.begin().await?;
-        if target_kind=="EVIDENCE" {
-            let updated=sqlx::query("UPDATE eye_evidence_references SET status='DELETE_PENDING' WHERE tenant_id=$1 AND evidence_id=$2 AND status='ACTIVE'")
-                .bind(tenant.as_str()).bind(target_ref).execute(&mut *tx).await?;
-            if updated.rows_affected()==0 {
-                let status=sqlx::query_scalar::<_,String>("SELECT status FROM eye_evidence_references WHERE tenant_id=$1 AND evidence_id=$2")
-                    .bind(tenant.as_str()).bind(target_ref).fetch_optional(&mut *tx).await?;
-                if status.is_none(){return Err(PrivacyStoreError::NotFound);}
+        // Resolve idempotent replay before mutating evidence state.
+        if let Some(existing)=sqlx::query("SELECT deletion_id,target_kind,target_ref,reason_code,actor_kind,actor_ref,status,attempts,max_attempts,lease_token,lease_until_ms FROM eye_deletion_requests WHERE tenant_id=$1 AND target_kind=$2 AND target_ref=$3 AND idempotency_key=$4 FOR UPDATE")
+            .bind(tenant.as_str()).bind(target_kind).bind(target_ref).bind(key).fetch_optional(&mut *tx).await? {
+            let same:String=existing.try_get("reason_code")?;
+            let same_actor:String=existing.try_get("actor_kind")?;
+            let same_ref:String=existing.try_get("actor_ref")?;
+            if same!=reason_code||same_actor!=actor_kind||same_ref!=actor_ref {
+                return Err(PrivacyStoreError::Conflict);
             }
+            let request=map_deletion(existing)?;
+            tx.commit().await?;
+            return Ok(request);
+        }
+        let exists=match target_kind {
+            "IDENTITY"=>sqlx::query_scalar::<_,String>("SELECT identity_id FROM eye_identities WHERE tenant_id=$1 AND identity_id=$2")
+                .bind(tenant.as_str()).bind(target_ref).fetch_optional(&mut *tx).await?.is_some(),
+            "ENROLLMENT"=>sqlx::query_scalar::<_,String>("SELECT enrollment_id FROM eye_identity_enrollments WHERE tenant_id=$1 AND enrollment_id=$2")
+                .bind(tenant.as_str()).bind(target_ref).fetch_optional(&mut *tx).await?.is_some(),
+            "VERIFICATION_SESSION"=>sqlx::query_scalar::<_,String>("SELECT session_id FROM eye_verification_sessions WHERE tenant_id=$1 AND session_id=$2")
+                .bind(tenant.as_str()).bind(target_ref).fetch_optional(&mut *tx).await?.is_some(),
+            "EVIDENCE"=>sqlx::query_scalar::<_,String>("SELECT evidence_id FROM eye_evidence_references WHERE tenant_id=$1 AND evidence_id=$2")
+                .bind(tenant.as_str()).bind(target_ref).fetch_optional(&mut *tx).await?.is_some(),
+            "FACE_TEMPLATE"=>sqlx::query_scalar::<_,String>("SELECT evidence_id FROM eye_evidence_references WHERE tenant_id=$1 AND evidence_id=$2 AND data_class='FACE_TEMPLATE'")
+                .bind(tenant.as_str()).bind(target_ref).fetch_optional(&mut *tx).await?.is_some(),
+            _=>false,
+        };
+        if !exists {return Err(PrivacyStoreError::NotFound);}
+        if matches!(target_kind,"EVIDENCE"|"FACE_TEMPLATE") {
+            sqlx::query("UPDATE eye_evidence_references SET status='DELETE_PENDING' WHERE tenant_id=$1 AND evidence_id=$2 AND status='ACTIVE'")
+                .bind(tenant.as_str()).bind(target_ref).execute(&mut *tx).await?;
         }
         let id=format!("del_{}",Uuid::new_v4().simple());
-        let row=sqlx::query("INSERT INTO eye_deletion_requests(deletion_id,tenant_id,target_kind,target_ref,reason_code,actor_kind,actor_ref,idempotency_key,status,next_attempt_at_ms,created_at_ms,updated_at_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'QUEUED',$9,$9,$9) ON CONFLICT(tenant_id,target_kind,target_ref,idempotency_key) DO UPDATE SET idempotency_key=EXCLUDED.idempotency_key RETURNING deletion_id,target_kind,target_ref,reason_code,status,attempts,max_attempts,lease_token,lease_until_ms")
+        let row=sqlx::query("INSERT INTO eye_deletion_requests(deletion_id,tenant_id,target_kind,target_ref,reason_code,actor_kind,actor_ref,idempotency_key,status,next_attempt_at_ms,created_at_ms,updated_at_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'QUEUED',$9,$9,$9) RETURNING deletion_id,target_kind,target_ref,reason_code,status,attempts,max_attempts,lease_token,lease_until_ms")
             .bind(&id).bind(tenant.as_str()).bind(target_kind).bind(target_ref).bind(reason_code).bind(actor_kind).bind(actor_ref).bind(key).bind(now_ms)
             .fetch_one(&mut *tx).await?;
+        let request=map_deletion(row)?;
         tx.commit().await?;
-        Ok(map_deletion(row)?)
+        Ok(request)
     }
 
     pub async fn claim_deletions(&self,tenant:&TenantId,worker_id:&str,now_ms:i64,lease_ms:i64,limit:i64)
