@@ -384,7 +384,7 @@ async fn create_verification_session(
     ).await.map_err(map_verification_error)?;
     let location=axum::http::HeaderValue::from_str(&format!("/v1/verification-sessions/{}",session.session_id))
         .map_err(|_|error(StatusCode::INTERNAL_SERVER_ERROR,"internal_error"))?;
-    Ok((if created{StatusCode::ACCEPTED}else{StatusCode::OK},[(LOCATION,location)],Json(session.into())))
+    Ok((if created{StatusCode::CREATED}else{StatusCode::OK},[(LOCATION,location)],Json(session.into())))
 }
 async fn get_verification_session(
     State(state):State<IdentityState>,Path(session_id):Path<String>,headers:HeaderMap
