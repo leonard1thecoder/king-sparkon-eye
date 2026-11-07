@@ -9,7 +9,7 @@ use sqlx::{PgPool, Row};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::persistence::tenants::TenantId;
+use crate::persistence::tenants::{begin_tenant_transaction, TenantId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
@@ -97,7 +97,7 @@ pub async fn create_identity(
          JOIN eye_auth_users u ON u.user_id=c.owner_user_id AND u.is_active=TRUE \
          WHERE t.tenant_id=$2 AND t.status='ACTIVE' RETURNING {IDENTITY_COLUMNS}"
     );
-    let mut tx = pool.begin().await?;
+    let mut tx = begin_tenant_transaction(pool, tenant_id).await?;
     let row = sqlx::query(&query)
         .bind(&identity_id)
         .bind(tenant_id.as_str())
@@ -195,7 +195,7 @@ pub async fn create_enrollment_intent(
         return Err(IdentityStoreError::InvalidInput);
     }
 
-    let mut tx = pool.begin().await?;
+    let mut tx = begin_tenant_transaction(pool, tenant_id).await?;
     let lock_key = format!("eye-enrollment:{}:{}:{}", tenant_id.as_str(), identity_id, idempotency_key);
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(lock_key)
@@ -283,6 +283,7 @@ pub async fn get_enrollment_intent(
     identity_id: &str,
     enrollment_id: &str,
 ) -> Result<IdentityEnrollment, IdentityStoreError> {
+    let mut tx = begin_tenant_transaction(pool, tenant_id).await?;
     let query = format!(
         "SELECT {ENROLLMENT_COLUMNS} FROM eye_identity_enrollments WHERE tenant_id=$1 AND identity_id=$2 AND enrollment_id=$3"
     );
@@ -290,9 +291,10 @@ pub async fn get_enrollment_intent(
     .bind(tenant_id.as_str())
     .bind(identity_id)
     .bind(enrollment_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or(IdentityStoreError::NotFound)?;
+    tx.commit().await?;
     map_enrollment_row(row)
 }
 
@@ -301,15 +303,17 @@ pub async fn get_identity(
     tenant_id: &TenantId,
     identity_id: &str,
 ) -> Result<Identity, IdentityStoreError> {
+    let mut tx = begin_tenant_transaction(pool, tenant_id).await?;
     let query = format!(
         "SELECT {IDENTITY_COLUMNS} FROM eye_identities WHERE tenant_id=$1 AND identity_id=$2 AND status <> 'DELETED'"
     );
     let row = sqlx::query(&query)
         .bind(tenant_id.as_str())
         .bind(identity_id)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or(IdentityStoreError::NotFound)?;
+    tx.commit().await?;
     map_row(row)
 }
 
@@ -324,7 +328,7 @@ pub async fn revoke_identity(
     if now_ms <= 0 {
         return Err(IdentityStoreError::InvalidInput);
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = begin_tenant_transaction(pool, tenant_id).await?;
     let query = format!(
         "UPDATE eye_identities SET status='REVOKED', enrollment_status='REVOKED', revoked_at_ms=COALESCE(revoked_at_ms,$5), updated_at_ms=$5 \
          WHERE tenant_id=$1 AND identity_id=$2 AND status='ACTIVE' AND EXISTS ( \
@@ -368,7 +372,7 @@ pub async fn delete_identity(
     if now_ms <= 0 {
         return Err(IdentityStoreError::InvalidInput);
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = begin_tenant_transaction(pool, tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE eye_identities SET status='DELETED', enrollment_status='REVOKED', deleted_at_ms=COALESCE(deleted_at_ms,$5), updated_at_ms=$5 \
          WHERE tenant_id=$1 AND identity_id=$2 AND status <> 'DELETED' AND EXISTS ( \
