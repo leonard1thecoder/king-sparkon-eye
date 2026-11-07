@@ -90,7 +90,7 @@ impl HttpOutboxTransport {
         let local_http = url.scheme() == "http"
             && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
         if (url.scheme() != "https" && !local_http) || url.host_str().is_none()
-            || !url.username().is_empty() || url.password().is_some() || url.fragment().is_some()
+            || !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() || url.query().is_some()
             || bearer_token.trim().is_empty() || bearer_token.len() > 4096 || timeout.is_zero() {
             return Err(WorkerError::InvalidTransportConfig);
         }
@@ -253,7 +253,8 @@ async fn execute_claim(store: JobStore, processor: Arc<dyn JobProcessor>, claim:
     };
     let now = now_ms();
     let result = match outcome {
-        JobExecution::Completed(value) => store.finalize(&job_id, token, &worker_id, "COMPLETED", Some(value), now).await.map(|_| ()),
+        JobExecution::Completed(value) if value.is_object() && serde_json::to_vec(&value).is_ok_and(|v| v.len() <= 8192) => store.finalize(&job_id, token, &worker_id, "COMPLETED", Some(value), now).await.map(|_| ()),
+        JobExecution::Completed(_) => store.fail(&job_id, token, &worker_id, "INVALID_RESULT_CONTRACT", FailureClass::Permanent, now, 0).await.map(|_| ()),
         JobExecution::Retryable { category, retry_after } => store.fail(&job_id, token, &worker_id,
             category, FailureClass::Retryable, now, retry_after.as_millis().min(i64::MAX as u128) as i64).await.map(|_| ()),
         JobExecution::Permanent { category } => store.fail(&job_id, token, &worker_id,
