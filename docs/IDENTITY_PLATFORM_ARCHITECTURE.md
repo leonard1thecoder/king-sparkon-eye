@@ -61,7 +61,7 @@ The processing lifecycle distinguishes **processing state** from **verification 
 
 ## 4. API design and compatibility rules
 
-The canonical public contract is `openapi/eye.openapi.json`, updated by #186 with tenant-owned identity scopes and asynchronous verification-session metadata APIs. Legacy photo-assessment and event/gate-identification operations remain in the document for compatibility and are marked deprecated; they are not the generic platform contract. The #186 implementation is partial and merged: capture ingress returns `503 evaluation_gate_closed` before reading bytes until #95 and #189 prerequisites are resolved and #187's durable worker execution is integrated. #187 has merged persistence/lease/outbox primitives, not a supervised inference runtime.
+The canonical public contract is `openapi/eye.openapi.json`, updated by #186 with tenant-owned identity scopes and asynchronous verification-session metadata APIs. Legacy photo-assessment and event/gate-identification operations remain in the document for compatibility and are marked deprecated; they are not the generic platform contract. The #186 implementation is partial and merged: capture ingress returns `503 evaluation_gate_closed` before reading bytes until #95 and #189 prerequisites are resolved and #187's durable worker execution is integrated. #187 has merged persistence/lease/outbox primitives. Its current issue branch adds a reusable supervised Tokio runtime with bounded job/outbox concurrency, lease heartbeats, execution deadlines, graceful draining and an authenticated HTTPS internal outbox transport. A production domain processor and deployment/startup wiring remain separate work; the runtime does not implement inference or bypass #95.
 
 Approved design rules:
 
