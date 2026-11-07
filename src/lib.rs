@@ -14,6 +14,7 @@ pub mod credentials;
 pub mod domain;
 pub mod error;
 pub mod inference;
+pub mod identity;
 pub mod ingress;
 pub mod observability;
 pub mod persistence;
