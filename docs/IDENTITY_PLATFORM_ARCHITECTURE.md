@@ -52,7 +52,9 @@ The platform's logical resource families are:
 
 Biometric payloads are sensitive data. Raw images, embeddings, templates, secrets, access tokens, private object-storage URLs and unrestricted provider payloads must not appear in ordinary logs, analytics, webhook bodies or public API responses. Ordinary clients receive opaque references and the minimum result metadata needed for their integration; raw embeddings and internal similarity scores remain internal unless separately approved after security and evaluation review.
 
-The processing lifecycle distinguishes **processing state** from **verification outcome**:
+Evidence metadata retrieval is separately authorized and audited. The current public evidence route does not stream object bytes or issue signed URLs. Durable deletion rows are not proof of object removal: only a trusted storage worker confirmation may mark external cleanup complete. The existing #31 S3 module exposes an object-store operations interface and mock; it is not yet a production AWS SDK adapter.
+
+The processing lifecycle distinguishes **processing state**** from **verification outcome**:
 
 - Processing states describe work: queued, processing, completed, failed, expired or cancelled. Exact wire enum names are finalized in #186/#187.
 - Outcomes describe face-verification conclusions: verified, not_verified, identified, no_candidate, ambiguous or inconclusive where appropriate. Exact applicability and wire names are finalized in #186.
@@ -74,7 +76,7 @@ Approved design rules:
 7. Webhook event schemas are independently versioned. Delivery is at-least-once; consumers deduplicate using a stable event identifier. Webhook signatures cover the exact transmitted body and timestamp.
 8. Do not expose proposed endpoints, fields, status values or examples as implemented behavior. The OpenAPI document and contract tests are authoritative once finalized.
 
-The #186 OpenAPI update finalizes the initial scope/session metadata payloads, tenant/client-scoped Idempotency-Key behavior and stable response shapes. Capture success semantics and actual asynchronous job admission remain unfinished under #265; retention periods are tenant-configured through #189 and are not assigned universal defaults; recognition thresholds and webhook event names remain separately owned by #95 and #188.
+The #186 OpenAPI update finalizes the initial scope/session metadata payloads, tenant/client-scoped Idempotency-Key behavior and stable response shapes. #189 now adds `GET /v1/evidence/{evidence_id}` for metadata-only reads: `evidence:read` is required, tenant context comes from the authenticated machine credential, deleted/pending evidence is not readable, private storage keys and signed URLs are never returned, and successful reads are audited in the same tenant transaction. Capture success semantics and actual asynchronous job admission remain unfinished under #265; retention periods are tenant-configured through #189 and are not assigned universal defaults; recognition thresholds and webhook event names remain separately owned by #95 and #188.
 
 ## 5. Security and privacy threat model
 
