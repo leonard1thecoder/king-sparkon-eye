@@ -28,10 +28,10 @@ async fn owner(pool:&sqlx::PgPool)->String{
 async fn client_key(pool:&sqlx::PgPool,tenant:&TenantId,owner:&str)->String{
  use king_sparkon_eye::persistence::api_credentials::{create_api_client,create_api_credential,CreateApiCredentialInput};
  let client=create_api_client(pool,tenant,owner,"verification integration client",
- vec!["identity_scopes:write".into(),"identity_scopes:read".into(),"verification:write".into(),"verification:read".into(),"identities:write".into(),"identities:read".into()],
+ vec!["scopes:write".into(),"scopes:read".into(),"verification:create".into(),"verification:read".into(),"identities:write".into(),"identities:read".into()],
  600,1_800_000_000_000).await.unwrap();
  create_api_credential(pool,CreateApiCredentialInput{tenant_id:tenant,client_id:&client.client_id,actor_user_id:owner,
- environment:"test",scopes:vec!["identity_scopes:write".into(),"identity_scopes:read".into(),"verification:write".into(),"verification:read".into(),"identities:write".into(),"identities:read".into()],
+ environment:"test",scopes:vec!["scopes:write".into(),"scopes:read".into(),"verification:create".into(),"verification:read".into(),"identities:write".into(),"identities:read".into()],
  ttl_ms:None,now_ms:1_800_000_000_001}).await.unwrap().raw_secret
 }
 async fn send(app:&Router,method:&str,path:&str,key:&str,body:Option<Value>,idempotency:Option<&str>)->(StatusCode,Value){
