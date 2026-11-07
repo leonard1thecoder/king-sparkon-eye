@@ -496,7 +496,7 @@ pub async fn consume_rate_limit(
     let mut tx = pool.begin().await?;
 
     let active: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM eye_api_credentials WHERE tenant_id=$1 AND credential_id=$2 AND revoked_at_ms IS NULL AND (expires_at_ms IS NULL OR expires_at_ms > $3))",
+        "SELECT EXISTS(SELECT 1 FROM eye_api_credentials c JOIN eye_api_clients a ON a.tenant_id=c.tenant_id AND a.client_id=c.client_id JOIN eye_tenants t ON t.tenant_id=c.tenant_id JOIN eye_auth_users u ON u.user_id=a.owner_user_id WHERE c.tenant_id=$1 AND c.credential_id=$2 AND c.revoked_at_ms IS NULL AND (c.expires_at_ms IS NULL OR c.expires_at_ms > $3) AND a.status='ACTIVE' AND t.status='ACTIVE' AND u.is_active=TRUE)",
     )
     .bind(tenant_id.as_str())
     .bind(credential_id)
