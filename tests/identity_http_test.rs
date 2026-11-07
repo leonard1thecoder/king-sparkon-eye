@@ -112,7 +112,7 @@ async fn machine_scope_and_tenant_binding_are_enforced_on_identity_http_routes()
 
     let (status, read) = request_json(&app, "GET", &format!("/v1/identities/{identity_id}"), &key_a, None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(read["tenantId"], Value::Null); // tenant identifiers are intentionally not returned
+    assert!(read.get("tenantId").is_none()); // tenant identifiers are intentionally not returned
     assert_eq!(read["status"], "ACTIVE");
 
     let (status, revoked) = request_json(&app, "POST", &format!("/v1/identities/{identity_id}/revoke"), &key_a, Some(json!({}))).await;
