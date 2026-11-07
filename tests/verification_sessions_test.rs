@@ -125,5 +125,13 @@ async fn scope_and_session_tables_enforce_tenant_rls() {
         "SELECT (SELECT count(*) FROM eye_identity_scopes WHERE scope_id=$1)+(SELECT count(*) FROM eye_identity_scope_members WHERE scope_id=$1)+(SELECT count(*) FROM eye_verification_sessions WHERE session_id=$2)+(SELECT count(*) FROM eye_verification_session_audit WHERE session_id=$2)"
     ).bind(scope_id).bind(session_id).fetch_one(&mut *tx).await.unwrap();
     assert_eq!(visible_b,0,"tenant B must not see tenant A scopes, memberships, sessions or audit");
+
+    let attempted=sqlx::query(
+        "INSERT INTO eye_identity_scopes(scope_id,tenant_id,external_reference,display_name,created_at_ms,updated_at_ms) VALUES($1,$2,$3,$4,$5,$5)"
+    ).bind(format!("scp_{}",Uuid::new_v4().simple()))
+     .bind(tenant_a.as_str()).bind("cross-tenant-scope").bind("Cross tenant")
+     .bind(1_800_000_000_200_i64).execute(&mut *tx).await;
+    assert!(attempted.is_err(),"tenant B context must reject tenant A scope writes");
+    assert_eq!(attempted.unwrap_err().as_database_error().and_then(|db|db.code()).as_deref(),Some("42501"));
     tx.rollback().await.unwrap();
 }
