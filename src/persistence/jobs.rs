@@ -146,8 +146,8 @@ impl JobStore {
         // Fail closed rather than enqueue arbitrary caller-selected session references.
         if resource_type != "IDENTITY_ENROLLMENT" { return Err(JobStoreError::NotFound); }
         let eligible = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM eye_identity_enrollments WHERE tenant_id=$1 AND enrollment_id=$2 AND status='QUEUED')"
-        ).bind(tenant_id.as_str()).bind(resource_id).fetch_one(&mut *tx).await?;
+            "SELECT enrollment_id FROM eye_identity_enrollments WHERE tenant_id=$1 AND enrollment_id=$2 AND status='QUEUED' FOR UPDATE"
+        ).bind(tenant_id.as_str()).bind(resource_id).fetch_optional(&mut *tx).await?.is_some();
         if !eligible { return Err(JobStoreError::NotFound); }
         let job_id = format!("job_{}", Uuid::new_v4().simple());
         let row = sqlx::query(&format!(
