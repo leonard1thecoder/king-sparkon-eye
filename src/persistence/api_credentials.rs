@@ -317,7 +317,10 @@ pub async fn authenticate_api_credential(
     {
         return Err(ApiCredentialError::InvalidCredential);
     }
-    let key_id = format!("{API_KEY_PREFIX}{environment}_{}", &random[..KEY_ID_RANDOM_LEN]);
+    let key_id = format!(
+        "{API_KEY_PREFIX}{environment}_{}",
+        &random[..KEY_ID_RANDOM_LEN]
+    );
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "SELECT c.credential_id, c.tenant_id, c.client_id, c.key_hash, c.salt, c.scopes, \
