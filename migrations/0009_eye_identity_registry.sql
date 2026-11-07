@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS eye_identities (
     enrollment_status TEXT NOT NULL DEFAULT 'NOT_ENROLLED'
         CHECK (enrollment_status IN ('NOT_ENROLLED', 'PENDING', 'PROCESSING', 'ACTIVE', 'FAILED', 'REVOKED')),
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb
-        CHECK (jsonb_typeof(metadata) = 'object' AND octet_length(metadata::text) <= 4096),
+        CHECK (jsonb_typeof(metadata) = 'object' AND octet_length(metadata::text) <= 8192),
     created_at_ms BIGINT NOT NULL CHECK (created_at_ms > 0),
     updated_at_ms BIGINT NOT NULL CHECK (updated_at_ms >= created_at_ms),
     revoked_at_ms BIGINT,
