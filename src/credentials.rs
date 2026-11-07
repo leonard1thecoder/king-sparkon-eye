@@ -45,7 +45,7 @@ pub fn router(config: Config) -> Router {
         pool: pool.unwrap_or_else(|| {
             // Keep the routes mounted when storage is unavailable; handlers fail closed.
             // A deliberately invalid lazy URL is avoided: absence is represented separately.
-            PgPool::connect_lazy("postgres://invalid:invalid@127.0.0.1:1/invalid")
+            persistence::connect_lazy("postgres://invalid:invalid@127.0.0.1:1/invalid")
                 .expect("static fallback PostgreSQL URL")
         }),
     };
