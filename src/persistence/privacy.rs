@@ -5,7 +5,7 @@
 use serde_json::Value;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
-use crate::persistence::tenants::TenantId;
+use crate::persistence::tenants::{begin_tenant_transaction, TenantId};
 
 const MAX_BATCH:i64=100;
 const MAX_LEASE_MS:i64=300_000;
@@ -87,7 +87,7 @@ impl PrivacyStore {
             ||effective_at_ms<=0||now_ms<=0||effective_at_ms>now_ms {
             return Err(PrivacyStoreError::InvalidInput);
         }
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         sqlx::query("UPDATE eye_retention_policies SET active=FALSE WHERE tenant_id=$1 AND data_class=$2 AND active=TRUE")
             .bind(tenant.as_str()).bind(data_class).execute(&mut *tx).await?;
         let id=format!("ret_{}",Uuid::new_v4().simple());
@@ -108,12 +108,15 @@ impl PrivacyStore {
         if now_ms<=0||!matches!(data_class,"ORIGINAL_CAPTURE"|"FACE_TEMPLATE"|"EVIDENCE_METADATA"|"AUDIT_RECORD"){
             return Err(PrivacyStoreError::InvalidInput);
         }
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let row=sqlx::query("SELECT policy_id,data_class,retention_ms,policy_version,effective_at_ms FROM eye_retention_policies WHERE tenant_id=$1 AND data_class=$2 AND active=TRUE AND effective_at_ms<=$3")
-            .bind(tenant.as_str()).bind(data_class).bind(now_ms).fetch_optional(&self.pool).await?
+            .bind(tenant.as_str()).bind(data_class).bind(now_ms).fetch_optional(&mut *tx).await?
             .ok_or(PrivacyStoreError::NotFound)?;
-        Ok(RetentionPolicy{policy_id:row.try_get("policy_id")?,data_class:row.try_get("data_class")?,
+        let policy=RetentionPolicy{policy_id:row.try_get("policy_id")?,data_class:row.try_get("data_class")?,
             retention_ms:row.try_get("retention_ms")?,policy_version:row.try_get("policy_version")?,
-            effective_at_ms:row.try_get("effective_at_ms")?})
+            effective_at_ms:row.try_get("effective_at_ms")?};
+        tx.commit().await?;
+        Ok(policy)
     }
 
     pub async fn record_audit_event(&self,tenant:&TenantId,actor_kind:&str,actor_ref:&str,
@@ -126,10 +129,12 @@ impl PrivacyStore {
             ||!matches!(outcome,"SUCCESS"|"DENIED"|"FAILED")||!safe_metadata(&metadata)||now_ms<=0 {
             return Err(PrivacyStoreError::InvalidInput);
         }
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let id=sqlx::query_scalar::<_,i64>("INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,request_id,outcome,metadata,created_at_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING audit_event_id")
             .bind(tenant.as_str()).bind(actor_kind).bind(actor_ref).bind(action).bind(resource_kind)
             .bind(resource_ref).bind(request_id).bind(outcome).bind(metadata).bind(now_ms)
-            .fetch_one(&self.pool).await?;
+            .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
         Ok(id)
     }
 
@@ -151,7 +156,7 @@ impl PrivacyStore {
             ||!matches!(actor_kind,"USER"|"API_CLIENT"|"SYSTEM")||!safe_ref(actor_ref,128)||now_ms<=0 {
             return Err(PrivacyStoreError::InvalidInput);
         }
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let retention=sqlx::query_scalar::<_,i64>("SELECT retention_ms FROM eye_retention_policies WHERE tenant_id=$1 AND data_class=$2 AND active=TRUE AND effective_at_ms<=$3")
             .bind(tenant.as_str()).bind(policy_class).bind(now_ms).fetch_optional(&mut *tx).await?
             .ok_or(PrivacyStoreError::NotFound)?;
@@ -170,13 +175,16 @@ impl PrivacyStore {
 
     pub async fn get_evidence(&self,tenant:&TenantId,evidence_id:&str)->Result<EvidenceReference,PrivacyStoreError>{
         if !evidence_id.starts_with("evd_"){return Err(PrivacyStoreError::InvalidInput);}
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let row=sqlx::query("SELECT evidence_id,resource_kind,resource_ref,data_class,status,retention_expires_at_ms,metadata,created_at_ms,deleted_at_ms FROM eye_evidence_references WHERE tenant_id=$1 AND evidence_id=$2")
-            .bind(tenant.as_str()).bind(evidence_id).fetch_optional(&self.pool).await?
+            .bind(tenant.as_str()).bind(evidence_id).fetch_optional(&mut *tx).await?
             .ok_or(PrivacyStoreError::NotFound)?;
-        Ok(EvidenceReference{evidence_id:row.try_get("evidence_id")?,resource_kind:row.try_get("resource_kind")?,
+        let evidence=EvidenceReference{evidence_id:row.try_get("evidence_id")?,resource_kind:row.try_get("resource_kind")?,
             resource_ref:row.try_get("resource_ref")?,data_class:row.try_get("data_class")?,status:row.try_get("status")?,
             retention_expires_at_ms:row.try_get("retention_expires_at_ms")?,metadata:row.try_get("metadata")?,
-            created_at_ms:row.try_get("created_at_ms")?,deleted_at_ms:row.try_get("deleted_at_ms")?})
+            created_at_ms:row.try_get("created_at_ms")?,deleted_at_ms:row.try_get("deleted_at_ms")?};
+        tx.commit().await?;
+        Ok(evidence)
     }
 
     pub async fn request_deletion(&self,tenant:&TenantId,target_kind:&str,target_ref:&str,
@@ -187,7 +195,7 @@ impl PrivacyStore {
             ||!matches!(actor_kind,"USER"|"API_CLIENT"|"SYSTEM")||!safe_ref(actor_ref,128)||!safe_key(key)||now_ms<=0 {
             return Err(PrivacyStoreError::InvalidInput);
         }
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         // Resolve idempotent replay before mutating evidence state.
         if let Some(existing)=sqlx::query("SELECT deletion_id,target_kind,target_ref,reason_code,actor_kind,actor_ref,status,attempts,max_attempts,lease_token,lease_until_ms FROM eye_deletion_requests WHERE tenant_id=$1 AND target_kind=$2 AND target_ref=$3 AND idempotency_key=$4 FOR UPDATE")
             .bind(tenant.as_str()).bind(target_kind).bind(target_ref).bind(key).fetch_optional(&mut *tx).await? {
@@ -236,16 +244,19 @@ impl PrivacyStore {
     pub async fn queue_expired_evidence_deletions(&self,tenant:&TenantId,now_ms:i64,limit:i64)
         ->Result<u64,PrivacyStoreError>{
         if now_ms<=0||!(1..=MAX_BATCH).contains(&limit){return Err(PrivacyStoreError::InvalidInput);}
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let rows=sqlx::query("WITH due AS (SELECT evidence_id,tenant_id FROM eye_evidence_references WHERE tenant_id=$1 AND status='ACTIVE' AND retention_expires_at_ms<=$2 ORDER BY retention_expires_at_ms,created_at_ms LIMIT $3 FOR UPDATE SKIP LOCKED), marked AS (UPDATE eye_evidence_references e SET status='DELETE_PENDING' FROM due WHERE e.tenant_id=due.tenant_id AND e.evidence_id=due.evidence_id RETURNING e.tenant_id,e.evidence_id), queued AS (INSERT INTO eye_deletion_requests(deletion_id,tenant_id,target_kind,target_ref,reason_code,actor_kind,actor_ref,idempotency_key,status,next_attempt_at_ms,created_at_ms,updated_at_ms) SELECT 'del_'||md5(m.tenant_id||':'||m.evidence_id),m.tenant_id,'EVIDENCE',m.evidence_id,'RETENTION_EXPIRED','SYSTEM','retention-scheduler','retention-'||m.evidence_id,'QUEUED',$2,$2,$2 FROM marked m ON CONFLICT(tenant_id,target_kind,target_ref,idempotency_key) DO NOTHING RETURNING tenant_id,deletion_id,target_ref) INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,outcome,metadata,created_at_ms) SELECT tenant_id,'SYSTEM','retention-scheduler','RETENTION_DELETION_QUEUED','EVIDENCE',target_ref,'SUCCESS','{}'::jsonb,$2 FROM queued")
-            .bind(tenant.as_str()).bind(now_ms).bind(limit).execute(&self.pool).await?;
-        Ok(rows.rows_affected())
+            .bind(tenant.as_str()).bind(now_ms).bind(limit).execute(&mut *tx).await?;
+        let count=rows.rows_affected();
+        tx.commit().await?;
+        Ok(count)
     }
 
     /// Marks expired final-attempt leases as failed so cleanup work cannot remain stuck forever.
     pub async fn recover_exhausted_deletions(&self,tenant:&TenantId,now_ms:i64,limit:i64)
         ->Result<u64,PrivacyStoreError>{
         if now_ms<=0||!(1..=MAX_BATCH).contains(&limit){return Err(PrivacyStoreError::InvalidInput);}
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let rows=sqlx::query("WITH due AS (SELECT deletion_id,target_ref FROM eye_deletion_requests WHERE tenant_id=$1 AND status='PROCESSING' AND lease_until_ms<=$2 AND attempts>=max_attempts ORDER BY lease_until_ms LIMIT $3 FOR UPDATE SKIP LOCKED), failed AS (UPDATE eye_deletion_requests d SET status='FAILED',lease_token=NULL,worker_id=NULL,lease_until_ms=NULL,last_error_category='LEASE_EXHAUSTED',updated_at_ms=$2 FROM due WHERE d.deletion_id=due.deletion_id RETURNING d.deletion_id,d.target_ref) INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,outcome,metadata,created_at_ms) SELECT $1,'SYSTEM','deletion-recovery','DELETION_CLEANUP_FAILED','DELETION_REQUEST',deletion_id,'FAILED',jsonb_build_object('targetRef',target_ref,'reason','LEASE_EXHAUSTED'),$2 FROM failed")
             .bind(tenant.as_str()).bind(now_ms).bind(limit).execute(&mut *tx).await?;
         let count=rows.rows_affected();tx.commit().await?;Ok(count)
@@ -256,19 +267,22 @@ impl PrivacyStore {
         if !safe_worker(worker_id)||now_ms<=0||!(1..=MAX_LEASE_MS).contains(&lease_ms)||!(1..=MAX_BATCH).contains(&limit){
             return Err(PrivacyStoreError::InvalidInput);
         }
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let rows=sqlx::query("WITH due AS (SELECT deletion_id FROM eye_deletion_requests WHERE tenant_id=$1 AND attempts<max_attempts AND ((status='QUEUED' AND next_attempt_at_ms<=$2) OR (status='PROCESSING' AND lease_until_ms<=$2)) ORDER BY next_attempt_at_ms,created_at_ms LIMIT $3 FOR UPDATE SKIP LOCKED), claimed AS (UPDATE eye_deletion_requests d SET status='PROCESSING',attempts=d.attempts+1,lease_token=gen_random_uuid(),worker_id=$4,lease_until_ms=$2+$5,updated_at_ms=$2 FROM due WHERE d.deletion_id=due.deletion_id RETURNING d.*) SELECT claimed.*,e.storage_key FROM claimed LEFT JOIN eye_evidence_references e ON e.tenant_id=claimed.tenant_id AND e.evidence_id=claimed.target_ref AND claimed.target_kind IN ('EVIDENCE','FACE_TEMPLATE') ORDER BY claimed.created_at_ms")
-            .bind(tenant.as_str()).bind(now_ms).bind(limit).bind(worker_id).bind(lease_ms).fetch_all(&self.pool).await?;
-        rows.into_iter().map(|row|{
+            .bind(tenant.as_str()).bind(now_ms).bind(limit).bind(worker_id).bind(lease_ms).fetch_all(&mut *tx).await?;
+        let claimed=rows.into_iter().map(|row|{
             let storage_key:Option<String>=row.try_get("storage_key")?;
             let request=map_deletion(row)?;
             Ok(ClaimedDeletion{request,tenant_id:tenant.clone(),worker_id:worker_id.to_owned(),storage_key})
-        }).collect()
+        }).collect::<Result<Vec<_>,PrivacyStoreError>>()?;
+        tx.commit().await?;
+        Ok(claimed)
     }
 
     pub async fn complete_deletion(&self,tenant:&TenantId,deletion_id:&str,lease_token:Uuid,worker_id:&str,now_ms:i64)
         ->Result<bool,PrivacyStoreError>{
         if !deletion_id.starts_with("del_")||!safe_worker(worker_id)||now_ms<=0{return Err(PrivacyStoreError::InvalidInput);}
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let row=sqlx::query("UPDATE eye_deletion_requests SET status='COMPLETED',lease_token=NULL,worker_id=NULL,lease_until_ms=NULL,completed_at_ms=$5,updated_at_ms=$5 WHERE tenant_id=$1 AND deletion_id=$2 AND status='PROCESSING' AND lease_token=$3 AND worker_id=$4 AND lease_until_ms>$5 RETURNING target_kind,target_ref")
             .bind(tenant.as_str()).bind(deletion_id).bind(lease_token).bind(worker_id).bind(now_ms).fetch_optional(&mut *tx).await?;
         let Some(row)=row else {tx.rollback().await?;return Ok(false)};
@@ -288,10 +302,13 @@ impl PrivacyStore {
         if !deletion_id.starts_with("del_")||!safe_worker(worker_id)||!safe_ref(error_category,80)
             ||!error_category.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit()||b==b'_')
             ||retry_delay_ms<0||now_ms<=0{return Err(PrivacyStoreError::InvalidInput);}
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let row=sqlx::query("UPDATE eye_deletion_requests SET status=CASE WHEN attempts>=max_attempts THEN 'FAILED' ELSE 'QUEUED' END,next_attempt_at_ms=$6+$7,last_error_category=$5,lease_token=NULL,worker_id=NULL,lease_until_ms=NULL,updated_at_ms=$6 WHERE tenant_id=$1 AND deletion_id=$2 AND status='PROCESSING' AND lease_token=$3 AND worker_id=$4 AND lease_until_ms>$6 RETURNING status")
             .bind(tenant.as_str()).bind(deletion_id).bind(lease_token).bind(worker_id).bind(error_category).bind(now_ms).bind(retry_delay_ms)
-            .fetch_optional(&self.pool).await?;
-        Ok(row.map(|r|r.get("status")))
+            .fetch_optional(&mut *tx).await?;
+        let status=row.map(|r|r.get("status"));
+        tx.commit().await?;
+        Ok(status)
     }
 }
 fn map_deletion(row:sqlx::postgres::PgRow)->Result<DeletionRequest,PrivacyStoreError>{
