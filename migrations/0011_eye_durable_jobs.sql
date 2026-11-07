@@ -49,14 +49,15 @@ CREATE TABLE IF NOT EXISTS eye_platform_outbox (
     attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
     next_attempt_at_ms BIGINT NOT NULL CHECK (next_attempt_at_ms > 0),
     lease_until_ms BIGINT,
+    lease_token UUID,
     last_error_category TEXT CHECK (last_error_category IS NULL OR last_error_category ~ '^[A-Z0-9_]{1,80}$'),
     created_at_ms BIGINT NOT NULL CHECK (created_at_ms > 0),
     updated_at_ms BIGINT NOT NULL CHECK (updated_at_ms >= created_at_ms),
     delivered_at_ms BIGINT,
     CONSTRAINT uq_eye_platform_outbox_job_event UNIQUE (job_id, event_type),
     CONSTRAINT ck_eye_platform_outbox_lease CHECK (
-        (status = 'IN_FLIGHT' AND lease_until_ms IS NOT NULL)
-        OR (status <> 'IN_FLIGHT' AND lease_until_ms IS NULL)
+        (status = 'IN_FLIGHT' AND lease_until_ms IS NOT NULL AND lease_token IS NOT NULL)
+        OR (status <> 'IN_FLIGHT' AND lease_until_ms IS NULL AND lease_token IS NULL)
     )
 );
 CREATE INDEX IF NOT EXISTS ix_eye_platform_outbox_due
