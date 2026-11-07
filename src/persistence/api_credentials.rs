@@ -442,8 +442,20 @@ pub async fn consume_rate_limit(
     let window_start_ms = (now_ms / 60_000) * 60_000;
     let mut tx = pool.begin().await?;
 
+    let active: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM eye_api_credentials WHERE tenant_id=$1 AND credential_id=$2 AND revoked_at_ms IS NULL AND (expires_at_ms IS NULL OR expires_at_ms > $3))",
+    )
+    .bind(tenant_id.as_str())
+    .bind(credential_id)
+    .bind(now_ms)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !active {
+        return Err(ApiCredentialError::InvalidCredential);
+    }
+
     let tenant_count: i32 = sqlx::query_scalar(
-        "INSERT INTO eye_api_rate_limit_buckets (tenant_id, dimension, subject_id, window_start_ms, request_count)          VALUES ($1,'TENANT',$1,$2,1)          ON CONFLICT (tenant_id, dimension, subject_id, window_start_ms)          DO UPDATE SET request_count=eye_api_rate_limit_buckets.request_count+1          RETURNING request_count",
+        "INSERT INTO eye_api_rate_limit_buckets (tenant_id, dimension, subject_id, credential_id, window_start_ms, request_count) VALUES ($1,'TENANT',$1,NULL,$2,1) ON CONFLICT (tenant_id, dimension, subject_id, window_start_ms) DO UPDATE SET request_count=eye_api_rate_limit_buckets.request_count+1 RETURNING request_count",
     )
     .bind(tenant_id.as_str())
     .bind(window_start_ms)
@@ -451,7 +463,7 @@ pub async fn consume_rate_limit(
     .await?;
 
     let credential_count: i32 = sqlx::query_scalar(
-        "INSERT INTO eye_api_rate_limit_buckets (tenant_id, dimension, subject_id, window_start_ms, request_count)          VALUES ($1,'CREDENTIAL',$2,$3,1)          ON CONFLICT (tenant_id, dimension, subject_id, window_start_ms)          DO UPDATE SET request_count=eye_api_rate_limit_buckets.request_count+1          RETURNING request_count",
+        "INSERT INTO eye_api_rate_limit_buckets (tenant_id, dimension, subject_id, credential_id, window_start_ms, request_count) VALUES ($1,'CREDENTIAL',$2,$2,$3,1) ON CONFLICT (tenant_id, dimension, subject_id, window_start_ms) DO UPDATE SET request_count=eye_api_rate_limit_buckets.request_count+1 RETURNING request_count",
     )
     .bind(tenant_id.as_str())
     .bind(credential_id)
