@@ -70,6 +70,8 @@ pub struct DeletionRequest {
 #[derive(Debug,Clone,PartialEq,Eq)]
 pub struct ClaimedDeletion {
     pub request:DeletionRequest,pub tenant_id:TenantId,pub worker_id:String,
+    /// Private object key for the trusted cleanup worker only; never returned by evidence reads.
+    pub storage_key:Option<String>,
 }
 
 #[derive(Clone)]
@@ -131,6 +133,41 @@ impl PrivacyStore {
         Ok(id)
     }
 
+    /// Registers an opaque reference to an already-written private object.
+    /// A matching tenant retention policy is mandatory before metadata is admitted.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn register_evidence_reference(&self,tenant:&TenantId,resource_kind:&str,resource_ref:&str,
+        data_class:&str,storage_key:&str,metadata:Value,actor_kind:&str,actor_ref:&str,now_ms:i64)
+        ->Result<String,PrivacyStoreError>{
+        let policy_class=match data_class {
+            "ORIGINAL_CAPTURE"=>"ORIGINAL_CAPTURE",
+            "FACE_TEMPLATE"=>"FACE_TEMPLATE",
+            "SUPPORTING_EVIDENCE"=>"EVIDENCE_METADATA",
+            _=>return Err(PrivacyStoreError::InvalidInput),
+        };
+        if !matches!(resource_kind,"IDENTITY"|"ENROLLMENT"|"VERIFICATION_SESSION")
+            ||!safe_ref(resource_ref,128)||!safe_ref(storage_key,512)||storage_key.starts_with('/')
+            ||storage_key.contains("..")||!safe_metadata(&metadata)
+            ||!matches!(actor_kind,"USER"|"API_CLIENT"|"SYSTEM")||!safe_ref(actor_ref,128)||now_ms<=0 {
+            return Err(PrivacyStoreError::InvalidInput);
+        }
+        let mut tx=self.pool.begin().await?;
+        let retention=sqlx::query_scalar::<_,i64>("SELECT retention_ms FROM eye_retention_policies WHERE tenant_id=$1 AND data_class=$2 AND active=TRUE AND effective_at_ms<=$3")
+            .bind(tenant.as_str()).bind(policy_class).bind(now_ms).fetch_optional(&mut *tx).await?
+            .ok_or(PrivacyStoreError::NotFound)?;
+        let expires=now_ms.checked_add(retention).ok_or(PrivacyStoreError::InvalidInput)?;
+        let id=format!("evd_{}",Uuid::new_v4().simple());
+        sqlx::query("INSERT INTO eye_evidence_references(evidence_id,tenant_id,resource_kind,resource_ref,data_class,storage_key,status,retention_expires_at_ms,metadata,created_at_ms) VALUES($1,$2,$3,$4,$5,$6,'ACTIVE',$7,$8,$9)")
+            .bind(&id).bind(tenant.as_str()).bind(resource_kind).bind(resource_ref).bind(data_class)
+            .bind(storage_key).bind(expires).bind(metadata).bind(now_ms).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,outcome,metadata,created_at_ms) VALUES($1,$2,$3,'EVIDENCE_REGISTERED','EVIDENCE',$4,'SUCCESS',$5,$6)")
+            .bind(tenant.as_str()).bind(actor_kind).bind(actor_ref).bind(&id)
+            .bind(serde_json::json!({"dataClass":data_class,"retentionExpiresAtMs":expires})).bind(now_ms)
+            .execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(id)
+    }
+
     pub async fn get_evidence(&self,tenant:&TenantId,evidence_id:&str)->Result<EvidenceReference,PrivacyStoreError>{
         if !evidence_id.starts_with("evd_"){return Err(PrivacyStoreError::InvalidInput);}
         let row=sqlx::query("SELECT evidence_id,resource_kind,resource_ref,data_class,status,retention_expires_at_ms,metadata,created_at_ms,deleted_at_ms FROM eye_evidence_references WHERE tenant_id=$1 AND evidence_id=$2")
@@ -187,6 +224,10 @@ impl PrivacyStore {
             .bind(&id).bind(tenant.as_str()).bind(target_kind).bind(target_ref).bind(reason_code).bind(actor_kind).bind(actor_ref).bind(key).bind(now_ms)
             .fetch_one(&mut *tx).await?;
         let request=map_deletion(row)?;
+        sqlx::query("INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,outcome,metadata,created_at_ms) VALUES($1,$2,$3,'DELETION_REQUESTED','DELETION_REQUEST',$4,'SUCCESS',$5,$6)")
+            .bind(tenant.as_str()).bind(actor_kind).bind(actor_ref).bind(&request.deletion_id)
+            .bind(serde_json::json!({"targetKind":target_kind,"targetRef":target_ref,"reasonCode":reason_code})).bind(now_ms)
+            .execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(request)
     }
@@ -196,11 +237,12 @@ impl PrivacyStore {
         if !safe_worker(worker_id)||now_ms<=0||!(1..=MAX_LEASE_MS).contains(&lease_ms)||!(1..=MAX_BATCH).contains(&limit){
             return Err(PrivacyStoreError::InvalidInput);
         }
-        let rows=sqlx::query("WITH due AS (SELECT deletion_id FROM eye_deletion_requests WHERE tenant_id=$1 AND attempts<max_attempts AND ((status='QUEUED' AND next_attempt_at_ms<=$2) OR (status='PROCESSING' AND lease_until_ms<=$2)) ORDER BY next_attempt_at_ms,created_at_ms LIMIT $3 FOR UPDATE SKIP LOCKED), claimed AS (UPDATE eye_deletion_requests d SET status='PROCESSING',attempts=d.attempts+1,lease_token=gen_random_uuid(),worker_id=$4,lease_until_ms=$2+$5,updated_at_ms=$2 FROM due WHERE d.deletion_id=due.deletion_id RETURNING d.*) SELECT * FROM claimed ORDER BY created_at_ms")
+        let rows=sqlx::query("WITH due AS (SELECT deletion_id FROM eye_deletion_requests WHERE tenant_id=$1 AND attempts<max_attempts AND ((status='QUEUED' AND next_attempt_at_ms<=$2) OR (status='PROCESSING' AND lease_until_ms<=$2)) ORDER BY next_attempt_at_ms,created_at_ms LIMIT $3 FOR UPDATE SKIP LOCKED), claimed AS (UPDATE eye_deletion_requests d SET status='PROCESSING',attempts=d.attempts+1,lease_token=gen_random_uuid(),worker_id=$4,lease_until_ms=$2+$5,updated_at_ms=$2 FROM due WHERE d.deletion_id=due.deletion_id RETURNING d.*) SELECT claimed.*,e.storage_key FROM claimed LEFT JOIN eye_evidence_references e ON e.tenant_id=claimed.tenant_id AND e.evidence_id=claimed.target_ref AND claimed.target_kind IN ('EVIDENCE','FACE_TEMPLATE') ORDER BY claimed.created_at_ms")
             .bind(tenant.as_str()).bind(now_ms).bind(limit).bind(worker_id).bind(lease_ms).fetch_all(&self.pool).await?;
         rows.into_iter().map(|row|{
-            let request=map_deletion(row.clone())?;
-            Ok(ClaimedDeletion{request,tenant_id:tenant.clone(),worker_id:worker_id.to_owned()})
+            let storage_key:Option<String>=row.try_get("storage_key")?;
+            let request=map_deletion(row)?;
+            Ok(ClaimedDeletion{request,tenant_id:tenant.clone(),worker_id:worker_id.to_owned(),storage_key})
         }).collect()
     }
 
