@@ -26,8 +26,8 @@ const REDIRECT_URL: &str = "http://127.0.0.1:9/v1/auth/google/callback";
 const ENCRYPTION_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 fn assert_disposable_test_database_url(url: &str) {
-    let parsed = reqwest::Url::parse(url)
-        .expect("EYE_TEST_DATABASE_URL must be a valid PostgreSQL URL");
+    let parsed =
+        reqwest::Url::parse(url).expect("EYE_TEST_DATABASE_URL must be a valid PostgreSQL URL");
     let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
     let username = parsed.username().to_ascii_lowercase();
     let database_name = parsed.path().trim_matches('/').to_ascii_lowercase();
