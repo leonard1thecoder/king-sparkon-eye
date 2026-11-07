@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-const JWT_SECRET: &str = "j".repeat(48);
+const JWT_SECRET: &str = "jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj";
 const JWT_KID: &str = "credential-http-test-kid";
 
 fn config(database_url: String) -> Config {
