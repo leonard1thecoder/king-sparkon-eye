@@ -110,10 +110,12 @@ async fn revocation_and_deletion_are_audited_and_non_reactivating() {
         IdentityStoreError::NotFound
     );
 
+    let mut audit_tx=begin_tenant_transaction(&pool,&tenant_id).await.unwrap();
     let actions: Vec<String> = sqlx::query_scalar(
         "SELECT action FROM eye_identity_audit WHERE tenant_id=$1 AND identity_id=$2 ORDER BY audit_id",
     ).bind(tenant_id.as_str()).bind(&identity.identity_id)
-        .fetch_all(&pool).await.expect("read identity audit");
+        .fetch_all(&mut *audit_tx).await.expect("read identity audit");
+    audit_tx.commit().await.unwrap();
     assert_eq!(actions, vec!["IDENTITY_CREATED", "IDENTITY_REVOKED", "IDENTITY_DELETED"]);
 }
 
@@ -170,10 +172,12 @@ async fn enrollment_intents_are_durable_idempotent_and_blocked_by_evaluation_gat
         .await.expect("read identity state");
     assert_eq!(identity_after.enrollment_status, "BLOCKED_EVALUATION");
 
+    let mut enrollment_tx=begin_tenant_transaction(&pool,&tenant_a).await.unwrap();
     let persisted_status: String = sqlx::query_scalar(
         "SELECT status FROM eye_identity_enrollments WHERE tenant_id=$1 AND enrollment_id=$2",
     ).bind(tenant_a.as_str()).bind(&enrollment.enrollment_id)
-        .fetch_one(&pool).await.expect("read durable enrollment");
+        .fetch_one(&mut *enrollment_tx).await.expect("read durable enrollment");
+    enrollment_tx.commit().await.unwrap();
     assert_eq!(persisted_status, "BLOCKED_EVALUATION");
 
     revoke_identity(
@@ -192,10 +196,12 @@ async fn enrollment_intents_are_durable_idempotent_and_blocked_by_evaluation_gat
     ).await.expect("read deleted enrollment");
     assert_eq!(deleted.status, "DELETED");
 
+    let mut enrollment_audit_tx=begin_tenant_transaction(&pool,&tenant_a).await.unwrap();
     let enrollment_audits: Vec<String> = sqlx::query_scalar(
         "SELECT action FROM eye_identity_audit WHERE tenant_id=$1 AND identity_id=$2 AND action LIKE 'ENROLLMENT_%' ORDER BY audit_id",
     ).bind(tenant_a.as_str()).bind(&identity.identity_id)
-        .fetch_all(&pool).await.expect("read enrollment audit");
+        .fetch_all(&mut *enrollment_audit_tx).await.expect("read enrollment audit");
+    enrollment_audit_tx.commit().await.unwrap();
     assert_eq!(enrollment_audits, vec![
         "ENROLLMENT_BLOCKED", "ENROLLMENT_REVOKED", "ENROLLMENT_DELETED"
     ]);
