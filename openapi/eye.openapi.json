@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "King Sparkon Eye API",
-    "version": "0.1.0",
-    "description": "King Sparkon Eye Rust vision API. The service validates uploads and runs YuNet-backed photo assessment. Nominal passes are conservatively returned as ASSESSMENT_UNAVAILABLE until photo-quality thresholds are calibrated against a consented evaluation dataset. No result is an identity decision or admission."
+    "version": "1.0.0",
+    "description": "Canonical standalone, tenant-isolated, face-only identity verification API. Machine API routes expose generic identity scopes and asynchronous verification session resources. Capture submission remains disabled while evaluation gate #95 is closed; no biometric bytes, templates or similarity scores are accepted or returned."
   },
   "paths": {
     "/health/live": {
@@ -475,6 +475,671 @@
           }
         }
       }
+    },
+    "/v1/identity-scopes": {
+      "post": {
+        "summary": "Create a tenant-owned identity scope",
+        "operationId": "createIdentityScope",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIdentityScopeRequest"
+              },
+              "example": {
+                "externalReference": "workspace-42",
+                "displayName": "Approved members",
+                "description": "A tenant-local search boundary."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Scope created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityScopeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scope fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid machine credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credential lacks identity_scopes:write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tenant-local external reference already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistence unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity-scopes/{scope_id}/members/{identity_id}": {
+      "put": {
+        "summary": "Add an active tenant identity to a scope",
+        "operationId": "addIdentityScopeMember",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scope_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueScopeId"
+            }
+          },
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueIdentityId"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Membership is active (idempotent)."
+          },
+          "400": {
+            "description": "Invalid resource identifier.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credential lacks identity_scopes:write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scope or identity is not active in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistence unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove an identity from a scope",
+        "operationId": "removeIdentityScopeMember",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scope_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueScopeId"
+            }
+          },
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueIdentityId"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Membership removed."
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credential lacks identity_scopes:write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Membership not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistence unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/verification-sessions": {
+      "post": {
+        "summary": "Create an asynchronous 1:1 match or scoped 1:N identify session",
+        "operationId": "createVerificationSession",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVerificationSessionRequest"
+              },
+              "examples": {
+                "match": {
+                  "summary": "Compare against exactly one identity",
+                  "value": {
+                    "mode": "MATCH",
+                    "identityId": "idy_0123456789abcdef0123456789abcdef",
+                    "purpose": "account_recovery",
+                    "context": {
+                      "requestReference": "req-8492"
+                    },
+                    "expiresInMs": 300000
+                  }
+                },
+                "identify": {
+                  "summary": "Search only the supplied scope",
+                  "value": {
+                    "mode": "IDENTIFY",
+                    "scopeId": "scp_0123456789abcdef0123456789abcdef",
+                    "purpose": "account_recovery",
+                    "context": {
+                      "requestReference": "req-8492"
+                    },
+                    "expiresInMs": 300000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exact idempotent replay returns the original session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationSessionResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "New session accepted as metadata. Capture and inference remain gated; no processing job is enqueued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or missing Idempotency-Key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credential lacks verification:write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target identity or scope is not active in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency-Key was reused with different request content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistence unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/verification-sessions/{session_id}": {
+      "get": {
+        "summary": "Retrieve verification session status and outcome",
+        "operationId": "getVerificationSession",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueSessionId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-owned session status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credential lacks verification:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistence unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancel a session before capture processing starts",
+        "operationId": "cancelVerificationSession",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueSessionId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credential lacks verification:write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session has already advanced to a non-cancellable state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Persistence unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/verification-sessions/{session_id}/captures": {
+      "post": {
+        "summary": "Submit a face capture asynchronously",
+        "operationId": "submitVerificationCapture",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OpaqueSessionId"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "description": "Reserved multipart capture endpoint. It currently fails closed with EVALUATION_GATE_CLOSED before reading the request body. No capture bytes are accepted or persisted and no processing job is created until issue #95 approves a consented evaluation dataset and operating thresholds, and retention prerequisites are met.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "image"
+                ],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "JPEG or static PNG; not accepted while the evaluation gate is closed."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credential lacks verification:write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Capture exceeds configured ingress limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capture ingress disabled by the evaluation gate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -686,7 +1351,24 @@
         "additionalProperties": false,
         "properties": {
           "code": {
-            "$ref": "#/components/schemas/ErrorCode"
+            "type": "string",
+            "enum": [
+              "NOT_READY",
+              "NOT_FOUND",
+              "UNAUTHORIZED",
+              "FORBIDDEN",
+              "VALIDATION_FAILED",
+              "PAYLOAD_TOO_LARGE",
+              "UNSUPPORTED_MEDIA_TYPE",
+              "RATE_LIMITED",
+              "SERVICE_UNAVAILABLE",
+              "IMAGE_MALFORMED",
+              "IMAGE_DIMENSIONS_EXCEEDED",
+              "INTERNAL",
+              "INVALID_REQUEST",
+              "IDEMPOTENCY_CONFLICT",
+              "EVALUATION_GATE_CLOSED"
+            ]
           },
           "message": {
             "type": "string"
@@ -814,6 +1496,286 @@
             }
           }
         }
+      },
+      "OpaqueScopeId": {
+        "type": "string",
+        "pattern": "^scp_[0-9a-f]{32}$"
+      },
+      "OpaqueIdentityId": {
+        "type": "string",
+        "pattern": "^idy_[0-9a-f]{32}$"
+      },
+      "OpaqueSessionId": {
+        "type": "string",
+        "pattern": "^vfy_[0-9a-f]{32}$"
+      },
+      "CreateIdentityScopeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "externalReference",
+          "displayName"
+        ],
+        "properties": {
+          "externalReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          }
+        }
+      },
+      "IdentityScopeResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scopeId",
+          "externalReference",
+          "displayName",
+          "status",
+          "memberCount",
+          "createdAtMs",
+          "updatedAtMs"
+        ],
+        "properties": {
+          "scopeId": {
+            "$ref": "#/components/schemas/OpaqueScopeId"
+          },
+          "externalReference": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DELETED"
+            ]
+          },
+          "memberCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "createdAtMs": {
+            "type": "integer"
+          },
+          "updatedAtMs": {
+            "type": "integer"
+          }
+        }
+      },
+      "CreateVerificationSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "MATCH",
+              "IDENTIFY"
+            ]
+          },
+          "identityId": {
+            "$ref": "#/components/schemas/OpaqueIdentityId"
+          },
+          "scopeId": {
+            "$ref": "#/components/schemas/OpaqueScopeId"
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128,
+            "description": "Opaque optional purpose label; not interpreted as business authorization."
+          },
+          "context": {
+            "type": "object",
+            "maxProperties": 32,
+            "description": "Optional bounded opaque integration context. No tenant selector or biometric data."
+          },
+          "expiresInMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 3600000,
+            "default": 300000
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "MATCH"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "identityId"
+              ],
+              "not": {
+                "required": [
+                  "scopeId"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "IDENTIFY"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "scopeId"
+              ],
+              "not": {
+                "required": [
+                  "identityId"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "VerificationSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionId",
+          "mode",
+          "status",
+          "context",
+          "expiresAtMs",
+          "createdAtMs",
+          "updatedAtMs"
+        ],
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/OpaqueSessionId"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "MATCH",
+              "IDENTIFY"
+            ]
+          },
+          "identityId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpaqueIdentityId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scopeId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpaqueScopeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "AWAITING_CAPTURE",
+              "BLOCKED_EVALUATION",
+              "QUEUED",
+              "PROCESSING",
+              "COMPLETED",
+              "FAILED",
+              "EXPIRED",
+              "CANCELLED"
+            ]
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "VERIFIED",
+              "NOT_VERIFIED",
+              "IDENTIFIED",
+              "NO_CANDIDATE",
+              "AMBIGUOUS",
+              "INCONCLUSIVE",
+              null
+            ]
+          },
+          "reasonCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "EVALUATION_DATA_REQUIRED",
+              "RETENTION_POLICY_REQUIRED",
+              "CONSENT_AUTHORITY_UNAVAILABLE",
+              "CAPTURE_INVALID",
+              "PROCESSING_UNAVAILABLE",
+              "SESSION_EXPIRED",
+              "SESSION_CANCELLED",
+              null
+            ]
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "context": {
+            "type": "object"
+          },
+          "expiresAtMs": {
+            "type": "integer"
+          },
+          "createdAtMs": {
+            "type": "integer"
+          },
+          "updatedAtMs": {
+            "type": "integer"
+          },
+          "completedAtMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -824,5 +1786,15 @@
         "description": "Eye access token (HS256, issued by the Rust service) sent as `Authorization: Bearer <token>`. Scope rules are per operation."
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "Identity scopes",
+      "description": "Tenant-local identity search boundaries."
+    },
+    {
+      "name": "Verification sessions",
+      "description": "Asynchronous, tenant-bound 1:1 match and scoped 1:N identify resources."
+    }
+  ]
 }
