@@ -1168,6 +1168,119 @@
         },
         "x-current-implementation-status": "BLOCKED_BY_EVALUATION_GATE"
       }
+    },
+    "/v1/evidence/{evidence_id}": {
+      "get": {
+        "summary": "Read authorized evidence metadata",
+        "description": "Requires a machine API credential with the evidence:read scope. The evidence reference is resolved only within the authenticated tenant. The response contains metadata only; private storage keys, object bytes and signed URLs are never returned. A successful read and its EVIDENCE_ACCESSED audit event commit in the same tenant-scoped transaction. Evidence pending deletion or already deleted is not readable.",
+        "operationId": "getEvidenceMetadata",
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Identifier"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized evidence metadata. Private storage location is excluded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "evidenceId",
+                    "resourceKind",
+                    "resourceRef",
+                    "dataClass",
+                    "status",
+                    "metadata",
+                    "createdAtMs"
+                  ],
+                  "properties": {
+                    "evidenceId": {
+                      "type": "string",
+                      "pattern": "^evd_[0-9a-f]{32}$"
+                    },
+                    "resourceKind": {
+                      "type": "string",
+                      "enum": [
+                        "IDENTITY",
+                        "ENROLLMENT",
+                        "VERIFICATION_SESSION"
+                      ]
+                    },
+                    "resourceRef": {
+                      "$ref": "#/components/schemas/Identifier"
+                    },
+                    "dataClass": {
+                      "type": "string",
+                      "enum": [
+                        "ORIGINAL_CAPTURE",
+                        "FACE_TEMPLATE",
+                        "SUPPORTING_EVIDENCE"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "ACTIVE"
+                    },
+                    "retentionExpiresAtMs": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "int64"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "createdAtMs": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "deletedAtMs": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "int64"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Evidence identifier or request metadata is invalid."
+          },
+          "401": {
+            "description": "Missing or invalid machine credential."
+          },
+          "403": {
+            "description": "Credential does not grant evidence:read."
+          },
+          "404": {
+            "description": "Evidence does not exist in the authenticated tenant or is no longer active."
+          },
+          "429": {
+            "description": "Machine credential rate limit exceeded."
+          },
+          "503": {
+            "description": "Evidence lookup or mandatory access-audit persistence is unavailable."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
