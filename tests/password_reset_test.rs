@@ -21,6 +21,39 @@ use uuid::Uuid;
 const NEW_PASSWORD: &str = "brand-new-secure-password-2026";
 const ENCRYPTION_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
+
+fn assert_disposable_test_database_url(url: &str) {
+    let parsed = reqwest::Url::parse(url).expect("EYE_TEST_DATABASE_URL must be a valid PostgreSQL URL");
+    let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+    let username = parsed.username().to_ascii_lowercase();
+    let database_name = parsed.path().trim_matches('/').to_ascii_lowercase();
+    let loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]");
+
+    if loopback {
+        assert!(database_name.contains("test"), "test database name must contain 'test'");
+        return;
+    }
+
+    assert_eq!(
+        std::env::var("EYE_TEST_DATABASE_ALLOW_SUPABASE").as_deref(),
+        Ok("1"),
+        "remote PostgreSQL is blocked; explicitly opt in only for a dedicated Supabase test project"
+    );
+    let direct_project_ref = host
+        .strip_prefix("db.")
+        .and_then(|value| value.strip_suffix(".supabase.co"));
+    let pooler_project_ref = if host.ends_with(".pooler.supabase.com") {
+        username.strip_prefix("postgres.")
+    } else {
+        None
+    };
+    assert!(
+        direct_project_ref.is_some_and(|project_ref| !project_ref.is_empty() && username == "postgres")
+            || pooler_project_ref.is_some_and(|project_ref| !project_ref.is_empty()),
+        "remote test URL must be a Supabase direct host (db.<project-ref>.supabase.co) or pooler host with postgres.<project-ref> user"
+    );
+}
+
 async fn database() -> Option<(PgPool, String)> {
     let url = match std::env::var("EYE_TEST_DATABASE_URL") {
         Ok(value) if !value.trim().is_empty() => value,
@@ -29,6 +62,7 @@ async fn database() -> Option<(PgPool, String)> {
             return None;
         }
     };
+    assert_disposable_test_database_url(&url);
     let pool = connect(&url)
         .await
         .expect("connect to disposable PostgreSQL database");
