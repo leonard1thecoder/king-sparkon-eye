@@ -315,8 +315,9 @@ pub async fn authenticate_api_credential(
     )
     .bind(&credential_id)
     .bind(to_i64(now_ms)?)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     Ok(AuthenticatedApiClient {
         tenant_id,
