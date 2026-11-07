@@ -4,7 +4,10 @@
 
 use king_sparkon_eye::{
     billing::stripe::StripeMode,
-    persistence::{self, billing_accounts::{BillingAccountStore, BillingAccountStoreError}},
+    persistence::{
+        self,
+        billing_accounts::{BillingAccountStore, BillingAccountStoreError},
+    },
 };
 use sqlx::PgPool;
 
