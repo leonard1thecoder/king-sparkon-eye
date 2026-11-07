@@ -6,7 +6,7 @@ use king_sparkon_eye::persistence::{
     tenants::{TenantId,create_tenant},
 };
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 async fn pool()->Option<PgPool>{
