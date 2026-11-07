@@ -4,7 +4,8 @@
 use king_sparkon_eye::persistence::{
     api_credentials::{
         ApiCredentialError, authenticate_api_credential, consume_rate_limit, create_api_client,
-        create_api_credential, revoke_api_credential, rotate_api_credential,
+        CreateApiCredentialInput, CreatedApiCredential, create_api_credential, revoke_api_credential,
+        rotate_api_credential,
     },
     connect, migrate,
     tenants::{TenantId, create_tenant},
@@ -50,6 +51,30 @@ fn scopes(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_owned()).collect()
 }
 
+async fn issue_credential(
+    pool: &PgPool,
+    tenant: &TenantId,
+    client_id: &str,
+    actor_user_id: &str,
+    scopes: Vec<String>,
+    ttl_ms: Option<u64>,
+    now_ms: u64,
+) -> Result<CreatedApiCredential, ApiCredentialError> {
+    create_api_credential(
+        pool,
+        CreateApiCredentialInput {
+            tenant_id: tenant,
+            client_id,
+            actor_user_id,
+            environment: "test",
+            scopes,
+            ttl_ms,
+            now_ms,
+        },
+    )
+    .await
+}
+
 #[tokio::test]
 async fn credential_resolves_tenant_from_database_and_enforces_scopes() {
     let Some(pool) = pool().await else { return };
@@ -67,12 +92,11 @@ async fn credential_resolves_tenant_from_database_and_enforces_scopes() {
     .await
     .unwrap();
 
-    let created = create_api_credential(
+    let created = issue_credential(
         &pool,
         &tenant,
         &client.client_id,
         &owner,
-        "test",
         scopes(&["identities:read"]),
         Some(60_000),
         1_800_000_000_200,
@@ -134,12 +158,11 @@ async fn client_and_credential_scopes_cannot_exceed_the_parent_grant() {
     .unwrap();
 
     assert_eq!(
-        create_api_credential(
+        issue_credential(
             &pool,
             &tenant,
             &client.client_id,
             &owner,
-            "test",
             scopes(&["identities:write"]),
             None,
             1_800_000_000_200,
@@ -167,12 +190,11 @@ async fn another_tenant_owner_cannot_create_or_revoke_credentials_for_a_client()
     )
     .await
     .unwrap();
-    let credential = create_api_credential(
+    let credential = issue_credential(
         &pool,
         &tenant_a,
         &client_a.client_id,
         &owner_a,
-        "test",
         scopes(&["identities:read"]),
         None,
         1_800_000_000_200,
@@ -181,12 +203,11 @@ async fn another_tenant_owner_cannot_create_or_revoke_credentials_for_a_client()
     .unwrap();
 
     assert_eq!(
-        create_api_credential(
+        issue_credential(
             &pool,
             &tenant_b,
             &client_a.client_id,
             &owner_b,
-            "test",
             scopes(&["identities:read"]),
             None,
             1_800_000_000_300,
@@ -233,12 +254,11 @@ async fn rotation_revokes_old_secret_and_returns_new_secret_once() {
     )
     .await
     .unwrap();
-    let old = create_api_credential(
+    let old = issue_credential(
         &pool,
         &tenant,
         &client.client_id,
         &owner,
-        "test",
         scopes(&["verification:read"]),
         None,
         1_800_000_000_200,
@@ -298,12 +318,11 @@ async fn tenant_and_credential_rate_limits_are_enforced_independently() {
     )
     .await
     .unwrap();
-    let credential = create_api_credential(
+    let credential = issue_credential(
         &pool,
         &tenant,
         &client.client_id,
         &owner,
-        "test",
         scopes(&["identities:read"]),
         None,
         1_800_000_000_200,
