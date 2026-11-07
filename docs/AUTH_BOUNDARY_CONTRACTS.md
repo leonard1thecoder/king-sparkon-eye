@@ -108,19 +108,50 @@ Runtime includes database-backed state/nonce/PKCE transaction handling, OIDC tok
 
 ---
 
-## 4. Programmatic API Keys
+## 4. Programmatic API Clients & Credentials
 
-For trusted camera sidecars, scanner devices, and worker CLI utilities:
-- **Format**: `kse_<env>_<32-byte-hex-random>` (e.g., `kse_live_8f3a9e2d...`).
-- **Storage**: The plain API key is shown to the user **once** upon generation. The database stores only:
-  - `key_id`: Public identifier (first 8 characters for identification and audit).
-  - `key_hash`: Salted SHA-256 hash of the complete secret.
-  - `owner_id`: Account or device identifier.
-  - `scopes`: Allowlisted permission array (`["enrollment:write"]`).
-  - `expires_at_ms`: Expiration timestamp.
-  - `revoked`: Boolean status.
-- **Header**:
-  - `X-Eye-Api-Key: <key>` or `Authorization: Bearer <key>`.
+Machine credentials are separate from human JWT sessions. A human signs in to manage a machine client; a machine authenticates with an API credential. A JWT must not silently become a machine credential, and a machine credential must not inherit human role privileges.
+
+### 4.1 Tenant and client ownership
+
+- Every machine client belongs to exactly one active Eye tenant and one existing Eye account owner.
+- The tenant must be owned by the same active Eye account that creates/manages the client.
+- Every API credential belongs to exactly one machine client and inherits that client's tenant.
+- Tenant authority is resolved from the persisted credential row after secret verification. Never accept tenant authority from request bodies, query parameters, or caller-controlled headers.
+- Human management operations must derive the actor ID from a verified Eye JWT and authorize it against the tenant/client owner. Do not accept an owner ID supplied by the browser as proof of ownership.
+- Human developer-console authentication and machine-to-machine API authentication remain separate.
+
+### 4.2 Credential format and storage
+
+- **Format**: `kse_<env>_<64-hex-character-random-secret>`; the random portion is 256 bits.
+- **Lookup ID**: the prefix plus the first 12 random hex characters is used as the indexed public lookup key. It is not an authorization credential.
+- **Storage**: show the raw secret only when created or rotated. Persist only its salted SHA-256 hash, salt, lookup ID, tenant/client references, allowlisted scopes, creation/expiry/last-use timestamps and revocation state.
+- Never persist or log the raw secret. Debug representations redact it. Credential listing and audit records never return it.
+- Expired, revoked, suspended-client, suspended-tenant, inactive-owner, malformed and incorrect secrets fail closed with a non-disclosing invalid-credential response.
+- Rotation revokes the old credential and creates its replacement atomically. The old credential must stop authenticating immediately after the transaction commits.
+
+### 4.3 Machine permission vocabulary
+
+The initial allowlist is:
+- `identities:read`, `identities:write`
+- `scopes:read`, `scopes:write`
+- `verification:create`, `verification:read`
+- `evidence:read`
+- `webhooks:manage`
+
+Client scopes are the maximum grant for that client. Each credential receives a non-empty subset of its parent client's scopes. Do not accept arbitrary scope strings, wildcard grants, `admin:all`, user roles, or enrollment permissions as machine credential scopes. Endpoint authorization must check the exact scope required by that route.
+
+### 4.4 Expiry, revocation, audit and rate limits
+
+- Credentials may have an explicit expiry; an omitted expiry means no time-based expiry and must be an intentional management decision.
+- Revocation is tenant/client-owner scoped and immediately invalidates the credential.
+- Record client creation, credential creation, revocation and rotation in an audit table. Audit metadata must never include raw credentials, token values or secret hashes.
+- Enforce both tenant-wide and credential-specific per-minute limits. Rate-limit charging occurs after credential verification and before the protected operation. Rate-limit limits come from trusted server/client configuration, never request parameters.
+- Retain sufficient metadata to investigate credential lifecycle actions without retaining the secret.
+
+### 4.5 Persistence implementation status
+
+PR #259 introduces the SQLx schema and persistence operations for tenant-bound clients, hashed credentials, expiry, revocation, atomic rotation, audit records and tenant/credential rate-limit buckets. It does not yet mount management/authentication routes or replace the in-memory `ApiKeyService` on production request paths. Do not advertise machine API-key authentication as operational until that wiring and adversarial HTTP tests are complete.
 
 ---
 
