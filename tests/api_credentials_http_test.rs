@@ -185,7 +185,7 @@ async fn http_management_rotation_machine_auth_and_cross_tenant_rejection() {
     assert_eq!(identity["tenantId"], tenant_a.as_str());
 
     // A key without identities:read is denied at the HTTP boundary.
-    let (status, _) = json_body(send(&app, Request::builder()
+    let (status, no_read) = json_body(send(&app, Request::builder()
         .method("POST")
         .uri(format!("/v1/tenants/{}/api-clients/{client_id}/credentials", tenant_a.as_str()))
         .header("authorization", format!("Bearer {owner_a_token}"))
@@ -194,6 +194,11 @@ async fn http_management_rotation_machine_auth_and_cross_tenant_rejection() {
             "scopes":["verification:create"],"environment":"test"
         }).to_string())).unwrap()).await).await;
     assert_eq!(status, StatusCode::OK);
-    let no_read_secret = status; // Keep the status assertion explicit before extracting the key below.
-    assert_eq!(no_read_secret, StatusCode::OK);
+    let no_read_secret = no_read["secret"].as_str().unwrap();
+    let (status, _) = json_body(send(&app, Request::builder()
+        .method("GET")
+        .uri("/v1/machine/whoami")
+        .header("authorization", format!("Bearer {no_read_secret}"))
+        .body(Body::empty()).unwrap()).await).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
 }
