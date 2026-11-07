@@ -62,7 +62,7 @@ async fn scopes_and_verification_sessions_are_tenant_bound_and_idempotent(){
  let (status,session)=send(&app,"POST","/v1/verification-sessions",&key_a,Some(json!({
   "mode":"IDENTIFY","scopeId":scope_id,"purpose":"generic_check","context":{"correlation":"opaque-001"},"expiresInMs":300000
  })),Some("verify-idem-001")).await;
- assert_eq!(status,StatusCode::CREATED);assert_eq!(session["status"],"AWAITING_CAPTURE");
+ assert_eq!(status,StatusCode::CREATED);assert_eq!(session["status"],"BLOCKED_EVALUATION");assert_eq!(session["reasonCode"],"EVALUATION_DATA_REQUIRED");
  assert!(session.get("similarityScore").is_none());assert!(session.get("embedding").is_none());
  let session_id=session["sessionId"].as_str().unwrap();
  let (status,replay)=send(&app,"POST","/v1/verification-sessions",&key_a,Some(json!({
