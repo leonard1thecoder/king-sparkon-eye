@@ -57,11 +57,10 @@ async fn deletion_is_idempotent_tenant_scoped_and_lease_fenced(){
     let Some(pool)=pool().await else{return};
     let owner_a=owner(&pool).await;let owner_b=owner(&pool).await;
     let ta=tenant(&pool,&owner_a).await;let tb=tenant(&pool,&owner_b).await;
-    let evidence=format!("evd_{}",Uuid::new_v4().simple());
-    sqlx::query("INSERT INTO eye_evidence_references(evidence_id,tenant_id,resource_kind,resource_ref,data_class,storage_key,status,retention_expires_at_ms,created_at_ms) VALUES($1,$2,'IDENTITY','idy_test','SUPPORTING_EVIDENCE','private/evidence/object-1','ACTIVE',$3,$4)")
-        .bind(&evidence).bind(ta.as_str()).bind(1_900_000_000_000_i64).bind(1_800_000_000_001_i64)
-        .execute(&pool).await.expect("seed evidence");
     let store=PrivacyStore::new(pool);
+    store.set_retention_policy(&ta,"EVIDENCE_METADATA",86_400_000,"evidence-v1",1_800_000_000_000,1_800_000_000_000).await.unwrap();
+    let evidence=store.register_evidence_reference(&ta,"IDENTITY","idy_test","SUPPORTING_EVIDENCE",
+        "private/evidence/object-1",json!({"source":"test"}),"USER","usr-requester",1_800_000_000_001).await.unwrap();
     assert_eq!(store.get_evidence(&tb,&evidence).await.unwrap_err(),PrivacyStoreError::NotFound);
     let first=store.request_deletion(&ta,"EVIDENCE",&evidence,"SUBJECT_REQUEST","USER","usr-requester","delete-key-1",1_800_000_000_010).await.unwrap();
     let replay=store.request_deletion(&ta,"EVIDENCE",&evidence,"SUBJECT_REQUEST","USER","usr-requester","delete-key-1",1_800_000_000_011).await.unwrap();
@@ -69,6 +68,7 @@ async fn deletion_is_idempotent_tenant_scoped_and_lease_fenced(){
     assert_eq!(store.get_evidence(&ta,&evidence).await.unwrap().status,"DELETE_PENDING");
     let claims=store.claim_deletions(&ta,"cleanup-worker-1",1_800_000_000_020,30_000,10).await.unwrap();
     assert_eq!(claims.len(),1);
+    assert_eq!(claims[0].storage_key.as_deref(),Some("private/evidence/object-1"));
     let claim=&claims[0];
     let token=claim.request.lease_token.unwrap();
     assert!(!store.complete_deletion(&ta,&claim.request.deletion_id,Uuid::new_v4(),"cleanup-worker-1",1_800_000_000_021).await.unwrap());
