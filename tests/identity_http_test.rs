@@ -84,6 +84,26 @@ async fn request_json(app: &Router, method: &str, uri: &str, key: &str, body: Op
     json_response(send(app, request).await).await
 }
 
+
+async fn request_json_with_idempotency(
+    app: &Router,
+    method: &str,
+    uri: &str,
+    key: &str,
+    idempotency_key: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    let request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("authorization", format!("Bearer {key}"))
+        .header("idempotency-key", idempotency_key)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    json_response(send(app, request).await).await
+}
+
 #[tokio::test]
 async fn machine_scope_and_tenant_binding_are_enforced_on_identity_http_routes() {
     let Some(pool) = test_pool().await else { return };
@@ -114,6 +134,41 @@ async fn machine_scope_and_tenant_binding_are_enforced_on_identity_http_routes()
     assert_eq!(status, StatusCode::OK);
     assert!(read.get("tenantId").is_none()); // tenant identifiers are intentionally not returned
     assert_eq!(read["status"], "ACTIVE");
+
+    let enrollment_path = format!("/v1/identities/{identity_id}/face-enrollments");
+    let intent_body = json!({
+        "consentReference":"consent-ref-2026-001",
+        "consentPolicyVersion":"consent-v1"
+    });
+    let (status, intent) = request_json_with_idempotency(
+        &app, "POST", &enrollment_path, &key_a, "enroll-request-001", intent_body.clone()
+    ).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(intent["status"], "BLOCKED_EVALUATION");
+    assert_eq!(intent["blockedReason"], "EVALUATION_DATA_REQUIRED");
+    assert!(intent.get("objectKey").is_none());
+    assert!(intent.get("template").is_none());
+    let enrollment_id = intent["enrollmentId"].as_str().unwrap().to_owned();
+
+    // Exact retries return the original durable intent; reusing the key with different
+    // consent context is rejected rather than silently changing the enrollment.
+    let (status, replay) = request_json_with_idempotency(
+        &app, "POST", &enrollment_path, &key_a, "enroll-request-001", intent_body
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay["enrollmentId"], enrollment_id);
+    let (status, _) = request_json_with_idempotency(
+        &app, "POST", &enrollment_path, &key_a, "enroll-request-001",
+        json!({"consentReference":"another-consent-001","consentPolicyVersion":"consent-v1"})
+    ).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let status_path = format!("{enrollment_path}/{enrollment_id}");
+    let (status, status_body) = request_json(&app, "GET", &status_path, &key_a, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status_body["status"], "BLOCKED_EVALUATION");
+    let (status, _) = request_json(&app, "GET", &status_path, &key_b, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 
     let (status, revoked) = request_json(&app, "POST", &format!("/v1/identities/{identity_id}/revoke"), &key_a, Some(json!({}))).await;
     assert_eq!(status, StatusCode::OK);
