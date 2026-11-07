@@ -1180,7 +1180,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/Identifier"
+              "type": "string",
+              "pattern": "^evd_[0-9a-f]{32}$"
             }
           }
         ],
