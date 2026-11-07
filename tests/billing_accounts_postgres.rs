@@ -2,16 +2,11 @@
 //!
 //! Set EYE_TEST_DATABASE_URL to a disposable loopback database or explicitly opted-in Supabase test project.
 
-use std::time::Duration;
-
 use king_sparkon_eye::{
     billing::stripe::StripeMode,
-    persistence::{
-        MIGRATOR,
-        billing_accounts::{BillingAccountStore, BillingAccountStoreError},
-    },
+    persistence::{self, billing_accounts::{BillingAccountStore, BillingAccountStoreError}},
 };
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::PgPool;
 
 fn assert_disposable_test_database_url(url: &str) {
     let parsed =
@@ -68,13 +63,12 @@ async fn test_pool() -> Option<PgPool> {
         }
     };
     assert_disposable_test_database_url(&database_url);
-    let pool = PgPoolOptions::new()
-        .max_connections(12)
-        .acquire_timeout(Duration::from_secs(5))
-        .connect(&database_url)
+    let pool = persistence::connect(&database_url)
         .await
         .expect("connect to dedicated billing test database");
-    MIGRATOR.run(&pool).await.expect("apply Eye migrations");
+    persistence::migrate(&pool)
+        .await
+        .expect("apply Eye migrations");
     Some(pool)
 }
 
