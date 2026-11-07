@@ -202,9 +202,10 @@ pub async fn create_enrollment_intent(
         .execute(&mut *tx)
         .await?;
 
-    let existing = sqlx::query(&format!(
+    let existing_query = format!(
         "SELECT {ENROLLMENT_COLUMNS} FROM eye_identity_enrollments WHERE tenant_id=$1 AND identity_id=$2 AND idempotency_key=$3 FOR UPDATE"
-    ))
+    );
+    let existing = sqlx::query(&existing_query)
     .bind(tenant_id.as_str())
     .bind(identity_id)
     .bind(idempotency_key)
@@ -282,9 +283,10 @@ pub async fn get_enrollment_intent(
     identity_id: &str,
     enrollment_id: &str,
 ) -> Result<IdentityEnrollment, IdentityStoreError> {
-    let row = sqlx::query(&format!(
+    let query = format!(
         "SELECT {ENROLLMENT_COLUMNS} FROM eye_identity_enrollments WHERE tenant_id=$1 AND identity_id=$2 AND enrollment_id=$3"
-    ))
+    );
+    let row = sqlx::query(&query)
     .bind(tenant_id.as_str())
     .bind(identity_id)
     .bind(enrollment_id)
