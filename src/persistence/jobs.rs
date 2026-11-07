@@ -145,7 +145,7 @@ impl JobStore {
         // #186 has not supplied the authoritative verification-session aggregate.
         // Fail closed rather than enqueue arbitrary caller-selected session references.
         if resource_type != "IDENTITY_ENROLLMENT" { return Err(JobStoreError::NotFound); }
-        let eligible = sqlx::query_scalar::<_, bool>(
+        let eligible = sqlx::query_scalar::<_, String>(
             "SELECT enrollment_id FROM eye_identity_enrollments WHERE tenant_id=$1 AND enrollment_id=$2 AND status='QUEUED' FOR UPDATE"
         ).bind(tenant_id.as_str()).bind(resource_id).fetch_optional(&mut *tx).await?.is_some();
         if !eligible { return Err(JobStoreError::NotFound); }
