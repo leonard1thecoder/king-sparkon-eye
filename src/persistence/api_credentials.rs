@@ -106,13 +106,18 @@ fn validate_scopes(scopes: &[String]) -> Result<(), ApiCredentialError> {
     Ok(())
 }
 
-fn generate_secret(environment: &str) -> Result<(String, String, String, String), ApiCredentialError> {
+fn generate_secret(
+    environment: &str,
+) -> Result<(String, String, String, String), ApiCredentialError> {
     if !valid_environment(environment) {
         return Err(ApiCredentialError::InvalidInput);
     }
     let random = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let raw_secret = format!("{API_KEY_PREFIX}{environment}_{random}");
-    let key_id = format!("{API_KEY_PREFIX}{environment}_{}", &random[..KEY_ID_RANDOM_LEN]);
+    let key_id = format!(
+        "{API_KEY_PREFIX}{environment}_{}",
+        &random[..KEY_ID_RANDOM_LEN]
+    );
     let salt = Uuid::new_v4().simple().to_string();
     let hash = hash_api_key(&raw_secret, &salt);
     Ok((raw_secret, key_id, salt, hash))
@@ -306,7 +311,9 @@ pub async fn authenticate_api_credential(
     if parts.next().is_some()
         || !valid_environment(environment)
         || random.len() != SECRET_HEX_LEN
-        || !random.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        || !random
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     {
         return Err(ApiCredentialError::InvalidCredential);
     }
