@@ -1090,6 +1090,31 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Idempotent replay of the accepted capture.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureAcceptedResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Capture durably accepted and queued after evaluation, consent and retention gates are approved and worker integration is available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureAcceptedResponse"
+                },
+                "example": {
+                  "captureId": "cap_0123456789abcdef0123456789abcdef",
+                  "sessionId": "vfy_0123456789abcdef0123456789abcdef",
+                  "status": "QUEUED"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Unauthorized.",
             "content": {
@@ -1121,7 +1146,7 @@
             }
           },
           "409": {
-            "description": "Session has expired, been cancelled or no longer accepts captures.",
+            "description": "Session is terminal or the idempotency key conflicts with a prior capture.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1140,7 +1165,8 @@
               }
             }
           }
-        }
+        },
+        "x-current-implementation-status": "BLOCKED_BY_EVALUATION_GATE"
       }
     }
   },
@@ -1756,6 +1782,28 @@
               "integer",
               "null"
             ]
+          }
+        }
+      },
+      "CaptureAcceptedResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "captureId",
+          "sessionId",
+          "status"
+        ],
+        "properties": {
+          "captureId": {
+            "type": "string",
+            "pattern": "^cap_[0-9a-f]{32}$"
+          },
+          "sessionId": {
+            "$ref": "#/components/schemas/OpaqueSessionId"
+          },
+          "status": {
+            "type": "string",
+            "const": "QUEUED"
           }
         }
       }
