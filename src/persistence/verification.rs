@@ -5,7 +5,7 @@ use serde_json::Value;
 use sqlx::{PgPool, Row};
 use thiserror::Error;
 use uuid::Uuid;
-use crate::persistence::tenants::TenantId;
+use crate::persistence::tenants::{begin_tenant_transaction, TenantId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum VerificationStoreError {
@@ -73,17 +73,20 @@ impl VerificationStore {
             return Err(VerificationStoreError::InvalidInput);
         }
         let id=format!("scp_{}",Uuid::new_v4().simple());
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let row=sqlx::query("INSERT INTO eye_identity_scopes(scope_id,tenant_id,external_reference,display_name,description,created_at_ms,updated_at_ms) SELECT $1,t.tenant_id,$3,$4,$5,$6,$6 FROM eye_tenants t WHERE t.tenant_id=$2 AND t.status='ACTIVE' RETURNING scope_id,external_reference,display_name,description,status,created_at_ms,updated_at_ms")
             .bind(&id).bind(tenant.as_str()).bind(external_reference).bind(name).bind(description).bind(now)
-            .fetch_optional(&self.pool).await?.ok_or(VerificationStoreError::NotFound)?;
-        Ok(IdentityScope{scope_id:row.try_get("scope_id")?,external_reference:row.try_get("external_reference")?,
+            .fetch_optional(&mut *tx).await?.ok_or(VerificationStoreError::NotFound)?;
+        let scope=IdentityScope{scope_id:row.try_get("scope_id")?,external_reference:row.try_get("external_reference")?,
             display_name:row.try_get("display_name")?,description:row.try_get("description")?,status:row.try_get("status")?,
-            member_count:0,created_at_ms:row.try_get("created_at_ms")?,updated_at_ms:row.try_get("updated_at_ms")?})
+            member_count:0,created_at_ms:row.try_get("created_at_ms")?,updated_at_ms:row.try_get("updated_at_ms")?};
+        tx.commit().await?;
+        Ok(scope)
     }
 
     pub async fn add_member(&self,tenant:&TenantId,scope_id:&str,identity_id:&str,now:i64)->Result<(),VerificationStoreError>{
         if !scope_id.starts_with("scp_")||!identity_id.starts_with("idy_")||now<=0{return Err(VerificationStoreError::InvalidInput)}
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let scope=sqlx::query_scalar::<_,String>("SELECT scope_id FROM eye_identity_scopes WHERE tenant_id=$1 AND scope_id=$2 AND status='ACTIVE' FOR UPDATE")
             .bind(tenant.as_str()).bind(scope_id).fetch_optional(&mut *tx).await?;
         if scope.is_none(){return Err(VerificationStoreError::NotFound)}
@@ -97,15 +100,21 @@ impl VerificationStore {
 
     pub async fn remove_member(&self,tenant:&TenantId,scope_id:&str,identity_id:&str,now:i64)->Result<(),VerificationStoreError>{
         if now<=0{return Err(VerificationStoreError::InvalidInput)}
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let r=sqlx::query("UPDATE eye_identity_scope_members SET removed_at_ms=$4 WHERE tenant_id=$1 AND scope_id=$2 AND identity_id=$3 AND removed_at_ms IS NULL AND EXISTS(SELECT 1 FROM eye_identity_scopes s WHERE s.tenant_id=$1 AND s.scope_id=$2 AND s.status='ACTIVE')")
-            .bind(tenant.as_str()).bind(scope_id).bind(identity_id).bind(now).execute(&self.pool).await?;
-        if r.rows_affected()!=1{return Err(VerificationStoreError::NotFound)} Ok(())
+            .bind(tenant.as_str()).bind(scope_id).bind(identity_id).bind(now).execute(&mut *tx).await?;
+        if r.rows_affected()!=1{return Err(VerificationStoreError::NotFound)}
+        tx.commit().await?;
+        Ok(())
     }
 
     pub async fn get_scope(&self,tenant:&TenantId,scope_id:&str)->Result<IdentityScope,VerificationStoreError>{
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let row=sqlx::query("SELECT s.scope_id,s.external_reference,s.display_name,s.description,s.status,s.created_at_ms,s.updated_at_ms,(SELECT count(*) FROM eye_identity_scope_members m JOIN eye_identities i ON i.tenant_id=m.tenant_id AND i.identity_id=m.identity_id WHERE m.tenant_id=s.tenant_id AND m.scope_id=s.scope_id AND m.removed_at_ms IS NULL AND i.status='ACTIVE') AS member_count FROM eye_identity_scopes s WHERE s.tenant_id=$1 AND s.scope_id=$2 AND s.status='ACTIVE'")
-            .bind(tenant.as_str()).bind(scope_id).fetch_optional(&self.pool).await?.ok_or(VerificationStoreError::NotFound)?;
-        Ok(IdentityScope{scope_id:row.try_get("scope_id")?,external_reference:row.try_get("external_reference")?,display_name:row.try_get("display_name")?,description:row.try_get("description")?,status:row.try_get("status")?,member_count:row.try_get("member_count")?,created_at_ms:row.try_get("created_at_ms")?,updated_at_ms:row.try_get("updated_at_ms")?})
+            .bind(tenant.as_str()).bind(scope_id).fetch_optional(&mut *tx).await?.ok_or(VerificationStoreError::NotFound)?;
+        let scope=IdentityScope{scope_id:row.try_get("scope_id")?,external_reference:row.try_get("external_reference")?,display_name:row.try_get("display_name")?,description:row.try_get("description")?,status:row.try_get("status")?,member_count:row.try_get("member_count")?,created_at_ms:row.try_get("created_at_ms")?,updated_at_ms:row.try_get("updated_at_ms")?};
+        tx.commit().await?;
+        Ok(scope)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -118,7 +127,7 @@ impl VerificationStore {
             return Err(VerificationStoreError::InvalidInput);
         }
         let expires=now.checked_add(ttl_ms).ok_or(VerificationStoreError::InvalidInput)?;
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         // Serialize concurrent first submissions for the same tenant/client/key.
         let lock_key=format!("{}:{}:{}",tenant.as_str(),client_id,key);
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
@@ -152,7 +161,7 @@ impl VerificationStore {
 
     pub async fn get_session(&self,tenant:&TenantId,session_id:&str,now:i64)->Result<VerificationSession,VerificationStoreError>{
         if now<=0{return Err(VerificationStoreError::InvalidInput)}
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let row=sqlx::query(&format!("SELECT {SESSION_COLUMNS},client_id FROM eye_verification_sessions WHERE tenant_id=$1 AND session_id=$2 FOR UPDATE"))
             .bind(tenant.as_str()).bind(session_id).fetch_optional(&mut *tx).await?.ok_or(VerificationStoreError::NotFound)?;
         let status:String=row.try_get("status")?;let expires:i64=row.try_get("expires_at_ms")?;
@@ -170,7 +179,7 @@ impl VerificationStore {
 
     pub async fn cancel_session(&self,tenant:&TenantId,session_id:&str,now:i64)->Result<VerificationSession,VerificationStoreError>{
         if now<=0{return Err(VerificationStoreError::InvalidInput)}
-        let mut tx=self.pool.begin().await?;
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
         let row=sqlx::query("SELECT client_id,status,expires_at_ms FROM eye_verification_sessions WHERE tenant_id=$1 AND session_id=$2 FOR UPDATE")
             .bind(tenant.as_str()).bind(session_id).fetch_optional(&mut *tx).await?.ok_or(VerificationStoreError::NotFound)?;
         let status:String=row.try_get("status")?;
