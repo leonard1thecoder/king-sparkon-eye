@@ -151,16 +151,20 @@ pub async fn find_active_tenant(
     .fetch_optional(pool)
     .await?;
 
-    row.map(|row| {
-        let raw_id: String = row.try_get("tenant_id")?;
-        let owner_user_id: String = row.try_get("owner_user_id")?;
-        Ok(Tenant {
-            tenant_id: TenantId::parse(raw_id).map_err(|_| sqlx::Error::RowNotFound)?,
-            owner_user_id,
-            display_name: row.try_get("display_name")?,
-            created_at_ms: row.try_get("created_at_ms")?,
-        })
-    })
-    .transpose()
-    .map_err(TenantStoreError::from)
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let raw_id: String = row.try_get("tenant_id")?;
+    let owner_user_id: String = row.try_get("owner_user_id")?;
+    let display_name: String = row.try_get("display_name")?;
+    let created_at_ms: i64 = row.try_get("created_at_ms")?;
+    let tenant_id = TenantId::parse(raw_id).map_err(|_| TenantStoreError::Unavailable)?;
+
+    Ok(Some(Tenant {
+        tenant_id,
+        owner_user_id,
+        display_name,
+        created_at_ms,
+    }))
 }
