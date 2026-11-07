@@ -147,7 +147,7 @@ impl PrivacyStore {
         };
         if !matches!(resource_kind,"IDENTITY"|"ENROLLMENT"|"VERIFICATION_SESSION")
             ||!safe_ref(resource_ref,128)||!safe_ref(storage_key,512)||storage_key.starts_with('/')
-            ||storage_key.contains("..")||!safe_metadata(&metadata)
+            ||storage_key.contains("..")||storage_key.contains("://")||storage_key.contains('?')||storage_key.contains('#')||!safe_metadata(&metadata)
             ||!matches!(actor_kind,"USER"|"API_CLIENT"|"SYSTEM")||!safe_ref(actor_ref,128)||now_ms<=0 {
             return Err(PrivacyStoreError::InvalidInput);
         }
