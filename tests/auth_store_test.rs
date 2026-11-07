@@ -73,7 +73,10 @@ async fn store() -> Option<(PgPool, DurableEyeStore)> {
         .fetch_one(&pool)
         .await
         .expect("read Eye connection search path");
-    assert_eq!(current_schema, "eye", "Eye queries must resolve in the isolated schema");
+    assert_eq!(
+        current_schema, "eye",
+        "Eye queries must resolve in the isolated schema"
+    );
     let eye_migrations: Option<String> =
         sqlx::query_scalar("SELECT to_regclass('eye._sqlx_migrations')::text")
             .fetch_one(&pool)
