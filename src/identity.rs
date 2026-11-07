@@ -410,6 +410,7 @@ async fn submit_verification_capture(
     State(state):State<IdentityState>,Path(_session_id):Path<String>,headers:HeaderMap
 )->Result<Response,Response>{
     let p=principal(&state,&headers,"verification:write").await?;
+    let _key=idempotency_key(&headers)?;
     let tenant=TenantId::parse(p.tenant_id.as_str()).map_err(|_|error(StatusCode::UNAUTHORIZED,"unauthorized"))?;
     let session=verification::VerificationStore::new(state.pool.clone())
         .get_session(&tenant,&_session_id,now_ms()).await.map_err(map_verification_error)?;
