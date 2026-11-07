@@ -12,6 +12,50 @@ use king_sparkon_eye::persistence::{connect, migrate};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+fn assert_disposable_test_database_url(url: &str) {
+    let parsed =
+        reqwest::Url::parse(url).expect("EYE_TEST_DATABASE_URL must be a valid PostgreSQL URL");
+    let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+    let username = parsed.username().to_ascii_lowercase();
+    let database_name = parsed.path().trim_matches('/').to_ascii_lowercase();
+    let loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]");
+
+    if loopback {
+        assert!(
+            database_name.contains("test"),
+            "test database name must contain 'test'"
+        );
+        return;
+    }
+
+    assert_eq!(
+        std::env::var("EYE_TEST_DATABASE_ALLOW_SUPABASE").as_deref(),
+        Ok("1"),
+        "remote PostgreSQL is blocked; explicitly opt in only for a dedicated Supabase test project"
+    );
+    assert_ne!(
+        parsed.port(),
+        Some(6543),
+        "Supabase transaction pooler is not supported by SQLx prepared statements; use the session pooler on port 5432"
+    );
+
+    let direct_project_ref = host
+        .strip_prefix("db.")
+        .and_then(|value| value.strip_suffix(".supabase.co"));
+    let pooler_project_ref = if host.ends_with(".pooler.supabase.com") {
+        username.strip_prefix("postgres.")
+    } else {
+        None
+    };
+    let is_direct_project = direct_project_ref
+        .is_some_and(|project_ref| !project_ref.is_empty() && username == "postgres");
+    let is_session_pooler = pooler_project_ref.is_some_and(|project_ref| !project_ref.is_empty());
+    assert!(
+        is_direct_project || is_session_pooler,
+        "remote test URL must be a Supabase direct host (db.<project-ref>.supabase.co) or session pooler with postgres.<project-ref> user"
+    );
+}
+
 async fn store() -> Option<(PgPool, DurableEyeStore)> {
     let url = match std::env::var("EYE_TEST_DATABASE_URL") {
         Ok(value) if !value.trim().is_empty() => value,
@@ -20,6 +64,7 @@ async fn store() -> Option<(PgPool, DurableEyeStore)> {
             return None;
         }
     };
+    assert_disposable_test_database_url(&url);
     let pool = connect(&url)
         .await
         .expect("connect to disposable PostgreSQL database");
