@@ -15,7 +15,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::{
-    persistence::{self, api_credentials, identity_registry, verification, tenants::TenantId},
+    persistence::{self, api_credentials, identity_registry, privacy::{self, PrivacyStore, EvidenceReference}, verification, tenants::TenantId},
     config::Config,
 };
 
@@ -30,6 +30,7 @@ pub fn router(config: Config) -> Router {
         .unwrap_or_else(|| persistence::connect_lazy("postgres://invalid:invalid@127.0.0.1:1/invalid").expect("static fallback PostgreSQL URL"));
     Router::new()
         .route("/v1/identities", post(create_identity))
+        .route("/v1/evidence/{evidence_id}", get(get_evidence))
         .route("/v1/identities/{identity_id}", get(get_identity).delete(delete_identity))
         .route("/v1/identities/{identity_id}/revoke", post(revoke_identity))
         .route("/v1/identities/{identity_id}/face-enrollments", post(create_enrollment_intent))
@@ -281,6 +282,51 @@ async fn delete_identity(
         &principal.owner_user_id, now_ms(),
     ).await.map_err(map_identity_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all="camelCase")]
+struct EvidenceResponse {
+    evidence_id:String,
+    resource_kind:String,
+    resource_ref:String,
+    data_class:String,
+    status:String,
+    retention_expires_at_ms:Option<i64>,
+    metadata:Value,
+    created_at_ms:i64,
+    deleted_at_ms:Option<i64>,
+}
+impl From<EvidenceReference> for EvidenceResponse {
+    fn from(v:EvidenceReference)->Self{Self{
+        evidence_id:v.evidence_id,resource_kind:v.resource_kind,resource_ref:v.resource_ref,
+        data_class:v.data_class,status:v.status,retention_expires_at_ms:v.retention_expires_at_ms,
+        metadata:v.metadata,created_at_ms:v.created_at_ms,deleted_at_ms:v.deleted_at_ms,
+    }}
+}
+fn map_privacy_error(e:privacy::PrivacyStoreError)->Response {
+    use privacy::PrivacyStoreError as E;
+    match e {
+        E::InvalidInput=>error(StatusCode::BAD_REQUEST,"invalid_request"),
+        E::NotFound=>error(StatusCode::NOT_FOUND,"not_found"),
+        E::Conflict=>error(StatusCode::CONFLICT,"idempotency_conflict"),
+        E::Unavailable=>error(StatusCode::SERVICE_UNAVAILABLE,"storage_unavailable"),
+    }
+}
+
+/// Returns tenant-authorized evidence metadata only. Object bytes, private storage keys,
+/// and signed URLs are never exposed by this endpoint. Access is audited atomically.
+async fn get_evidence(
+    State(state):State<IdentityState>,Path(evidence_id):Path<String>,headers:HeaderMap
+)->Result<Json<EvidenceResponse>,Response>{
+    let p=principal(&state,&headers,"evidence:read").await?;
+    let tenant=TenantId::parse(p.tenant_id.as_str())
+        .map_err(|_|error(StatusCode::UNAUTHORIZED,"unauthorized"))?;
+    let request_id=headers.get("x-request-id").and_then(|v|v.to_str().ok());
+    let evidence=PrivacyStore::new(state.pool.clone())
+        .get_evidence_for_access(&tenant,&evidence_id,&p.client_id,request_id,now_ms())
+        .await.map_err(map_privacy_error)?;
+    Ok(Json(evidence.into()))
 }
 
 #[derive(Debug, Deserialize)]

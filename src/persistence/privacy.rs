@@ -39,7 +39,7 @@ fn safe_metadata(value:&Value)->bool {
         match v {
             Value::Object(map)=>map.iter().all(|(k,v)|{
                 let key=k.to_ascii_lowercase();
-                !["image","photo","biometric","embedding","template","token","secret","password","payload","signed_url","storage_key"]
+                !["image","photo","biometric","embedding","template","token","secret","password","payload","signed_url","signedurl","presigned","storage_key","storagekey","object_key","objectkey","s3_key","bucket","url","uri"]
                     .iter().any(|blocked|key.contains(blocked))&&walk(v)
             }),
             Value::Array(items)=>items.iter().all(walk),
@@ -183,6 +183,33 @@ impl PrivacyStore {
             resource_ref:row.try_get("resource_ref")?,data_class:row.try_get("data_class")?,status:row.try_get("status")?,
             retention_expires_at_ms:row.try_get("retention_expires_at_ms")?,metadata:row.try_get("metadata")?,
             created_at_ms:row.try_get("created_at_ms")?,deleted_at_ms:row.try_get("deleted_at_ms")?};
+        tx.commit().await?;
+        Ok(evidence)
+    }
+
+    /// Reads active evidence metadata and records access in the same tenant transaction.
+    /// The private object key is deliberately excluded from the returned value.
+    pub async fn get_evidence_for_access(&self,tenant:&TenantId,evidence_id:&str,
+        actor_ref:&str,request_id:Option<&str>,now_ms:i64)->Result<EvidenceReference,PrivacyStoreError>{
+        if !evidence_id.starts_with("evd_")||!safe_ref(actor_ref,128)
+            ||request_id.is_some_and(|v|!safe_ref(v,128))||now_ms<=0 {
+            return Err(PrivacyStoreError::InvalidInput);
+        }
+        let mut tx=begin_tenant_transaction(&self.pool, tenant).await?;
+        let row=sqlx::query("SELECT evidence_id,resource_kind,resource_ref,data_class,status,retention_expires_at_ms,metadata,created_at_ms,deleted_at_ms FROM eye_evidence_references WHERE tenant_id=$1 AND evidence_id=$2 AND status='ACTIVE' FOR SHARE")
+            .bind(tenant.as_str()).bind(evidence_id).fetch_optional(&mut *tx).await?
+            .ok_or(PrivacyStoreError::NotFound)?;
+        let evidence=EvidenceReference{
+            evidence_id:row.try_get("evidence_id")?,resource_kind:row.try_get("resource_kind")?,
+            resource_ref:row.try_get("resource_ref")?,data_class:row.try_get("data_class")?,
+            status:row.try_get("status")?,retention_expires_at_ms:row.try_get("retention_expires_at_ms")?,
+            metadata:row.try_get("metadata")?,created_at_ms:row.try_get("created_at_ms")?,
+            deleted_at_ms:row.try_get("deleted_at_ms")?,
+        };
+        sqlx::query("INSERT INTO eye_audit_events(tenant_id,actor_kind,actor_ref,action,resource_kind,resource_ref,request_id,outcome,metadata,created_at_ms) VALUES($1,'API_CLIENT',$2,'EVIDENCE_ACCESSED','EVIDENCE',$3,$4,'SUCCESS',$5,$6)")
+            .bind(tenant.as_str()).bind(actor_ref).bind(evidence_id).bind(request_id)
+            .bind(serde_json::json!({"dataClass":evidence.data_class,"resourceKind":evidence.resource_kind}))
+            .bind(now_ms).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(evidence)
     }
