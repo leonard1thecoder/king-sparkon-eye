@@ -666,8 +666,8 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 **Issue:** [#275](https://github.com/leonard1thecoder/king-sparkon-eye/issues/275)
 
 - Added a narrow `GoogleHttpTransport` boundary. Production still constructs the bounded, redirect-disabled reqwest implementation; discovery metadata is still checked against the fixed issuer and exact Google endpoint hosts.
-- Added injected mock-provider tests around the mounted Axum Google start, callback and exchange routes. The success path verifies state, nonce, S256 PKCE, authorization-code redemption, no Google ID-token leakage to the browser redirect, server-side Eye session exchange, and handoff replay rejection.
-- Added HTTP coverage for provider cancellation, callback transaction replay, wrong exchange secret, token-endpoint failure/malformed body, invalid signature, nonce mismatch, missing/unverified email, conflicting linked identity, handoff callback mismatch/expiry/replay, and safe frontend error redirects.
+- Added injected mock-provider tests around the mounted Axum Google start, callback and exchange routes. The success path verifies state, nonce, S256 PKCE challenge/verifier binding, authorization-code redemption, no Google ID-token leakage to the browser redirect, server-side Eye session exchange, and handoff replay rejection.
+- Added HTTP coverage for provider cancellation, state mismatch/transaction replay, wrong exchange secret, token-endpoint failure/malformed body, invalid signature, nonce mismatch, missing/unverified email, conflicting linked identity, handoff callback mismatch/expiry/replay, and safe frontend error redirects.
 - The test-only provider signs ID tokens with the existing test-only RSA fixture. It does not call Google or require provider secrets.
 - Added the disposable PostgreSQL guard and documented the focused test command in `docs/AUTH_BOUNDARY_CONTRACTS.md`.
 
