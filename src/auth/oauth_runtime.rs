@@ -1595,21 +1595,22 @@ mod http_integration_tests {
             .unwrap()
     }
 
-    async fn start_flow(app: &axum::Router) -> (String, String, String) {
+    async fn start_flow(app: &axum::Router) -> (String, String, String, String) {
         let started = response(app, start_request()).await;
         assert_eq!(started.status(), StatusCode::TEMPORARY_REDIRECT);
         let location = started.headers().get("location").unwrap().to_str().unwrap();
         let authorization = reqwest::Url::parse(location).unwrap();
         let state = authorization.query_pairs().find(|(key, _)| key == "state").unwrap().1.to_string();
         let nonce = authorization.query_pairs().find(|(key, _)| key == "nonce").unwrap().1.to_string();
+        let challenge = authorization.query_pairs().find(|(key, _)| key == "code_challenge").unwrap().1.to_string();
         let cookie = started.headers().get(SET_COOKIE).unwrap().to_str().unwrap()
             .split(';').next().unwrap().to_owned();
-        assert!(authorization.query_pairs().any(|(key, value)| key == "code_challenge" && !value.is_empty()));
+        assert!(!challenge.is_empty());
         assert_eq!(
             authorization.query_pairs().find(|(key, _)| key == "code_challenge_method").unwrap().1,
             "S256"
         );
-        (state, nonce, cookie)
+        (state, nonce, cookie, challenge)
     }
 
     #[tokio::test]
@@ -1617,7 +1618,7 @@ mod http_integration_tests {
         let Some(database_url) = disposable_database_url().await else { return; };
         let provider = Arc::new(MockGoogleProvider::new());
         let app = app(database_url, provider.clone(), 41_001).await;
-        let (state, nonce, cookie) = start_flow(&app).await;
+        let (state, nonce, cookie, challenge) = start_flow(&app).await;
         let id_token = sign_id_token(&nonce, true);
         provider.set_id_token(id_token.clone());
 
@@ -1639,7 +1640,8 @@ mod http_integration_tests {
         let fields = &form[0];
         assert_eq!(fields.iter().find(|(key, _)| key == "code").unwrap().1, "provider-code-123");
         assert_eq!(fields.iter().find(|(key, _)| key == "client_secret").unwrap().1, CLIENT_SECRET);
-        assert!(!fields.iter().find(|(key, _)| key == "code_verifier").unwrap().1.is_empty());
+        let verifier = &fields.iter().find(|(key, _)| key == "code_verifier").unwrap().1;
+        assert_eq!(crate::auth::google::s256_challenge(verifier), challenge);
 
         let unauthorized = response(&app, axum::http::Request::builder()
             .method("POST")
@@ -1685,7 +1687,7 @@ mod http_integration_tests {
         let Some(database_url) = disposable_database_url().await else { return; };
         let provider = Arc::new(MockGoogleProvider::new());
         let app = app(database_url, provider.clone(), 41_002).await;
-        let (state, _nonce, cookie) = start_flow(&app).await;
+        let (state, _nonce, cookie, _challenge) = start_flow(&app).await;
 
         let cancelled = response(&app, axum::http::Request::builder()
             .uri(format!("/v1/auth/google/callback?error=access_denied&state={state}"))
@@ -1716,7 +1718,7 @@ mod http_integration_tests {
         ] {
             let provider = Arc::new(MockGoogleProvider::new());
             let app = app(database_url.clone(), provider.clone(), port).await;
-            let (state, nonce, cookie) = start_flow(&app).await;
+            let (state, nonce, cookie, _challenge) = start_flow(&app).await;
             let signed_nonce = token_nonce.unwrap_or(&nonce);
             provider.set_id_token(sign_id_token(signed_nonce, email_verified));
 
@@ -1741,7 +1743,7 @@ mod http_integration_tests {
         let Some(database_url) = disposable_database_url().await else { return; };
         let provider = Arc::new(MockGoogleProvider::new());
         let app = app(database_url, provider.clone(), 41_011).await;
-        let (state, nonce, cookie) = start_flow(&app).await;
+        let (state, nonce, cookie, _challenge) = start_flow(&app).await;
 
         let signed = sign_id_token(&nonce, true);
         let mut segments: Vec<String> = signed.split('.').map(str::to_owned).collect();
@@ -1769,7 +1771,7 @@ mod http_integration_tests {
 
         let missing_provider = Arc::new(MockGoogleProvider::new());
         let missing_app = app(database_url.clone(), missing_provider.clone(), 41_008).await;
-        let (missing_state, missing_nonce, missing_cookie) = start_flow(&missing_app).await;
+        let (missing_state, missing_nonce, missing_cookie, _missing_challenge) = start_flow(&missing_app).await;
         missing_provider.set_id_token(sign_id_token_with_email(&missing_nonce, true, None));
         let missing_email = response(&missing_app, axum::http::Request::builder()
             .uri(format!("/v1/auth/google/callback?code=provider-code&state={missing_state}"))
@@ -1803,7 +1805,7 @@ mod http_integration_tests {
 
         let conflict_provider = Arc::new(MockGoogleProvider::new());
         let conflict_app = app(database_url, conflict_provider.clone(), 41_009).await;
-        let (conflict_state, conflict_nonce, conflict_cookie) = start_flow(&conflict_app).await;
+        let (conflict_state, conflict_nonce, conflict_cookie, _conflict_challenge) = start_flow(&conflict_app).await;
         conflict_provider.set_id_token(sign_id_token_for_identity(
             &conflict_nonce,
             true,
@@ -1831,7 +1833,7 @@ mod http_integration_tests {
         ] {
             let provider = Arc::new(MockGoogleProvider::new());
             let app = app(database_url.clone(), provider.clone(), port).await;
-            let (state, nonce, cookie) = start_flow(&app).await;
+            let (state, nonce, cookie, _challenge) = start_flow(&app).await;
             provider.set_id_token(sign_id_token(&nonce, true));
 
             let callback = response(&app, axum::http::Request::builder()
@@ -1882,7 +1884,7 @@ mod http_integration_tests {
         let provider = Arc::new(MockGoogleProvider::new());
         provider.set_malformed_token_response();
         let app = app(database_url, provider.clone(), 41_010).await;
-        let (state, _nonce, cookie) = start_flow(&app).await;
+        let (state, _nonce, cookie, _challenge) = start_flow(&app).await;
 
         let failed = response(&app, axum::http::Request::builder()
             .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
