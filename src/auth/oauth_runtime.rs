@@ -15,6 +15,7 @@ use axum::{
     Json,
     routing::{get, post},
 };
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 use tokio::sync::RwLock;
@@ -96,11 +97,69 @@ struct Cached<T> {
     expires_at: Instant,
 }
 
+#[derive(Debug)]
+struct GoogleHttpResponse {
+    status: u16,
+    body: Vec<u8>,
+}
+
+/// Narrow provider boundary: production uses the bounded, redirect-disabled reqwest client;
+/// tests inject deterministic responses without contacting Google.
+#[async_trait]
+trait GoogleHttpTransport: Send + Sync {
+    async fn get(&self, url: &str, maximum: usize) -> Result<GoogleHttpResponse, ApiError>;
+    async fn post_form(
+        &self,
+        url: &str,
+        fields: &[(&str, &str)],
+        maximum: usize,
+    ) -> Result<GoogleHttpResponse, ApiError>;
+}
+
+struct ReqwestGoogleHttpTransport {
+    client: Client,
+}
+
+#[async_trait]
+impl GoogleHttpTransport for ReqwestGoogleHttpTransport {
+    async fn get(&self, url: &str, maximum: usize) -> Result<GoogleHttpResponse, ApiError> {
+        let response = self.client.get(url).send().await
+            .map_err(|_| ApiError::ServiceUnavailable)?;
+        read_provider_response(response, maximum).await
+    }
+
+    async fn post_form(
+        &self,
+        url: &str,
+        fields: &[(&str, &str)],
+        maximum: usize,
+    ) -> Result<GoogleHttpResponse, ApiError> {
+        let response = self.client.post(url).form(fields).send().await
+            .map_err(|_| ApiError::ServiceUnavailable)?;
+        read_provider_response(response, maximum).await
+    }
+}
+
+async fn read_provider_response(
+    response: reqwest::Response,
+    maximum: usize,
+) -> Result<GoogleHttpResponse, ApiError> {
+    if response.content_length().is_some_and(|len| len > maximum as u64) {
+        return Err(ApiError::ServiceUnavailable);
+    }
+    let status = response.status().as_u16();
+    let body = response.bytes().await.map_err(|_| ApiError::ServiceUnavailable)?;
+    if body.len() > maximum {
+        return Err(ApiError::ServiceUnavailable);
+    }
+    Ok(GoogleHttpResponse { status, body: body.to_vec() })
+}
+
 pub struct OAuthRuntime {
     config: OAuthRuntimeConfig,
     allowlist: CallbackAllowlist,
     store: DurableEyeStore,
-    client: Client,
+    provider: std::sync::Arc<dyn GoogleHttpTransport>,
     discovery: RwLock<Option<Cached<DiscoveryDocument>>>,
     jwks: RwLock<Option<Cached<Vec<Jwk>>>>,
 }
@@ -115,24 +174,30 @@ struct RefreshGrant {
 
 impl OAuthRuntime {
     pub fn new(config: OAuthRuntimeConfig) -> Result<Self, ApiError> {
-        let allowlist =
-            CallbackAllowlist::parse(&config.callback_urls, config.allow_localhost_http)
-                .map_err(|_| ApiError::ServiceUnavailable)?;
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
             .connect_timeout(Duration::from_secs(3))
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| ApiError::ServiceUnavailable)?;
+        Self::with_provider(config, std::sync::Arc::new(ReqwestGoogleHttpTransport { client }))
+    }
+
+    fn with_provider(
+        config: OAuthRuntimeConfig,
+        provider: std::sync::Arc<dyn GoogleHttpTransport>,
+    ) -> Result<Self, ApiError> {
+        let allowlist =
+            CallbackAllowlist::parse(&config.callback_urls, config.allow_localhost_http)
+                .map_err(|_| ApiError::ServiceUnavailable)?;
+        let pool = persistence::connect_lazy(&config.database_url)
+            .map_err(|_| ApiError::ServiceUnavailable)?;
+        let store = DurableEyeStore::new(pool, &config).map_err(|_| ApiError::ServiceUnavailable)?;
         Ok(Self {
-            store: {
-                let pool = persistence::connect_lazy(&config.database_url)
-                    .map_err(|_| ApiError::ServiceUnavailable)?;
-                DurableEyeStore::new(pool, &config).map_err(|_| ApiError::ServiceUnavailable)?
-            },
             config,
             allowlist,
-            client,
+            store,
+            provider,
             discovery: RwLock::new(None),
             jwks: RwLock::new(None),
         })
@@ -223,27 +288,11 @@ impl OAuthRuntime {
         url: &str,
         maximum: usize,
     ) -> Result<T, ApiError> {
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|_| ApiError::ServiceUnavailable)?;
-        if !response.status().is_success()
-            || response
-                .content_length()
-                .is_some_and(|len| len > maximum as u64)
-        {
+        let response = self.provider.get(url, maximum).await?;
+        if !(200..300).contains(&response.status) {
             return Err(ApiError::ServiceUnavailable);
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|_| ApiError::ServiceUnavailable)?;
-        if bytes.len() > maximum {
-            return Err(ApiError::ServiceUnavailable);
-        }
-        serde_json::from_slice(&bytes).map_err(|_| ApiError::ServiceUnavailable)
+        serde_json::from_slice(&response.body).map_err(|_| ApiError::ServiceUnavailable)
     }
 
     fn allowlisted_callback(&self, callback: &str) -> Result<String, ApiError> {
@@ -330,38 +379,25 @@ impl OAuthRuntime {
         }
 
         let discovery = self.discovery().await?;
-        let response = self
-            .client
-            .post(&discovery.token_endpoint)
-            .form(&[
+        let response = self.provider.post_form(
+            &discovery.token_endpoint,
+            &[
                 ("grant_type", "authorization_code"),
                 ("code", query.code.as_deref().unwrap_or_default()),
                 ("client_id", self.config.google_client_id.as_str()),
                 ("client_secret", self.config.google_client_secret.expose()),
                 ("redirect_uri", self.config.google_redirect_url.as_str()),
                 ("code_verifier", transaction.code_verifier.as_str()),
-            ])
-            .send()
-            .await
-            .map_err(|_| ApiError::ServiceUnavailable)?;
-        if !response.status().is_success()
-            || response
-                .content_length()
-                .is_some_and(|len| len > TOKEN_MAX_BYTES as u64)
-        {
+            ],
+            TOKEN_MAX_BYTES,
+        ).await?;
+        if !(200..300).contains(&response.status) {
             return Err(ApiError::Validation(crate::error::ValidationError {
                 field: "authorizationResponse",
                 rule: "could not be validated",
             }));
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|_| ApiError::ServiceUnavailable)?;
-        if bytes.len() > TOKEN_MAX_BYTES {
-            return Err(ApiError::ServiceUnavailable);
-        }
-        let tokens: TokenResponse = serde_json::from_slice(&bytes).map_err(|_| {
+        let tokens: TokenResponse = serde_json::from_slice(&response.body).map_err(|_| {
             ApiError::Validation(crate::error::ValidationError {
                 field: "authorizationResponse",
                 rule: "could not be validated",
@@ -1296,5 +1332,617 @@ async fn refresh_session(
     {
         Ok(pair) => Json(pair).into_response(),
         Err(err) => err.into_response(),
+    }
+}
+
+
+#[cfg(test)]
+mod http_integration_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::extract::connect_info::MockConnectInfo;
+    use async_trait::async_trait;
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use http_body_util::BodyExt;
+    use ring::rand::SystemRandom;
+    use ring::signature::{RSA_PKCS1_SHA256, RsaKeyPair};
+    use std::net::SocketAddr;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use tower::ServiceExt;
+
+    const CALLBACK: &str = "https://app.example.test/auth/callback";
+    const CLIENT_ID: &str = "eye-test-client.apps.googleusercontent.com";
+    const CLIENT_SECRET: &str = "test-google-client-secret";
+    const EXCHANGE_SECRET: &str = "test-exchange-secret-at-least-32-bytes";
+    const TEST_KEY_DER: &[u8] = include_bytes!("../../tests/fixtures/google_oidc_test_key.p8.der");
+    const TEST_KID: &str = "test-kid-1";
+    const TEST_MODULUS_B64URL: &str = "kwp7uRyQd2_XmwShrHj-S39KE65f7EW6JTYLaTZdDVVqfF3ZG45fbOb2HxrD0BrLPthHBRGbIS-iRxpb6JKU9NNKAS845osryLMB1MdQFXZYqr8p3MsldqA_NY9drNWYRO9RI3P9ADQJ3aWEYPk2IGZEsoO9oyh9XMjYIeAlgeFSyhmi31tZqOaaGOdTixle9ulYhPlRqrtEWcFwdqsNLbWkvGTdKD_SSCzxQL5aAmmzWvdBI-_bYVB_cMPKsiHmx2iEc5SQHQDlrBqaoGV2cVmCvb92p-gTBKDPjCrYQSR4rL1CmExzUpS8MBMFNZ32TknQBk7oWkyJ4KFMN82Epw";
+
+    struct MockGoogleProvider {
+        id_token: Mutex<Option<String>>,
+        token_status: Mutex<u16>,
+        posted_forms: Mutex<Vec<Vec<(String, String)>>>,
+        post_count: AtomicUsize,
+        malformed_token_response: AtomicBool,
+    }
+
+    impl MockGoogleProvider {
+        fn new() -> Self {
+            Self {
+                id_token: Mutex::new(None),
+                token_status: Mutex::new(200),
+                posted_forms: Mutex::new(Vec::new()),
+                post_count: AtomicUsize::new(0),
+                malformed_token_response: AtomicBool::new(false),
+            }
+        }
+
+        fn set_id_token(&self, token: String) {
+            *self.id_token.lock().unwrap() = Some(token);
+        }
+
+        fn set_token_status(&self, status: u16) {
+            *self.token_status.lock().unwrap() = status;
+        }
+
+        fn set_malformed_token_response(&self) {
+            self.malformed_token_response.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[async_trait]
+    impl GoogleHttpTransport for MockGoogleProvider {
+        async fn get(&self, url: &str, maximum: usize) -> Result<GoogleHttpResponse, ApiError> {
+            let body = if url == "https://accounts.google.com/.well-known/openid-configuration" {
+                serde_json::json!({
+                    "issuer": "https://accounts.google.com",
+                    "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+                    "token_endpoint": "https://oauth2.googleapis.com/token",
+                    "jwks_uri": "https://www.googleapis.com/oauth2/v3/certs"
+                }).to_string()
+            } else if url == "https://www.googleapis.com/oauth2/v3/certs" {
+                serde_json::json!({
+                    "keys": [{
+                        "kty": "RSA",
+                        "kid": TEST_KID,
+                        "alg": "RS256",
+                        "n": TEST_MODULUS_B64URL,
+                        "e": "AQAB"
+                    }]
+                }).to_string()
+            } else {
+                return Err(ApiError::ServiceUnavailable);
+            };
+            if body.len() > maximum {
+                return Err(ApiError::ServiceUnavailable);
+            }
+            Ok(GoogleHttpResponse { status: 200, body: body.into_bytes() })
+        }
+
+        async fn post_form(
+            &self,
+            url: &str,
+            fields: &[(&str, &str)],
+            maximum: usize,
+        ) -> Result<GoogleHttpResponse, ApiError> {
+            if url != "https://oauth2.googleapis.com/token" {
+                return Err(ApiError::ServiceUnavailable);
+            }
+            self.post_count.fetch_add(1, Ordering::SeqCst);
+            self.posted_forms.lock().unwrap().push(
+                fields.iter().map(|(key, value)| ((*key).to_owned(), (*value).to_owned())).collect()
+            );
+            let status = *self.token_status.lock().unwrap();
+            let body = if self.malformed_token_response.load(Ordering::SeqCst) {
+                br#"{"access_token":"provider-secret-must-not-leak"}"#.to_vec()
+            } else {
+                let token = self.id_token.lock().unwrap().clone().unwrap_or_default();
+                serde_json::json!({ "id_token": token }).to_string().into_bytes()
+            };
+            if body.len() > maximum {
+                return Err(ApiError::ServiceUnavailable);
+            }
+            Ok(GoogleHttpResponse { status, body })
+        }
+    }
+
+    fn sign_id_token(nonce: &str, email_verified: bool) -> String {
+        sign_id_token_with_email(nonce, email_verified, Some("oauth-http-test@example.test"))
+    }
+
+    fn sign_id_token_with_email(
+        nonce: &str,
+        email_verified: bool,
+        email: Option<&str>,
+    ) -> String {
+        sign_id_token_for_identity(
+            nonce,
+            email_verified,
+            email,
+            "google-subject-http-test",
+        )
+    }
+
+    fn sign_id_token_for_identity(
+        nonce: &str,
+        email_verified: bool,
+        email: Option<&str>,
+        subject: &str,
+    ) -> String {
+        let now = now_seconds();
+        let header = URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&serde_json::json!({
+                "alg": "RS256",
+                "kid": TEST_KID,
+                "typ": "JWT"
+            })).unwrap()
+        );
+        let mut claims = serde_json::json!({
+            "iss": "https://accounts.google.com",
+            "aud": CLIENT_ID,
+            "sub": subject,
+            "exp": now + 600,
+            "iat": now,
+            "nonce": nonce,
+            "email_verified": email_verified
+        });
+        if let Some(email) = email {
+            claims["email"] = serde_json::Value::String(email.to_owned());
+        }
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+        let signing_input = format!("{header}.{payload}");
+        let key = RsaKeyPair::from_pkcs8(TEST_KEY_DER).expect("load test-only signing key");
+        let mut signature = vec![0; key.public().modulus_len()];
+        key.sign(
+            &RSA_PKCS1_SHA256,
+            &SystemRandom::new(),
+            signing_input.as_bytes(),
+            &mut signature,
+        ).expect("sign test ID token");
+        format!("{signing_input}.{}", URL_SAFE_NO_PAD.encode(signature))
+    }
+
+    fn oauth_config(database_url: String) -> OAuthRuntimeConfig {
+        OAuthRuntimeConfig {
+            google_client_id: CLIENT_ID.to_owned(),
+            google_redirect_url: "https://eye.example.test/v1/auth/google/callback".to_owned(),
+            google_client_secret: crate::config::SecretString::new(CLIENT_SECRET),
+            database_url,
+            oauth_encryption_key: crate::config::SecretString::new(
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+            ),
+            callback_urls: CALLBACK.to_owned(),
+            allow_localhost_http: false,
+            exchange_secret: crate::config::SecretString::new(EXCHANGE_SECRET),
+            jwt_signing_secret: crate::config::SecretString::new(
+                "test-jwt-signing-secret-with-more-than-32-bytes"
+            ),
+            jwt_kid: "oauth-http-test-kid".to_owned(),
+        }
+    }
+
+    async fn disposable_database_url() -> Option<String> {
+        let url = match std::env::var("EYE_TEST_DATABASE_URL") {
+            Ok(value) if !value.trim().is_empty() => value,
+            _ => {
+                eprintln!("SKIPPED: EYE_TEST_DATABASE_URL not set; OAuth HTTP tests not run");
+                return None;
+            }
+        };
+        let parsed = reqwest::Url::parse(&url).expect("EYE_TEST_DATABASE_URL must be a PostgreSQL URL");
+        let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+        let username = parsed.username().to_ascii_lowercase();
+        let database = parsed.path().trim_matches('/').to_ascii_lowercase();
+        let loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]");
+        if loopback {
+            assert!(database.contains("test"), "local test database name must contain 'test'");
+        } else {
+            assert_eq!(
+                std::env::var("EYE_TEST_DATABASE_ALLOW_SUPABASE").as_deref(),
+                Ok("1"),
+                "remote PostgreSQL is blocked unless a dedicated Supabase test project is explicitly approved"
+            );
+            assert_ne!(parsed.port(), Some(6543), "use the direct/session PostgreSQL connection, not the transaction pooler");
+            let direct_project = host.strip_prefix("db.")
+                .and_then(|value| value.strip_suffix(".supabase.co"));
+            let pooler_project = if host.ends_with(".pooler.supabase.com") {
+                username.strip_prefix("postgres.")
+            } else {
+                None
+            };
+            let direct = direct_project.is_some_and(|project| !project.is_empty() && username == "postgres");
+            let pooler = pooler_project.is_some_and(|project| !project.is_empty());
+            assert!(direct || pooler, "remote test database must be a Supabase direct host or session pooler");
+        }
+        let pool = persistence::connect(&url).await.expect("connect to disposable PostgreSQL");
+        persistence::migrate(&pool).await.expect("apply Eye migrations");
+        let schema: String = sqlx::query_scalar("SELECT current_schema()")
+            .fetch_one(&pool).await.expect("read current schema");
+        assert_eq!(schema, "eye");
+        pool.close().await;
+        Some(url)
+    }
+
+    async fn app(
+        database_url: String,
+        provider: Arc<MockGoogleProvider>,
+        port: u16,
+    ) -> axum::Router {
+        let runtime = OAuthRuntime::with_provider(
+            oauth_config(database_url),
+            provider,
+        ).expect("construct OAuth runtime with mock provider");
+        let config = crate::config::Config::from_lookup(|_| None).expect("default app config");
+        let state = AppState::with_oauth_for_test(config, runtime);
+        OAuthRuntime::routes()
+            .with_state(state)
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], port))))
+    }
+
+    async fn response(app: &axum::Router, request: axum::http::Request<Body>) -> axum::response::Response {
+        app.clone().oneshot(request).await.expect("route response")
+    }
+
+    fn start_request() -> axum::http::Request<Body> {
+        let mut url = reqwest::Url::parse("http://localhost/v1/auth/google/start").unwrap();
+        url.query_pairs_mut().append_pair("callback_url", CALLBACK);
+        axum::http::Request::builder()
+            .method("GET")
+            .uri(format!("{}?{}", url.path(), url.query().unwrap()))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    async fn start_flow(app: &axum::Router) -> (String, String, String, String) {
+        let started = response(app, start_request()).await;
+        assert_eq!(started.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = started.headers().get("location").unwrap().to_str().unwrap();
+        let authorization = reqwest::Url::parse(location).unwrap();
+        let state = authorization.query_pairs().find(|(key, _)| key == "state").unwrap().1.to_string();
+        let nonce = authorization.query_pairs().find(|(key, _)| key == "nonce").unwrap().1.to_string();
+        let challenge = authorization.query_pairs().find(|(key, _)| key == "code_challenge").unwrap().1.to_string();
+        let cookie = started.headers().get(SET_COOKIE).unwrap().to_str().unwrap()
+            .split(';').next().unwrap().to_owned();
+        assert!(!challenge.is_empty());
+        assert_eq!(
+            authorization.query_pairs().find(|(key, _)| key == "code_challenge_method").unwrap().1,
+            "S256"
+        );
+        (state, nonce, cookie, challenge)
+    }
+
+    #[tokio::test]
+    async fn mounted_google_routes_complete_mocked_authorization_and_single_use_exchange() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        let app = app(database_url, provider.clone(), 41_001).await;
+        let (state, nonce, cookie, challenge) = start_flow(&app).await;
+        let id_token = sign_id_token(&nonce, true);
+        provider.set_id_token(id_token.clone());
+
+        let callback = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code-123&state={state}"))
+            .header("cookie", &cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(callback.status(), StatusCode::TEMPORARY_REDIRECT);
+        let redirect = callback.headers().get("location").unwrap().to_str().unwrap();
+        assert!(redirect.starts_with(CALLBACK));
+        assert!(!redirect.contains(&id_token));
+        assert!(!redirect.contains("provider-code-123"));
+        let handoff_url = reqwest::Url::parse(redirect).unwrap();
+        let handoff = handoff_url.query_pairs().find(|(key, _)| key == "code").unwrap().1.to_string();
+        assert!(!handoff.is_empty());
+
+        let form = provider.posted_forms.lock().unwrap().clone();
+        assert_eq!(form.len(), 1);
+        let fields = &form[0];
+        assert_eq!(fields.iter().find(|(key, _)| key == "code").unwrap().1, "provider-code-123");
+        assert_eq!(fields.iter().find(|(key, _)| key == "client_secret").unwrap().1, CLIENT_SECRET);
+        let verifier = &fields.iter().find(|(key, _)| key == "code_verifier").unwrap().1;
+        assert_eq!(crate::auth::google::s256_challenge(verifier), challenge);
+
+        let unauthorized = response(&app, axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/auth/oauth/exchange")
+            .header("content-type", "application/json")
+            .header("x-eye-oauth-exchange-secret", "wrong-secret")
+            .body(Body::from(serde_json::json!({"code": handoff, "callbackUrl": CALLBACK}).to_string()))
+            .unwrap()).await;
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let exchanged = response(&app, axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/auth/oauth/exchange")
+            .header("content-type", "application/json")
+            .header("x-eye-oauth-exchange-secret", EXCHANGE_SECRET)
+            .body(Body::from(serde_json::json!({"code": handoff, "callbackUrl": CALLBACK}).to_string()))
+            .unwrap()).await;
+        assert_eq!(exchanged.status(), StatusCode::OK);
+        let body = exchanged.into_body().collect().await.unwrap().to_bytes();
+        let tokens: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(tokens["accessToken"].as_str().is_some());
+        assert!(tokens["refreshToken"].as_str().is_some());
+        assert!(!String::from_utf8_lossy(&body).contains(&id_token));
+
+        let replay = response(&app, axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/auth/oauth/exchange")
+            .header("content-type", "application/json")
+            .header("x-eye-oauth-exchange-secret", EXCHANGE_SECRET)
+            .body(Body::from(serde_json::json!({"code": handoff, "callbackUrl": CALLBACK}).to_string()))
+            .unwrap()).await;
+        assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+
+        let callback_replay = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code-123&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(callback_replay.status(), StatusCode::BAD_REQUEST);
+    }
+
+
+    #[tokio::test]
+    async fn state_mismatch_is_rejected_and_burns_the_http_transaction() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        let app = app(database_url, provider.clone(), 41_012).await;
+        let (state, _nonce, cookie, _challenge) = start_flow(&app).await;
+        let wrong_state = format!("{state}-tampered");
+
+        let rejected = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={wrong_state}"))
+            .header("cookie", &cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(rejected.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = rejected.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.starts_with(CALLBACK));
+        assert!(location.contains("error=oauth_failed"));
+        assert_eq!(provider.post_count.load(Ordering::SeqCst), 0);
+
+        let replay = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn provider_cancellation_consumes_transaction_without_token_exchange() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        let app = app(database_url, provider.clone(), 41_002).await;
+        let (state, _nonce, cookie, _challenge) = start_flow(&app).await;
+
+        let cancelled = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?error=access_denied&state={state}"))
+            .header("cookie", &cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(cancelled.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = cancelled.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.starts_with(CALLBACK));
+        assert!(location.contains("error=oauth_failed"));
+        assert_eq!(provider.post_count.load(Ordering::SeqCst), 0);
+
+        let replay = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?error=access_denied&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(provider.post_count.load(Ordering::SeqCst), 0);
+    }
+
+
+    #[tokio::test]
+    async fn unverified_email_and_nonce_mismatch_never_issue_browser_handoffs() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+
+        for (port, email_verified, token_nonce) in [
+            (41_004, false, None),
+            (41_005, true, Some("wrong-transaction-nonce")),
+        ] {
+            let provider = Arc::new(MockGoogleProvider::new());
+            let app = app(database_url.clone(), provider.clone(), port).await;
+            let (state, nonce, cookie, _challenge) = start_flow(&app).await;
+            let signed_nonce = token_nonce.unwrap_or(&nonce);
+            provider.set_id_token(sign_id_token(signed_nonce, email_verified));
+
+            let rejected = response(&app, axum::http::Request::builder()
+                .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+                .header("cookie", cookie)
+                .body(Body::empty()).unwrap()).await;
+            assert_eq!(rejected.status(), StatusCode::TEMPORARY_REDIRECT);
+            let location = rejected.headers().get("location").unwrap().to_str().unwrap();
+            assert!(location.starts_with(CALLBACK));
+            assert!(location.contains("error=oauth_failed"));
+            assert!(!location.contains("code="));
+            assert_eq!(provider.post_count.load(Ordering::SeqCst), 1);
+        }
+    }
+
+
+
+
+    #[tokio::test]
+    async fn invalid_id_token_signature_is_rejected_over_http() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        let app = app(database_url, provider.clone(), 41_011).await;
+        let (state, nonce, cookie, _challenge) = start_flow(&app).await;
+
+        let signed = sign_id_token(&nonce, true);
+        let mut segments: Vec<String> = signed.split('.').map(str::to_owned).collect();
+        let mut claims: serde_json::Value = serde_json::from_slice(
+            &URL_SAFE_NO_PAD.decode(&segments[1]).unwrap()
+        ).unwrap();
+        claims["sub"] = serde_json::Value::String("tampered-subject".to_owned());
+        segments[1] = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+        provider.set_id_token(segments.join("."));
+
+        let rejected = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(rejected.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = rejected.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.starts_with(CALLBACK));
+        assert!(location.contains("error=oauth_failed"));
+        assert!(!location.contains("code="));
+    }
+
+    #[tokio::test]
+    async fn missing_email_and_existing_identity_conflict_never_issue_handoffs() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+
+        let missing_provider = Arc::new(MockGoogleProvider::new());
+        let missing_app = app(database_url.clone(), missing_provider.clone(), 41_008).await;
+        let (missing_state, missing_nonce, missing_cookie, _missing_challenge) = start_flow(&missing_app).await;
+        missing_provider.set_id_token(sign_id_token_with_email(&missing_nonce, true, None));
+        let missing_email = response(&missing_app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={missing_state}"))
+            .header("cookie", missing_cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(missing_email.status(), StatusCode::TEMPORARY_REDIRECT);
+        let missing_location = missing_email.headers().get("location").unwrap().to_str().unwrap();
+        assert!(missing_location.contains("error=oauth_failed"));
+        assert!(!missing_location.contains("code="));
+
+        let conflict_email = format!("oauth-conflict-{}@example.test", uuid::Uuid::new_v4().simple());
+        let conflict_user = format!("usr_{}", uuid::Uuid::new_v4().simple());
+        let pool = persistence::connect(&database_url).await.expect("connect test database");
+        sqlx::query(
+            "INSERT INTO eye_auth_users(user_id,email,password_hash,salt,role,scopes,is_active,created_at_ms)
+             VALUES($1,$2,'test-password-hash','test-salt','GateOperator',ARRAY[]::text[],TRUE,$3)"
+        )
+        .bind(&conflict_user)
+        .bind(&conflict_email)
+        .bind(now_ms() as i64)
+        .execute(&pool).await.expect("seed existing Eye account");
+        sqlx::query(
+            "INSERT INTO eye_oauth_identities(provider,provider_subject,user_id,provider_email,created_at_ms)
+             VALUES('google','already-linked-google-subject',$1,$2,$3)"
+        )
+        .bind(&conflict_user)
+        .bind(&conflict_email)
+        .bind(now_ms() as i64)
+        .execute(&pool).await.expect("seed conflicting Google identity");
+        pool.close().await;
+
+        let conflict_provider = Arc::new(MockGoogleProvider::new());
+        let conflict_app = app(database_url, conflict_provider.clone(), 41_009).await;
+        let (conflict_state, conflict_nonce, conflict_cookie, _conflict_challenge) = start_flow(&conflict_app).await;
+        conflict_provider.set_id_token(sign_id_token_for_identity(
+            &conflict_nonce,
+            true,
+            Some(&conflict_email),
+            "google-subject-conflict-attempt",
+        ));
+        let conflict = response(&conflict_app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={conflict_state}"))
+            .header("cookie", conflict_cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(conflict.status(), StatusCode::TEMPORARY_REDIRECT);
+        let conflict_location = conflict.headers().get("location").unwrap().to_str().unwrap();
+        assert!(conflict_location.starts_with(CALLBACK));
+        assert!(conflict_location.contains("error=oauth_failed"));
+        assert!(!conflict_location.contains("code="));
+    }
+
+    #[tokio::test]
+    async fn handoff_callback_mismatch_and_expiry_are_rejected_over_http() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+
+        for (port, supplied_callback, expire) in [
+            (41_006, "https://other.example.test/auth/callback", false),
+            (41_007, CALLBACK, true),
+        ] {
+            let provider = Arc::new(MockGoogleProvider::new());
+            let app = app(database_url.clone(), provider.clone(), port).await;
+            let (state, nonce, cookie, _challenge) = start_flow(&app).await;
+            provider.set_id_token(sign_id_token(&nonce, true));
+
+            let callback = response(&app, axum::http::Request::builder()
+                .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+                .header("cookie", cookie)
+                .body(Body::empty()).unwrap()).await;
+            assert_eq!(callback.status(), StatusCode::TEMPORARY_REDIRECT);
+            let location = callback.headers().get("location").unwrap().to_str().unwrap();
+            let handoff = reqwest::Url::parse(location).unwrap()
+                .query_pairs().find(|(key, _)| key == "code").unwrap().1.to_string();
+
+            if expire {
+                let pool = persistence::connect(&database_url).await.expect("connect test database");
+                sqlx::query("UPDATE eye_oauth_handoffs SET expires_at_ms = 0 WHERE code_hash = $1")
+                    .bind(hash_hex(&handoff))
+                    .execute(&pool).await.expect("expire test handoff");
+                pool.close().await;
+            }
+
+            let rejected = response(&app, axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/auth/oauth/exchange")
+                .header("content-type", "application/json")
+                .header("x-eye-oauth-exchange-secret", EXCHANGE_SECRET)
+                .body(Body::from(serde_json::json!({
+                    "code": handoff,
+                    "callbackUrl": supplied_callback
+                }).to_string())).unwrap()).await;
+            assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+
+            let replay = response(&app, axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/auth/oauth/exchange")
+                .header("content-type", "application/json")
+                .header("x-eye-oauth-exchange-secret", EXCHANGE_SECRET)
+                .body(Body::from(serde_json::json!({
+                    "code": handoff,
+                    "callbackUrl": CALLBACK
+                }).to_string())).unwrap()).await;
+            assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+        }
+    }
+
+
+    #[tokio::test]
+    async fn malformed_provider_token_response_redirects_without_leaking_body() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        provider.set_malformed_token_response();
+        let app = app(database_url, provider.clone(), 41_010).await;
+        let (state, _nonce, cookie, _challenge) = start_flow(&app).await;
+
+        let failed = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(failed.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = failed.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.starts_with(CALLBACK));
+        assert!(location.contains("error=oauth_failed"));
+        assert!(!location.contains("provider-secret-must-not-leak"));
+        assert_eq!(provider.post_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn provider_token_failure_redirects_safely_and_does_not_leak_provider_data() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        provider.set_token_status(503);
+        let app = app(database_url, provider.clone(), 41_003).await;
+        let (state, nonce, cookie, _challenge) = start_flow(&app).await;
+        provider.set_id_token(sign_id_token(&nonce, true));
+
+        let failed = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=private-provider-code&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(failed.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = failed.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.starts_with(CALLBACK));
+        assert!(location.contains("error=oauth_failed"));
+        assert!(!location.contains("private-provider-code"));
+        assert!(!location.contains(CLIENT_SECRET));
+        assert_eq!(provider.post_count.load(Ordering::SeqCst), 1);
     }
 }

@@ -658,3 +658,17 @@ Bug [#124](https://github.com/leonard1thecoder/king-sparkon-eye/issues/124) reco
 - No markup or route changes. `README.md` and `docs/PUBLIC-LANDING-PAGE.md` are unchanged.
 
 **Verification:** `cargo fmt --all --check` passed; `cargo clippy --all-targets --all-features -- -D warnings` passed; `cargo test --all-features --locked` gave 481 passed, 0 failed, with `logo_and_link_lines_are_centred` extended to check the heading rule. Playwright at 375px on sign-in, register, forgot-password, reset-password and callback: heading centre offset 0px, `text-align: center`, no horizontal overflow.
+
+
+### Issue #275 — mocked Google OAuth HTTP integration coverage (2026-11-09)
+
+**Branch:** `issue/275-google-oauth-http-integration`  
+**Issue:** [#275](https://github.com/leonard1thecoder/king-sparkon-eye/issues/275)
+
+- Added a narrow `GoogleHttpTransport` boundary. Production still constructs the bounded, redirect-disabled reqwest implementation; discovery metadata is still checked against the fixed issuer and exact Google endpoint hosts.
+- Added injected mock-provider tests around the mounted Axum Google start, callback and exchange routes. The success path verifies state, nonce, S256 PKCE challenge/verifier binding, authorization-code redemption, no Google ID-token leakage to the browser redirect, server-side Eye session exchange, and handoff replay rejection.
+- Added HTTP coverage for provider cancellation, state mismatch/transaction replay, wrong exchange secret, token-endpoint failure/malformed body, invalid signature, nonce mismatch, missing/unverified email, conflicting linked identity, handoff callback mismatch/expiry/replay, and safe frontend error redirects.
+- The test-only provider signs ID tokens with the existing test-only RSA fixture. It does not call Google or require provider secrets.
+- Added the disposable PostgreSQL guard and documented the focused test command in `docs/AUTH_BOUNDARY_CONTRACTS.md`.
+
+**Verification status:** Not run in this pass. The database-backed tests require `EYE_TEST_DATABASE_URL`; absence causes an explicit skip, not a pass. Formatting and the focused test target remain to be executed. CI was intentionally left untouched.
