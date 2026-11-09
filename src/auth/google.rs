@@ -10,9 +10,9 @@
 //! - Deterministic account-linking decisions (provider subject, verified email, new account,
 //!   and the rejection cases).
 //!
-//! Not implemented here (blocked on contract decisions, see the PR for #45): HTTP routes,
-//! the server-side handoff code and its exchange endpoint, session-cookie format, the frontend
-//! callback allowlist, and discovery/JWKS/token HTTP calls.
+//! HTTP orchestration lives in `oauth_runtime.rs`: trusted discovery/JWKS retrieval, token
+//! redemption, durable transaction consumption, account resolution, and the one-time Eye handoff.
+//! This module intentionally remains provider-independent from persistence and HTTP concerns.
 //!
 //! Secrets, authorization codes, state, nonce and raw ID tokens are never placed in errors or logs.
 
