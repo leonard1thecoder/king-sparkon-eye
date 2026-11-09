@@ -125,7 +125,7 @@ YuNet detects faces and landmarks. It does **not** identify a person, establish 
 
 ### Recognition model status
 
-The repository documents an intended **SFace 2021dec** recognition contract: aligned 112×112 input and a 128-dimensional normalized embedding, compared with cosine similarity. This is a target specification, not an implemented recognition capability: the recognition weights/adapter and evaluation gates are not complete. See [ONNX model contract inventory](docs/ONNX_MODEL_CONTRACT_INVENTORY.md) and [#61 — evaluation and threshold calibration](https://github.com/leonard1thecoder/king-sparkon-eye/issues/61).
+The Rust **SFace 2021dec adapter** now implements five-landmark 112×112 alignment, OpenCV-compatible RGB preprocessing and validated 128-dimensional ONNX embedding extraction (PR for #59). The SFace weights are **not vendored**: the upstream artifact checksum and directory license are recorded, but the exact checkpoint's training-data provenance remains unresolved in [OpenCV Zoo issue #313](https://github.com/opencv/opencv_zoo/issues/313). The adapter is not wired into API or worker execution. #95 remains a hard runtime gate, and #61 owns recognition evaluation and threshold calibration. See the [ONNX model contract inventory](docs/ONNX_MODEL_CONTRACT_INVENTORY.md).
 
 The optional Meta Muse Spark adapter is supplementary visual-quality guidance only. The current photo-assessment route supplies a disabled provider; it does not call the provider. No frontier model can override deterministic ingress, face-detection or suitability decisions.
 
