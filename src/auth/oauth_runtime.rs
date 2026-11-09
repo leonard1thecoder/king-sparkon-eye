@@ -1348,7 +1348,7 @@ mod http_integration_tests {
     use ring::rand::SystemRandom;
     use ring::signature::{RSA_PKCS1_SHA256, RsaKeyPair};
     use std::net::SocketAddr;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use tower::ServiceExt;
 
@@ -1365,6 +1365,7 @@ mod http_integration_tests {
         token_status: Mutex<u16>,
         posted_forms: Mutex<Vec<Vec<(String, String)>>>,
         post_count: AtomicUsize,
+        malformed_token_response: AtomicBool,
     }
 
     impl MockGoogleProvider {
@@ -1374,6 +1375,7 @@ mod http_integration_tests {
                 token_status: Mutex::new(200),
                 posted_forms: Mutex::new(Vec::new()),
                 post_count: AtomicUsize::new(0),
+                malformed_token_response: AtomicBool::new(false),
             }
         }
 
@@ -1383,6 +1385,10 @@ mod http_integration_tests {
 
         fn set_token_status(&self, status: u16) {
             *self.token_status.lock().unwrap() = status;
+        }
+
+        fn set_malformed_token_response(&self) {
+            self.malformed_token_response.store(true, Ordering::SeqCst);
         }
     }
 
@@ -1429,8 +1435,12 @@ mod http_integration_tests {
                 fields.iter().map(|(key, value)| ((*key).to_owned(), (*value).to_owned())).collect()
             );
             let status = *self.token_status.lock().unwrap();
-            let token = self.id_token.lock().unwrap().clone().unwrap_or_default();
-            let body = serde_json::json!({ "id_token": token }).to_string().into_bytes();
+            let body = if self.malformed_token_response.load(Ordering::SeqCst) {
+                br#"{"access_token":"provider-secret-must-not-leak"}"#.to_vec()
+            } else {
+                let token = self.id_token.lock().unwrap().clone().unwrap_or_default();
+                serde_json::json!({ "id_token": token }).to_string().into_bytes()
+            };
             if body.len() > maximum {
                 return Err(ApiError::ServiceUnavailable);
             }
@@ -1820,6 +1830,27 @@ mod http_integration_tests {
                 }).to_string())).unwrap()).await;
             assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
         }
+    }
+
+
+    #[tokio::test]
+    async fn malformed_provider_token_response_redirects_without_leaking_body() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        provider.set_malformed_token_response();
+        let app = app(database_url, provider.clone(), 41_010).await;
+        let (state, _nonce, cookie) = start_flow(&app).await;
+
+        let failed = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(failed.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = failed.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.starts_with(CALLBACK));
+        assert!(location.contains("error=oauth_failed"));
+        assert!(!location.contains("provider-secret-must-not-leak"));
+        assert_eq!(provider.post_count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
