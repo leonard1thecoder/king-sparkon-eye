@@ -81,6 +81,7 @@ Handoff rules:
 ### 3.3 OIDC discovery, keys and identity linking
 
 - Fetch Google OIDC discovery metadata from Google's trusted issuer and use its advertised endpoints. Do not hard-code a signing key or accept issuer metadata from a user-supplied URL.
+- Validate the OIDC `aud` claim as either a client-ID string or an array containing the configured client ID. Validate `azp` whenever present, and require it to equal the configured client ID when multiple audiences are present. Reject tokens with an unrelated audience or mismatched authorized party.
 - Bound discovery/JWKS HTTP timeouts and cache lifetime. Refresh when a token contains an unknown `kid`. If no valid cached key exists and refresh fails, fail closed; never skip signature, issuer, audience, expiry, nonce, state or PKCE validation.
 - The verified Google `sub` is the provider identity key and must be uniquely linked in durable Eye identity storage. Email-based linking requires `email_verified = true`. Reject conflicting provider/user links; do not let one Google subject attach to multiple Eye users.
 - The PostgreSQL RPC migration and `DurableEyeStore` define durable provider-subject links, state/nonce/PKCE transaction records, handoff hashes, refresh-token rotation, and database-backed rate-limit windows. This runtime requires that migration to be applied before enabling OAuth. The old `MemoryIdentityStore` and in-memory `TokenManager` remain for unit tests and are not the production OAuth path.
