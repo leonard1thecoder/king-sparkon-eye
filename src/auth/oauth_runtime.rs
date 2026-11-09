@@ -1735,6 +1735,34 @@ mod http_integration_tests {
 
 
 
+
+    #[tokio::test]
+    async fn invalid_id_token_signature_is_rejected_over_http() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        let app = app(database_url, provider.clone(), 41_011).await;
+        let (state, nonce, cookie) = start_flow(&app).await;
+
+        let signed = sign_id_token(&nonce, true);
+        let mut segments: Vec<String> = signed.split('.').map(str::to_owned).collect();
+        let mut claims: serde_json::Value = serde_json::from_slice(
+            &URL_SAFE_NO_PAD.decode(&segments[1]).unwrap()
+        ).unwrap();
+        claims["sub"] = serde_json::Value::String("tampered-subject".to_owned());
+        segments[1] = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+        provider.set_id_token(segments.join("."));
+
+        let rejected = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(rejected.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = rejected.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.starts_with(CALLBACK));
+        assert!(location.contains("error=oauth_failed"));
+        assert!(!location.contains("code="));
+    }
+
     #[tokio::test]
     async fn missing_email_and_existing_identity_conflict_never_issue_handoffs() {
         let Some(database_url) = disposable_database_url().await else { return; };
