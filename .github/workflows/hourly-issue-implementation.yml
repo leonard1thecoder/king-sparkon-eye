@@ -133,11 +133,12 @@ jobs:
       - name: Export patch and execution report
         if: always()
         run: |
-          git add -N .
-          git diff --binary HEAD > codex.patch
+          set -euo pipefail
           mkdir -p hourly-result
-          cp codex.patch hourly-result/
           if [ -f codex-output.md ]; then cp codex-output.md hourly-result/; fi
+          rm -f codex-output.md .github/codex/hourly-issue-prompt.md
+          git add -N .
+          git diff --binary HEAD > hourly-result/codex.patch
       - uses: actions/upload-artifact@v4
         if: always()
         with:
