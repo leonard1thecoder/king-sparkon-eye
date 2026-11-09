@@ -6,7 +6,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use king_sparkon_eye::auth::google::{
-    AccountLinkDecision, ExpectedIdToken, GoogleAuthError, IdTokenClaims, Jwk, LinkableAccount,
+    AccountLinkDecision, ExpectedIdToken, GoogleAuthError, IdTokenClaims, Jwk, LinkableAccount, TokenAudience,
     PkcePair, build_authorization_url, decide_account_link, s256_challenge, verify_id_token,
 };
 use ring::rand::SystemRandom;
@@ -125,6 +125,46 @@ fn valid_signed_token_is_accepted() {
     let claims = verify_id_token(&token_with(valid_claims()), &jwks(), expected(), NOW).unwrap();
     assert_eq!(claims.sub, "109876543210");
     assert!(claims.email_verified);
+}
+
+
+#[test]
+fn audience_array_requires_matching_authorized_party() {
+    let mut claims = valid_claims();
+    claims["aud"] = serde_json::json!([CLIENT_ID, "another-client.apps.example"]);
+    claims["azp"] = CLIENT_ID.into();
+    assert!(verify_id_token(&token_with(claims), &jwks(), expected(), NOW).is_ok());
+}
+
+#[test]
+fn audience_array_without_authorized_party_is_rejected() {
+    let mut claims = valid_claims();
+    claims["aud"] = serde_json::json!([CLIENT_ID, "another-client.apps.example"]);
+    assert_eq!(
+        verify_id_token(&token_with(claims), &jwks(), expected(), NOW),
+        Err(GoogleAuthError::InvalidAudience)
+    );
+}
+
+#[test]
+fn mismatched_authorized_party_is_rejected_even_for_single_audience() {
+    let mut claims = valid_claims();
+    claims["azp"] = "attacker-client.apps.example".into();
+    assert_eq!(
+        verify_id_token(&token_with(claims), &jwks(), expected(), NOW),
+        Err(GoogleAuthError::InvalidAudience)
+    );
+}
+
+#[test]
+fn audience_array_that_does_not_include_this_client_is_rejected() {
+    let mut claims = valid_claims();
+    claims["aud"] = serde_json::json!(["another-client.apps.example"]);
+    claims["azp"] = CLIENT_ID.into();
+    assert_eq!(
+        verify_id_token(&token_with(claims), &jwks(), expected(), NOW),
+        Err(GoogleAuthError::InvalidAudience)
+    );
 }
 
 #[test]
@@ -246,7 +286,8 @@ fn malformed_tokens_are_rejected_without_panicking() {
 fn claims(sub: &str, email: Option<&str>, verified: bool) -> IdTokenClaims {
     IdTokenClaims {
         iss: "https://accounts.google.com".into(),
-        aud: CLIENT_ID.into(),
+        aud: TokenAudience::Single(CLIENT_ID.into()),
+        azp: None,
         sub: sub.into(),
         exp: NOW + 600,
         iat: NOW,

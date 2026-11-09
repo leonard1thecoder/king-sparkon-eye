@@ -179,11 +179,35 @@ pub struct Jwk {
     pub e: Option<String>,
 }
 
+/// OIDC audience claim: either one client ID or a list of client IDs.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum TokenAudience {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl TokenAudience {
+    fn contains(&self, client_id: &str) -> bool {
+        match self {
+            Self::Single(audience) => audience == client_id,
+            Self::Multiple(audiences) => audiences.iter().any(|audience| audience == client_id),
+        }
+    }
+
+    fn is_multiple(&self) -> bool {
+        matches!(self, Self::Multiple(_))
+    }
+}
+
 /// Claims read from a verified Google ID token.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct IdTokenClaims {
     pub iss: String,
-    pub aud: String,
+    pub aud: TokenAudience,
+    /// Authorized party. Required when the token has multiple audiences and validated whenever present.
+    #[serde(default)]
+    pub azp: Option<String>,
     pub sub: String,
     pub exp: u64,
     pub iat: u64,
@@ -266,7 +290,13 @@ fn validate_claims(
     if !GOOGLE_ISSUERS.contains(&claims.iss.as_str()) {
         return Err(GoogleAuthError::InvalidIssuer);
     }
-    if claims.aud != expected.client_id {
+    if !claims.aud.contains(expected.client_id)
+        || claims
+            .azp
+            .as_deref()
+            .is_some_and(|authorized_party| authorized_party != expected.client_id)
+        || (claims.aud.is_multiple() && claims.azp.as_deref() != Some(expected.client_id))
+    {
         return Err(GoogleAuthError::InvalidAudience);
     }
     if now_secs >= claims.exp {
