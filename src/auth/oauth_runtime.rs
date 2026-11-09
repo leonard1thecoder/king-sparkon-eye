@@ -476,11 +476,46 @@ fn trusted_google_endpoint(raw: &str, expected_host: &str) -> bool {
     reqwest::Url::parse(raw).is_ok_and(|url| {
         url.scheme() == "https"
             && url.host_str() == Some(expected_host)
+            && url.port_or_known_default() == Some(443)
             && url.username().is_empty()
             && url.password().is_none()
             && url.query().is_none()
             && url.fragment().is_none()
     })
+}
+
+#[cfg(test)]
+mod google_endpoint_tests {
+    use super::trusted_google_endpoint;
+
+    #[test]
+    fn accepts_expected_google_https_endpoints() {
+        assert!(trusted_google_endpoint(
+            "https://accounts.google.com/.well-known/openid-configuration",
+            "accounts.google.com"
+        ));
+        assert!(trusted_google_endpoint(
+            "https://www.googleapis.com/oauth2/v3/certs",
+            "www.googleapis.com"
+        ));
+    }
+
+    #[test]
+    fn rejects_untrusted_google_endpoint_variants() {
+        for endpoint in [
+            "http://accounts.google.com/.well-known/openid-configuration",
+            "https://accounts.google.com:8443/.well-known/openid-configuration",
+            "https://accounts.google.com.attacker.example/.well-known/openid-configuration",
+            "https://user@accounts.google.com/.well-known/openid-configuration",
+            "https://accounts.google.com/.well-known/openid-configuration?next=https://attacker.example",
+            "https://accounts.google.com/.well-known/openid-configuration#fragment",
+        ] {
+            assert!(
+                !trusted_google_endpoint(endpoint, "accounts.google.com"),
+                "unexpectedly trusted endpoint: {endpoint}"
+            );
+        }
+    }
 }
 
 fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
