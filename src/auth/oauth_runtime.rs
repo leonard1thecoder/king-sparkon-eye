@@ -1341,6 +1341,7 @@ mod http_integration_tests {
     use super::*;
     use axum::body::Body;
     use axum::extract::connect_info::MockConnectInfo;
+    use async_trait::async_trait;
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use http_body_util::BodyExt;
@@ -1499,6 +1500,7 @@ mod http_integration_tests {
         };
         let parsed = reqwest::Url::parse(&url).expect("EYE_TEST_DATABASE_URL must be a PostgreSQL URL");
         let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+        let username = parsed.username().to_ascii_lowercase();
         let database = parsed.path().trim_matches('/').to_ascii_lowercase();
         let loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]");
         if loopback {
@@ -1510,6 +1512,16 @@ mod http_integration_tests {
                 "remote PostgreSQL is blocked unless a dedicated Supabase test project is explicitly approved"
             );
             assert_ne!(parsed.port(), Some(6543), "use the direct/session PostgreSQL connection, not the transaction pooler");
+            let direct_project = host.strip_prefix("db.")
+                .and_then(|value| value.strip_suffix(".supabase.co"));
+            let pooler_project = if host.ends_with(".pooler.supabase.com") {
+                username.strip_prefix("postgres.")
+            } else {
+                None
+            };
+            let direct = direct_project.is_some_and(|project| !project.is_empty() && username == "postgres");
+            let pooler = pooler_project.is_some_and(|project| !project.is_empty());
+            assert!(direct || pooler, "remote test database must be a Supabase direct host or session pooler");
         }
         let pool = persistence::connect(&url).await.expect("connect to disposable PostgreSQL");
         persistence::migrate(&pool).await.expect("apply Eye migrations");
@@ -1541,12 +1553,11 @@ mod http_integration_tests {
     }
 
     fn start_request() -> axum::http::Request<Body> {
+        let mut url = reqwest::Url::parse("http://localhost/v1/auth/google/start").unwrap();
+        url.query_pairs_mut().append_pair("callback_url", CALLBACK);
         axum::http::Request::builder()
             .method("GET")
-            .uri(format!(
-                "/v1/auth/google/start?callback_url={}",
-                url::form_urlencoded::byte_serialize(CALLBACK.as_bytes()).collect::<String>()
-            ))
+            .uri(format!("{}?{}", url.path(), url.query().unwrap()))
             .body(Body::empty())
             .unwrap()
     }
