@@ -1682,6 +1682,32 @@ mod http_integration_tests {
         assert_eq!(callback_replay.status(), StatusCode::BAD_REQUEST);
     }
 
+
+    #[tokio::test]
+    async fn state_mismatch_is_rejected_and_burns_the_http_transaction() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+        let provider = Arc::new(MockGoogleProvider::new());
+        let app = app(database_url, provider.clone(), 41_012).await;
+        let (state, _nonce, cookie, _challenge) = start_flow(&app).await;
+        let wrong_state = format!("{state}-tampered");
+
+        let rejected = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={wrong_state}"))
+            .header("cookie", &cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(rejected.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = rejected.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.starts_with(CALLBACK));
+        assert!(location.contains("error=oauth_failed"));
+        assert_eq!(provider.post_count.load(Ordering::SeqCst), 0);
+
+        let replay = response(&app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+            .header("cookie", cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
+    }
+
     #[tokio::test]
     async fn provider_cancellation_consumes_transaction_without_token_exchange() {
         let Some(database_url) = disposable_database_url().await else { return; };
