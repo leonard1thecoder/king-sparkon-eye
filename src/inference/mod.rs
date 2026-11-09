@@ -64,13 +64,13 @@ pub enum DetectionOutcome {
 /// Controlled inference errors. Messages are fixed, and paths and runtime details are never exposed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum InferenceError {
-    #[error("detector model artifact is missing")]
+    #[error("inference model artifact is missing")]
     ArtifactMissing,
-    #[error("detector model artifact is invalid")]
+    #[error("inference model artifact is invalid")]
     ArtifactInvalid,
-    #[error("detector output has an unexpected shape or value")]
+    #[error("inference input or output has an unexpected shape or value")]
     UnexpectedShape,
-    #[error("detector runtime failed")]
+    #[error("inference runtime failed")]
     Runtime,
 }
 

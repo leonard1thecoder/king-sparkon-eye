@@ -140,6 +140,20 @@ fn mock_recognizer_remains_available_without_model_weights() {
     assert_eq!(embedding.as_slice().len(), EMBEDDING_DIM);
 }
 
+
+#[test]
+fn corrupt_model_artifact_fails_digest_verification() {
+    let dir = std::env::temp_dir().join(format!("eye-sface-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let bad_model = dir.join("wrong-model.onnx");
+    std::fs::write(&bad_model, b"not the pinned SFace model").unwrap();
+    assert_eq!(
+        SFaceRecognizer::load(&bad_model, &runtime_path()).err(),
+        Some(InferenceError::ArtifactInvalid)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn missing_model_artifact_fails_closed_before_runtime_initialization() {
     let missing = Path::new(env!("CARGO_MANIFEST_DIR")).join("missing-sface.onnx");

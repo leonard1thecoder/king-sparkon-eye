@@ -44,7 +44,7 @@ This document serves as the verified inventory and contract specification for ON
 - **Upstream-reported SHA-256:** `0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79`.
 - **Declared upstream license:** Apache-2.0 for files in the SFace model directory, per its [README](https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/README.md).
 - **Compliance status:** the exact checkpoint's training-data provenance and dataset-derived conditions have not been authoritatively clarified. OpenCV Zoo [issue #313](https://github.com/opencv/opencv_zoo/issues/313) remains open. Do not vendor, redistribute or enable the weights in production until the project's legal/compliance owner records an explicit decision. The directory license declaration and artifact checksum are not evidence that training-data rights have been resolved.
-- **Runtime supply chain:** no automatic model download. The recognizer accepts an explicitly supplied local model path. The ONNX Runtime library is the existing pinned 1.31.1 CPU runtime shared with YuNet.
+- **Runtime supply chain:** no automatic model download. The recognizer accepts an explicitly supplied local model path and verifies the exact expected byte size and SHA-256 before ORT parses it. The ONNX Runtime library is the existing pinned 1.31.1 CPU runtime shared with YuNet.
 
 ### Verified preprocessing and alignment contract
 

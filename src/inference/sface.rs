@@ -5,11 +5,14 @@
 //! this repository does not download or vendor the SFace checkpoint while provenance review is
 //! unresolved. Constructing this adapter does not register it with an API or worker runtime.
 
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 use std::sync::Mutex;
 
 use ort::session::Session;
 use ort::value::Tensor;
+use sha2::{Digest, Sha256};
 
 use crate::ingress::{NormalizedImage, SupportedFormat};
 
@@ -22,6 +25,10 @@ pub const EMBEDDING_DIM: usize = 128;
 pub const SFACE_MODEL_ID: &str = "sface-2021dec";
 /// SFace aligned input edge length.
 pub const SFACE_INPUT_SIZE: usize = 112;
+/// SHA-256 of the exact OpenCV Zoo FP32 2021dec checkpoint.
+pub const SFACE_MODEL_SHA256: &str =
+    "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79";
+const SFACE_MODEL_SIZE_BYTES: u64 = 38_696_353;
 
 /// Standard SFace five-landmark destination coordinates in 112×112 pixel space.
 /// Order: subject's right eye, subject's left eye, nose, subject's right mouth corner,
@@ -139,6 +146,7 @@ impl SFaceRecognizer {
         if !model_path.is_file() || !runtime_path.is_file() {
             return Err(InferenceError::ArtifactMissing);
         }
+        verify_model_artifact(model_path)?;
 
         let runtime = environment(runtime_path)?;
         let session = Session::builder(runtime)
@@ -258,7 +266,9 @@ pub fn align_face(
     detection: &FaceDetection,
 ) -> Result<NormalizedImage, InferenceError> {
     validate_image(image)?;
-    if detection.landmarks.len() != TARGET_LANDMARKS.len()
+    if !detection.score.is_finite()
+        || !(0.0..=1.0).contains(&detection.score)
+        || detection.landmarks.len() != TARGET_LANDMARKS.len()
         || detection
             .landmarks
             .iter()
@@ -384,6 +394,34 @@ fn validate_image(image: &NormalizedImage) -> Result<(), InferenceError> {
         .ok_or(InferenceError::UnexpectedShape)?;
     if image.width == 0 || image.height == 0 || image.rgb.len() != expected {
         return Err(InferenceError::UnexpectedShape);
+    }
+    Ok(())
+}
+
+/// Verifies the exact upstream checkpoint before ONNX Runtime parses it.
+/// The model is intentionally not fetched by the application; operators provision it separately.
+fn verify_model_artifact(model_path: &Path) -> Result<(), InferenceError> {
+    let mut file = File::open(model_path).map_err(|_| InferenceError::ArtifactInvalid)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut size = 0u64;
+
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|_| InferenceError::ArtifactInvalid)?;
+        if read == 0 {
+            break;
+        }
+        size = size
+            .checked_add(read as u64)
+            .ok_or(InferenceError::ArtifactInvalid)?;
+        hasher.update(&buffer[..read]);
+    }
+
+    let digest = format!("{:x}", hasher.finalize());
+    if size != SFACE_MODEL_SIZE_BYTES || digest != SFACE_MODEL_SHA256 {
+        return Err(InferenceError::ArtifactInvalid);
     }
     Ok(())
 }
