@@ -1672,6 +1672,34 @@ mod http_integration_tests {
         assert_eq!(provider.post_count.load(Ordering::SeqCst), 0);
     }
 
+
+    #[tokio::test]
+    async fn unverified_email_and_nonce_mismatch_never_issue_browser_handoffs() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+
+        for (port, email_verified, token_nonce) in [
+            (41_004, false, None),
+            (41_005, true, Some("wrong-transaction-nonce")),
+        ] {
+            let provider = Arc::new(MockGoogleProvider::new());
+            let app = app(database_url.clone(), provider.clone(), port).await;
+            let (state, nonce, cookie) = start_flow(&app).await;
+            let signed_nonce = token_nonce.unwrap_or(&nonce);
+            provider.set_id_token(sign_id_token(signed_nonce, email_verified));
+
+            let rejected = response(&app, axum::http::Request::builder()
+                .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+                .header("cookie", cookie)
+                .body(Body::empty()).unwrap()).await;
+            assert_eq!(rejected.status(), StatusCode::TEMPORARY_REDIRECT);
+            let location = rejected.headers().get("location").unwrap().to_str().unwrap();
+            assert!(location.starts_with(CALLBACK));
+            assert!(location.contains("error=oauth_failed"));
+            assert!(!location.contains("code="));
+            assert_eq!(provider.post_count.load(Ordering::SeqCst), 1);
+        }
+    }
+
     #[tokio::test]
     async fn provider_token_failure_redirects_safely_and_does_not_leak_provider_data() {
         let Some(database_url) = disposable_database_url().await else { return; };
