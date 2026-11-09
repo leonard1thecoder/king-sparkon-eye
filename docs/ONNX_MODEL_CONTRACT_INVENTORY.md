@@ -59,7 +59,7 @@ The adapter follows the upstream OpenCV `FaceRecognizerSF` implementation:
   - `(41.5493, 92.3655)`
   - `(70.7299, 92.2041)`
 - Feature extraction calls `blobFromImage(aligned, 1, Size(112,112), Scalar(0,0,0), true, false)`: FP32 NCHW, RGB channel order, raw pixel values `[0,255]`, no mean subtraction or scaling. Ingress images are already RGB, so the Rust adapter emits RGB planes directly.
-- The ONNX graph is required at load time to expose exactly one FP32-compatible input of shape `[1,3,112,112]` and one output of shape `[1,128]`. The adapter reads tensor names from graph metadata rather than hardcoding `data`, `embedding` or `fc1`; runtime extraction enforces FP32.
+- The ONNX graph is required at load time to expose exactly one input of shape `[1,3,112,112]` and one output of shape `[1,128]`. The adapter reads tensor names from graph metadata rather than hardcoding `data`, `embedding` or `fc1`; inference supplies FP32 input and extracts FP32 output, rejecting incompatible graph types.
 - The extracted feature is validated as exactly 128 finite values and L2-normalized by the Rust `FaceEmbedding` type.
 
 The preprocessing contract above is based on the upstream [OpenCV FaceRecognizerSF source](https://github.com/opencv/opencv/blob/4.x/modules/objdetect/src/face_recognize.cpp), not the earlier incorrect `(x - 127.5) / 128` description.

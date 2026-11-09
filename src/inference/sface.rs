@@ -419,7 +419,11 @@ fn verify_model_artifact(model_path: &Path) -> Result<(), InferenceError> {
         hasher.update(&buffer[..read]);
     }
 
-    let digest = format!("{:x}", hasher.finalize());
+    let digest = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     if size != SFACE_MODEL_SIZE_BYTES || digest != SFACE_MODEL_SHA256 {
         return Err(InferenceError::ArtifactInvalid);
     }

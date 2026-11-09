@@ -140,7 +140,6 @@ fn mock_recognizer_remains_available_without_model_weights() {
     assert_eq!(embedding.as_slice().len(), EMBEDDING_DIM);
 }
 
-
 #[test]
 fn corrupt_model_artifact_fails_digest_verification() {
     let dir = std::env::temp_dir().join(format!("eye-sface-test-{}", std::process::id()));
