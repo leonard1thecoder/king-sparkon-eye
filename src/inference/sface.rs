@@ -176,13 +176,9 @@ impl SFaceRecognizer {
         let outputs = session
             .run(ort::inputs![self.input_name.as_str() => tensor])
             .map_err(|_| InferenceError::Runtime)?;
-        let (shape, values) = outputs[self.output_name.as_str()]
+        let (_, values) = outputs[self.output_name.as_str()]
             .try_extract_tensor::<f32>()
             .map_err(|_| InferenceError::UnexpectedShape)?;
-
-        if shape != [1i64, EMBEDDING_DIM as i64] {
-            return Err(InferenceError::UnexpectedShape);
-        }
         FaceEmbedding::new(values)
     }
 }
@@ -207,7 +203,11 @@ fn validate_io(session: &Session) -> Result<(String, String), InferenceError> {
         .dtype()
         .tensor_shape()
         .ok_or(InferenceError::ArtifactInvalid)?;
-    if input_shape.iter().copied().ne([1i64, 3, SFACE_INPUT_SIZE as i64, SFACE_INPUT_SIZE as i64]) {
+    if input_shape
+        .iter()
+        .copied()
+        .ne([1i64, 3, SFACE_INPUT_SIZE as i64, SFACE_INPUT_SIZE as i64])
+    {
         return Err(InferenceError::ArtifactInvalid);
     }
 
@@ -231,9 +231,7 @@ fn validate_io(session: &Session) -> Result<(String, String), InferenceError> {
 /// OpenCV calls blobFromImage(aligned, 1, Size(112,112), Scalar(0), true, false):
 /// channel order is RGB, values remain in [0,255], and no mean/scale normalization is applied.
 /// The ingress image is already RGB, so no channel swap is needed here.
-pub fn preprocess_aligned_face(
-    aligned_face: &NormalizedImage,
-) -> Result<Vec<f32>, InferenceError> {
+pub fn preprocess_aligned_face(aligned_face: &NormalizedImage) -> Result<Vec<f32>, InferenceError> {
     validate_image(aligned_face)?;
     if aligned_face.width != SFACE_INPUT_SIZE as u32
         || aligned_face.height != SFACE_INPUT_SIZE as u32

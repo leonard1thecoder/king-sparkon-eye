@@ -19,8 +19,8 @@ use image::{RgbImage, imageops::FilterType};
 use ort::session::Session;
 use ort::value::Tensor;
 
-use crate::inference::{FaceDetection, FaceDetector, InferenceError, NormalizedBox};
 use super::runtime::environment;
+use crate::inference::{FaceDetection, FaceDetector, InferenceError, NormalizedBox};
 use crate::ingress::NormalizedImage;
 
 pub const INPUT_SIZE: usize = 640;

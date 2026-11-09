@@ -107,7 +107,12 @@ fn aligned_input_rejects_wrong_dimensions_and_malformed_buffers() {
 fn embeddings_validate_dimension_finiteness_and_normalize() {
     let raw = vec![1.0f32; EMBEDDING_DIM];
     let embedding = FaceEmbedding::new(&raw).unwrap();
-    let norm = embedding.as_slice().iter().map(|value| value * value).sum::<f32>().sqrt();
+    let norm = embedding
+        .as_slice()
+        .iter()
+        .map(|value| value * value)
+        .sum::<f32>()
+        .sqrt();
     assert!((norm - 1.0).abs() < 1e-6);
 
     assert_eq!(
