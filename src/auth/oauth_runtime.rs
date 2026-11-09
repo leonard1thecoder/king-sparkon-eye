@@ -1700,6 +1700,61 @@ mod http_integration_tests {
         }
     }
 
+
+    #[tokio::test]
+    async fn handoff_callback_mismatch_and_expiry_are_rejected_over_http() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+
+        for (port, supplied_callback, expire) in [
+            (41_006, "https://other.example.test/auth/callback", false),
+            (41_007, CALLBACK, true),
+        ] {
+            let provider = Arc::new(MockGoogleProvider::new());
+            let app = app(database_url.clone(), provider.clone(), port).await;
+            let (state, nonce, cookie) = start_flow(&app).await;
+            provider.set_id_token(sign_id_token(&nonce, true));
+
+            let callback = response(&app, axum::http::Request::builder()
+                .uri(format!("/v1/auth/google/callback?code=provider-code&state={state}"))
+                .header("cookie", cookie)
+                .body(Body::empty()).unwrap()).await;
+            assert_eq!(callback.status(), StatusCode::TEMPORARY_REDIRECT);
+            let location = callback.headers().get("location").unwrap().to_str().unwrap();
+            let handoff = reqwest::Url::parse(location).unwrap()
+                .query_pairs().find(|(key, _)| key == "code").unwrap().1.to_string();
+
+            if expire {
+                let pool = persistence::connect(&database_url).await.expect("connect test database");
+                sqlx::query("UPDATE eye_oauth_handoffs SET expires_at_ms = 0 WHERE code_hash = $1")
+                    .bind(hash_hex(&handoff))
+                    .execute(&pool).await.expect("expire test handoff");
+                pool.close().await;
+            }
+
+            let rejected = response(&app, axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/auth/oauth/exchange")
+                .header("content-type", "application/json")
+                .header("x-eye-oauth-exchange-secret", EXCHANGE_SECRET)
+                .body(Body::from(serde_json::json!({
+                    "code": handoff,
+                    "callbackUrl": supplied_callback
+                }).to_string())).unwrap()).await;
+            assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+
+            let replay = response(&app, axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/auth/oauth/exchange")
+                .header("content-type", "application/json")
+                .header("x-eye-oauth-exchange-secret", EXCHANGE_SECRET)
+                .body(Body::from(serde_json::json!({
+                    "code": handoff,
+                    "callbackUrl": CALLBACK
+                }).to_string())).unwrap()).await;
+            assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+        }
+    }
+
     #[tokio::test]
     async fn provider_token_failure_redirects_safely_and_does_not_leak_provider_data() {
         let Some(database_url) = disposable_database_url().await else { return; };
