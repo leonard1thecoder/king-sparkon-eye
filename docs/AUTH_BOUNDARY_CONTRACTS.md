@@ -107,6 +107,15 @@ Provider cancellation, malformed callback, invalid state/nonce/PKCE, provider/JW
 
 Runtime includes database-backed state/nonce/PKCE transaction handling, OIDC token endpoint redemption, issuer/audience/signature/expiry/nonce verification, bounded discovery/JWKS caching with unknown-key refresh, exact callback allowlisting, cookie lifecycle, durable handoff expiry/replay/callback binding, database-locked identity conflict handling, exchange authentication, durable refresh rotation, and hashed IP/route rate-limit windows. CI and dedicated database integration tests must still validate the real migration/RPC deployment. Trace spans log only the path, never OAuth query parameters. Legal consent wording and retention policy are outside this technical contract and remain unapproved.
 
+
+### 3.6 OAuth HTTP integration-test contract
+
+- The mounted Google start, callback and server-side exchange routes are tested with an injected provider transport. The production constructor always installs the bounded reqwest transport with redirects disabled; provider URLs still pass the exact Google hostname, HTTPS and port-443 checks.
+- Mock discovery, token and JWKS responses use a test-only signing key and never contact Google or require real provider credentials.
+- Route-level OAuth tests require `EYE_TEST_DATABASE_URL` pointing to a disposable Eye PostgreSQL database. Local database names must contain `test`; remote Supabase test databases require explicit `EYE_TEST_DATABASE_ALLOW_SUPABASE=1` and must use a direct/session connection rather than the transaction pooler.
+- Run the focused HTTP flow tests with `cargo test --lib http_integration_tests -- --nocapture`. If the database variable is absent, these database-backed tests explicitly skip; a skip is not a passing persistence verification.
+- Route tests assert state/nonce/PKCE setup, provider code redemption, browser handoff isolation, server-side exchange and replay rejection; cancellation, provider failure, unverified email and nonce mismatch are also exercised as safe HTTP outcomes.
+
 ---
 
 ## 4. Programmatic API Clients & Credentials
@@ -174,12 +183,3 @@ PR #259 introduces the SQLx schema and persistence operations for tenant-bound c
 **Implementation status (issue #133):** `POST /v1/auth/login` takes `{email, password}`. It is rate limited per peer address (10 per minute) and per email (5 per minute) with `eye_allow_oauth_attempt`, and returns `{accessToken, refreshToken, tokenType, expiresInSecs}` on success. Unknown email, wrong password, and disabled account all return `401 INVALID_CREDENTIALS` with the same body. It needs migration `db/migrations/202610290004_eye_password_login.sql` applied to the Eye database. New hashes are bcrypt (issue #135). Legacy SHA-256 rows are rehashed on a correct login with a compare-and-set update (migration `202610290005`).
 
 **Implementation status (issue #130):** `POST /v1/enrollment/photo-assessments` accepts bearer JWTs with `enrollment:write` only. API keys are not accepted yet, and no route issues tokens yet, so this route is refused for everyone until an issuance path exists.
-
-
-### 3.4 OAuth HTTP integration-test contract
-
-- The mounted Google start, callback and server-side exchange routes are tested with an injected provider transport. The production constructor always installs the bounded reqwest transport with redirects disabled; provider URLs still pass the exact Google hostname, HTTPS and port-443 checks.
-- Mock discovery, token and JWKS responses use a test-only signing key and never contact Google or require real provider credentials.
-- Route-level OAuth tests require `EYE_TEST_DATABASE_URL` pointing to a disposable Eye PostgreSQL database. Local database names must contain `test`; remote Supabase test databases require explicit `EYE_TEST_DATABASE_ALLOW_SUPABASE=1` and must use a direct/session connection rather than the transaction pooler.
-- Run the focused HTTP flow tests with `cargo test --lib http_integration_tests -- --nocapture`. If the database variable is absent, these database-backed tests explicitly skip; a skip is not a passing persistence verification.
-- The successful route test asserts state/nonce/PKCE setup, provider code redemption, a browser redirect containing only the one-time Eye handoff, server-side exchange, and replay rejection. Cancellation and provider-token failure are exercised as safe HTTP redirects.
