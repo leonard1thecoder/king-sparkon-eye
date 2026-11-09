@@ -6,8 +6,9 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use king_sparkon_eye::auth::google::{
-    AccountLinkDecision, ExpectedIdToken, GoogleAuthError, IdTokenClaims, Jwk, LinkableAccount, TokenAudience,
-    PkcePair, build_authorization_url, decide_account_link, s256_challenge, verify_id_token,
+    AccountLinkDecision, ExpectedIdToken, GoogleAuthError, IdTokenClaims, Jwk, LinkableAccount,
+    PkcePair, TokenAudience, build_authorization_url, decide_account_link, s256_challenge,
+    verify_id_token,
 };
 use ring::rand::SystemRandom;
 use ring::signature::{RSA_PKCS1_SHA256, RsaKeyPair};
@@ -126,7 +127,6 @@ fn valid_signed_token_is_accepted() {
     assert_eq!(claims.sub, "109876543210");
     assert!(claims.email_verified);
 }
-
 
 #[test]
 fn audience_array_requires_matching_authorized_party() {
