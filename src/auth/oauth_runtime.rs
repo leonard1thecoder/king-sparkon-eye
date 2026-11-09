@@ -1710,6 +1710,64 @@ mod http_integration_tests {
     }
 
 
+
+    #[tokio::test]
+    async fn missing_email_and_existing_identity_conflict_never_issue_handoffs() {
+        let Some(database_url) = disposable_database_url().await else { return; };
+
+        let missing_provider = Arc::new(MockGoogleProvider::new());
+        let missing_app = app(database_url.clone(), missing_provider.clone(), 41_008).await;
+        let (missing_state, missing_nonce, missing_cookie) = start_flow(&missing_app).await;
+        missing_provider.set_id_token(sign_id_token_with_email(&missing_nonce, true, None));
+        let missing_email = response(&missing_app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={missing_state}"))
+            .header("cookie", missing_cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(missing_email.status(), StatusCode::TEMPORARY_REDIRECT);
+        let missing_location = missing_email.headers().get("location").unwrap().to_str().unwrap();
+        assert!(missing_location.contains("error=oauth_failed"));
+        assert!(!missing_location.contains("code="));
+
+        let conflict_email = format!("oauth-conflict-{}@example.test", uuid::Uuid::new_v4().simple());
+        let conflict_user = format!("usr_{}", uuid::Uuid::new_v4().simple());
+        let pool = persistence::connect(&database_url).await.expect("connect test database");
+        sqlx::query(
+            "INSERT INTO eye_auth_users(user_id,email,password_hash,salt,role,scopes,is_active,created_at_ms)
+             VALUES($1,$2,'test-password-hash','test-salt','GateOperator',ARRAY[]::text[],TRUE,$3)"
+        )
+        .bind(&conflict_user)
+        .bind(&conflict_email)
+        .bind(now_ms() as i64)
+        .execute(&pool).await.expect("seed existing Eye account");
+        sqlx::query(
+            "INSERT INTO eye_oauth_identities(provider,provider_subject,user_id,provider_email,created_at_ms)
+             VALUES('google','already-linked-google-subject',$1,$2,$3)"
+        )
+        .bind(&conflict_user)
+        .bind(&conflict_email)
+        .bind(now_ms() as i64)
+        .execute(&pool).await.expect("seed conflicting Google identity");
+        pool.close().await;
+
+        let conflict_provider = Arc::new(MockGoogleProvider::new());
+        let conflict_app = app(database_url, conflict_provider.clone(), 41_009).await;
+        let (conflict_state, conflict_nonce, conflict_cookie) = start_flow(&conflict_app).await;
+        conflict_provider.set_id_token(sign_id_token_with_email(
+            &conflict_nonce,
+            true,
+            Some(&conflict_email),
+        ));
+        let conflict = response(&conflict_app, axum::http::Request::builder()
+            .uri(format!("/v1/auth/google/callback?code=provider-code&state={conflict_state}"))
+            .header("cookie", conflict_cookie)
+            .body(Body::empty()).unwrap()).await;
+        assert_eq!(conflict.status(), StatusCode::TEMPORARY_REDIRECT);
+        let conflict_location = conflict.headers().get("location").unwrap().to_str().unwrap();
+        assert!(conflict_location.starts_with(CALLBACK));
+        assert!(conflict_location.contains("error=oauth_failed"));
+        assert!(!conflict_location.contains("code="));
+    }
+
     #[tokio::test]
     async fn handoff_callback_mismatch_and_expiry_are_rejected_over_http() {
         let Some(database_url) = disposable_database_url().await else { return; };
