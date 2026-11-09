@@ -6,6 +6,7 @@
 //!
 //! Detection is not identity comparison and not liveness detection.
 
+pub(crate) mod runtime;
 pub mod sface;
 pub mod yunet;
 

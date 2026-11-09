@@ -12,15 +12,15 @@
 //! Decoding is a pure function, so the coordinate and NMS logic is tested on hand-built
 //! tensors. The ONNX session itself is tested against the vendored artifacts.
 
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::path::Path;
+use std::sync::Mutex;
 
 use image::{RgbImage, imageops::FilterType};
-use ort::environment::Environment;
 use ort::session::Session;
 use ort::value::Tensor;
 
 use crate::inference::{FaceDetection, FaceDetector, InferenceError, NormalizedBox};
+use super::runtime::environment;
 use crate::ingress::NormalizedImage;
 
 pub const INPUT_SIZE: usize = 640;
@@ -224,28 +224,6 @@ pub struct YunetDetector {
     session: Mutex<Session>,
     score_threshold: f32,
     nms_threshold: f32,
-}
-
-/// ONNX Runtime can only be initialised once per process. The first runtime path wins, and
-/// later calls must use the same path.
-static ENVIRONMENT: OnceLock<(PathBuf, Result<Environment, InferenceError>)> = OnceLock::new();
-
-fn environment(runtime_path: &Path) -> Result<&'static Environment, InferenceError> {
-    let (loaded_path, env) = ENVIRONMENT.get_or_init(|| {
-        let env = ort::init_from(runtime_path)
-            .map_err(|_| InferenceError::Runtime)
-            .and_then(|builder| {
-                builder
-                    .with_name("king-sparkon-eye")
-                    .build()
-                    .map_err(|_| InferenceError::Runtime)
-            });
-        (runtime_path.to_path_buf(), env)
-    });
-    if loaded_path != runtime_path {
-        return Err(InferenceError::Runtime);
-    }
-    env.as_ref().map_err(|e| *e)
 }
 
 impl YunetDetector {
