@@ -15,6 +15,7 @@ use axum::{
     Json,
     routing::{get, post},
 };
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 use tokio::sync::RwLock;
@@ -96,11 +97,69 @@ struct Cached<T> {
     expires_at: Instant,
 }
 
+#[derive(Debug)]
+struct GoogleHttpResponse {
+    status: u16,
+    body: Vec<u8>,
+}
+
+/// Narrow provider boundary: production uses the bounded, redirect-disabled reqwest client;
+/// tests inject deterministic responses without contacting Google.
+#[async_trait]
+trait GoogleHttpTransport: Send + Sync {
+    async fn get(&self, url: &str, maximum: usize) -> Result<GoogleHttpResponse, ApiError>;
+    async fn post_form(
+        &self,
+        url: &str,
+        fields: &[(&str, &str)],
+        maximum: usize,
+    ) -> Result<GoogleHttpResponse, ApiError>;
+}
+
+struct ReqwestGoogleHttpTransport {
+    client: Client,
+}
+
+#[async_trait]
+impl GoogleHttpTransport for ReqwestGoogleHttpTransport {
+    async fn get(&self, url: &str, maximum: usize) -> Result<GoogleHttpResponse, ApiError> {
+        let response = self.client.get(url).send().await
+            .map_err(|_| ApiError::ServiceUnavailable)?;
+        read_provider_response(response, maximum).await
+    }
+
+    async fn post_form(
+        &self,
+        url: &str,
+        fields: &[(&str, &str)],
+        maximum: usize,
+    ) -> Result<GoogleHttpResponse, ApiError> {
+        let response = self.client.post(url).form(fields).send().await
+            .map_err(|_| ApiError::ServiceUnavailable)?;
+        read_provider_response(response, maximum).await
+    }
+}
+
+async fn read_provider_response(
+    response: reqwest::Response,
+    maximum: usize,
+) -> Result<GoogleHttpResponse, ApiError> {
+    if response.content_length().is_some_and(|len| len > maximum as u64) {
+        return Err(ApiError::ServiceUnavailable);
+    }
+    let status = response.status().as_u16();
+    let body = response.bytes().await.map_err(|_| ApiError::ServiceUnavailable)?;
+    if body.len() > maximum {
+        return Err(ApiError::ServiceUnavailable);
+    }
+    Ok(GoogleHttpResponse { status, body: body.to_vec() })
+}
+
 pub struct OAuthRuntime {
     config: OAuthRuntimeConfig,
     allowlist: CallbackAllowlist,
     store: DurableEyeStore,
-    client: Client,
+    provider: std::sync::Arc<dyn GoogleHttpTransport>,
     discovery: RwLock<Option<Cached<DiscoveryDocument>>>,
     jwks: RwLock<Option<Cached<Vec<Jwk>>>>,
 }
@@ -115,24 +174,30 @@ struct RefreshGrant {
 
 impl OAuthRuntime {
     pub fn new(config: OAuthRuntimeConfig) -> Result<Self, ApiError> {
-        let allowlist =
-            CallbackAllowlist::parse(&config.callback_urls, config.allow_localhost_http)
-                .map_err(|_| ApiError::ServiceUnavailable)?;
         let client = Client::builder()
             .timeout(Duration::from_secs(5))
             .connect_timeout(Duration::from_secs(3))
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| ApiError::ServiceUnavailable)?;
+        Self::with_provider(config, std::sync::Arc::new(ReqwestGoogleHttpTransport { client }))
+    }
+
+    fn with_provider(
+        config: OAuthRuntimeConfig,
+        provider: std::sync::Arc<dyn GoogleHttpTransport>,
+    ) -> Result<Self, ApiError> {
+        let allowlist =
+            CallbackAllowlist::parse(&config.callback_urls, config.allow_localhost_http)
+                .map_err(|_| ApiError::ServiceUnavailable)?;
+        let pool = persistence::connect_lazy(&config.database_url)
+            .map_err(|_| ApiError::ServiceUnavailable)?;
+        let store = DurableEyeStore::new(pool, &config).map_err(|_| ApiError::ServiceUnavailable)?;
         Ok(Self {
-            store: {
-                let pool = persistence::connect_lazy(&config.database_url)
-                    .map_err(|_| ApiError::ServiceUnavailable)?;
-                DurableEyeStore::new(pool, &config).map_err(|_| ApiError::ServiceUnavailable)?
-            },
             config,
             allowlist,
-            client,
+            store,
+            provider,
             discovery: RwLock::new(None),
             jwks: RwLock::new(None),
         })
@@ -223,27 +288,11 @@ impl OAuthRuntime {
         url: &str,
         maximum: usize,
     ) -> Result<T, ApiError> {
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|_| ApiError::ServiceUnavailable)?;
-        if !response.status().is_success()
-            || response
-                .content_length()
-                .is_some_and(|len| len > maximum as u64)
-        {
+        let response = self.provider.get(url, maximum).await?;
+        if !(200..300).contains(&response.status) {
             return Err(ApiError::ServiceUnavailable);
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|_| ApiError::ServiceUnavailable)?;
-        if bytes.len() > maximum {
-            return Err(ApiError::ServiceUnavailable);
-        }
-        serde_json::from_slice(&bytes).map_err(|_| ApiError::ServiceUnavailable)
+        serde_json::from_slice(&response.body).map_err(|_| ApiError::ServiceUnavailable)
     }
 
     fn allowlisted_callback(&self, callback: &str) -> Result<String, ApiError> {
@@ -330,38 +379,25 @@ impl OAuthRuntime {
         }
 
         let discovery = self.discovery().await?;
-        let response = self
-            .client
-            .post(&discovery.token_endpoint)
-            .form(&[
+        let response = self.provider.post_form(
+            &discovery.token_endpoint,
+            &[
                 ("grant_type", "authorization_code"),
                 ("code", query.code.as_deref().unwrap_or_default()),
                 ("client_id", self.config.google_client_id.as_str()),
                 ("client_secret", self.config.google_client_secret.expose()),
                 ("redirect_uri", self.config.google_redirect_url.as_str()),
                 ("code_verifier", transaction.code_verifier.as_str()),
-            ])
-            .send()
-            .await
-            .map_err(|_| ApiError::ServiceUnavailable)?;
-        if !response.status().is_success()
-            || response
-                .content_length()
-                .is_some_and(|len| len > TOKEN_MAX_BYTES as u64)
-        {
+            ],
+            TOKEN_MAX_BYTES,
+        ).await?;
+        if !(200..300).contains(&response.status) {
             return Err(ApiError::Validation(crate::error::ValidationError {
                 field: "authorizationResponse",
                 rule: "could not be validated",
             }));
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|_| ApiError::ServiceUnavailable)?;
-        if bytes.len() > TOKEN_MAX_BYTES {
-            return Err(ApiError::ServiceUnavailable);
-        }
-        let tokens: TokenResponse = serde_json::from_slice(&bytes).map_err(|_| {
+        let tokens: TokenResponse = serde_json::from_slice(&response.body).map_err(|_| {
             ApiError::Validation(crate::error::ValidationError {
                 field: "authorizationResponse",
                 rule: "could not be validated",
