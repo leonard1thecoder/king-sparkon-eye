@@ -1439,6 +1439,14 @@ mod http_integration_tests {
     }
 
     fn sign_id_token(nonce: &str, email_verified: bool) -> String {
+        sign_id_token_with_email(nonce, email_verified, Some("oauth-http-test@example.test"))
+    }
+
+    fn sign_id_token_with_email(
+        nonce: &str,
+        email_verified: bool,
+        email: Option<&str>,
+    ) -> String {
         let now = now_seconds();
         let header = URL_SAFE_NO_PAD.encode(
             serde_json::to_vec(&serde_json::json!({
@@ -1447,18 +1455,19 @@ mod http_integration_tests {
                 "typ": "JWT"
             })).unwrap()
         );
-        let payload = URL_SAFE_NO_PAD.encode(
-            serde_json::to_vec(&serde_json::json!({
-                "iss": "https://accounts.google.com",
-                "aud": CLIENT_ID,
-                "sub": "google-subject-http-test",
-                "exp": now + 600,
-                "iat": now,
-                "nonce": nonce,
-                "email": "oauth-http-test@example.test",
-                "email_verified": email_verified
-            })).unwrap()
-        );
+        let mut claims = serde_json::json!({
+            "iss": "https://accounts.google.com",
+            "aud": CLIENT_ID,
+            "sub": "google-subject-http-test",
+            "exp": now + 600,
+            "iat": now,
+            "nonce": nonce,
+            "email_verified": email_verified
+        });
+        if let Some(email) = email {
+            claims["email"] = serde_json::Value::String(email.to_owned());
+        }
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
         let signing_input = format!("{header}.{payload}");
         let key = RsaKeyPair::from_pkcs8(TEST_KEY_DER).expect("load test-only signing key");
         let mut signature = vec![0; key.public().modulus_len()];
