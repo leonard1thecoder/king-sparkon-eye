@@ -14,7 +14,7 @@ use ort::session::Session;
 use ort::value::Tensor;
 use sha2::{Digest, Sha256};
 
-use crate::ingress::{NormalizedImage, SupportedFormat};
+use crate::ingress::NormalizedImage;
 
 use super::runtime::environment;
 use super::{FaceDetection, InferenceError};
