@@ -138,7 +138,7 @@ jobs:
           if [ -f codex-output.md ]; then cp codex-output.md hourly-result/; fi
           rm -f codex-output.md .github/codex/hourly-issue-prompt.md
           git add -N .
-          git diff --binary HEAD -- . ':(exclude)hourly-result/**' > /tmp/hourly-result/codex.patch
+          git diff --binary HEAD -- . ':(exclude)hourly-result/**' > hourly-result/codex.patch
       - uses: actions/upload-artifact@v4
         if: always()
         with:
