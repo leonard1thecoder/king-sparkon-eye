@@ -42,6 +42,19 @@ pub struct AppState {
     assessment: Option<Arc<AssessmentRuntime>>,
 }
 
+#[cfg(test)]
+impl AppState {
+    /// Constructs the real route state with an injected OAuth runtime for provider/HTTP tests.
+    pub(crate) fn with_oauth_for_test(config: Config, oauth: OAuthRuntime) -> Self {
+        Self {
+            config: Arc::new(config),
+            oauth: Some(Arc::new(oauth)),
+            billing: None,
+            assessment: None,
+        }
+    }
+}
+
 struct AssessmentRuntime {
     detector: Arc<YunetDetector>,
 }
