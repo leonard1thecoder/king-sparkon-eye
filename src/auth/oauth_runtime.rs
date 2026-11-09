@@ -1457,6 +1457,20 @@ mod http_integration_tests {
         email_verified: bool,
         email: Option<&str>,
     ) -> String {
+        sign_id_token_for_identity(
+            nonce,
+            email_verified,
+            email,
+            "google-subject-http-test",
+        )
+    }
+
+    fn sign_id_token_for_identity(
+        nonce: &str,
+        email_verified: bool,
+        email: Option<&str>,
+        subject: &str,
+    ) -> String {
         let now = now_seconds();
         let header = URL_SAFE_NO_PAD.encode(
             serde_json::to_vec(&serde_json::json!({
@@ -1468,7 +1482,7 @@ mod http_integration_tests {
         let mut claims = serde_json::json!({
             "iss": "https://accounts.google.com",
             "aud": CLIENT_ID,
-            "sub": "google-subject-http-test",
+            "sub": subject,
             "exp": now + 600,
             "iat": now,
             "nonce": nonce,
@@ -1762,10 +1776,11 @@ mod http_integration_tests {
         let conflict_provider = Arc::new(MockGoogleProvider::new());
         let conflict_app = app(database_url, conflict_provider.clone(), 41_009).await;
         let (conflict_state, conflict_nonce, conflict_cookie) = start_flow(&conflict_app).await;
-        conflict_provider.set_id_token(sign_id_token_with_email(
+        conflict_provider.set_id_token(sign_id_token_for_identity(
             &conflict_nonce,
             true,
             Some(&conflict_email),
+            "google-subject-conflict-attempt",
         ));
         let conflict = response(&conflict_app, axum::http::Request::builder()
             .uri(format!("/v1/auth/google/callback?code=provider-code&state={conflict_state}"))
