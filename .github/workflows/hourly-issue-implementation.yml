@@ -138,7 +138,7 @@ jobs:
           if [ -f codex-output.md ]; then cp codex-output.md hourly-result/; fi
           rm -f codex-output.md .github/codex/hourly-issue-prompt.md
           git add -N .
-          git diff --binary HEAD > hourly-result/codex.patch
+          git diff --binary HEAD -- . ':(exclude)hourly-result/**' > hourly-result/codex.patch
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -196,7 +196,7 @@ jobs:
           fi
           git apply --check hourly-result/codex.patch
           git apply hourly-result/codex.patch
-          if git diff --quiet; then
+          if [[ -z "$(git status --porcelain)" ]]; then
             echo "::notice::Patch applied no changes; no PR created."
             exit 0
           fi
