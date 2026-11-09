@@ -1904,7 +1904,7 @@ mod http_integration_tests {
         let provider = Arc::new(MockGoogleProvider::new());
         provider.set_token_status(503);
         let app = app(database_url, provider.clone(), 41_003).await;
-        let (state, nonce, cookie) = start_flow(&app).await;
+        let (state, nonce, cookie, _challenge) = start_flow(&app).await;
         provider.set_id_token(sign_id_token(&nonce, true));
 
         let failed = response(&app, axum::http::Request::builder()
